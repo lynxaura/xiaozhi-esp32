@@ -30,6 +30,7 @@ public:
 
     inline int width() const { return width_; }
     inline int height() const { return height_; }
+    lv_display_t* GetLvDisp() const { return display_; }
 
 protected:
     int width_ = 0;

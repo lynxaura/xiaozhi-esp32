@@ -231,4 +231,13 @@ config USE_REALTIME_CHAT
     help
         需要 ESP32 S3 与 AEC 开启，因为性能不够，不建议和微信聊天界面风格同时开启
         
+# 触摸日志调试开关（新增）
+config DEBUG_TOUCH_LOG
+   bool "启用触摸坐标调试任务（touch_log）"
+    default n
+    help
+        开启后，构造函数里会创建一个 FreeRTOS 任务，
+        每 50 ms 读取 FT5x06 并打印坐标。
+        仅用于 Bring-up / 调试，正式版请关闭以节省 4 KB 堆栈并避免刷屏。
+
 endmenu

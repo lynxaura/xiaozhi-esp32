@@ -85,9 +85,9 @@
 /* Touch */
 #define BSP_TOUCH_I2C_NUM  (1)
 #define BSP_TOUCH_GPIO_INT (IO_EXPANDER_PIN_NUM_5)
-#define BSP_TOUCH_I2C_SDA  (GPIO_NUM_39)
-#define BSP_TOUCH_I2C_SCL  (GPIO_NUM_38)
-#define BSP_TOUCH_I2C_CLK  (400000)
+#define BSP_TOUCH_I2C_SDA  (GPIO_NUM_1)
+#define BSP_TOUCH_I2C_SCL  (GPIO_NUM_7)
+#define BSP_TOUCH_I2C_CLK  (100000)
 
 /* Settings */
 #define DRV_LCD_PIXEL_CLK_HZ      (40 * 1000 * 1000)

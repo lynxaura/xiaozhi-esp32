@@ -13,6 +13,10 @@
 #include <driver/spi_common.h>
 #include <wifi_station.h>
 
+#include "esp_lcd_touch_ft5x06.h"   
+#include "esp_lvgl_port.h"      
+#include "esp_check.h" 
+
 #define TAG "LichuangDevBoard"
 
 LV_FONT_DECLARE(font_puhui_20_4);
@@ -40,6 +44,10 @@ private:
     Button boot_button_;
     LcdDisplay* display_;
     Pca9557* pca9557_;
+
+    esp_lcd_touch_handle_t tp_;  
+    
+
 
     void InitializeI2c() {
         // Initialize I2C peripheral
@@ -125,6 +133,78 @@ private:
                                     });
     }
 
+    esp_err_t InitTouchDriver(esp_lcd_touch_handle_t *ret_touch)
+{
+    ESP_LOGI(TAG, ">>> InitTouchDriver() enter");
+    /* ① 触摸控制器能力描述 */
+    esp_lcd_touch_config_t tp_cfg = {
+        .x_max = 320,               // <-- TODO 改成你的 X 分辨率
+        .y_max = 240,               // <-- TODO 改成你的 Y 分辨率
+        .rst_gpio_num = GPIO_NUM_NC,
+        .int_gpio_num = GPIO_NUM_NC,
+        .levels = {
+            .reset      = 0,
+            .interrupt  = 0,
+        },
+        .flags = {
+            .swap_xy    = 1,        // 屏幕是竖的就开；横屏关
+            .mirror_x   = 1,
+            .mirror_y   = 0,
+        },
+    };
+
+    /* ② 用现有 i2c_bus_ 挂载 FT5x06 面板 IO */
+    esp_lcd_panel_io_handle_t tp_io = NULL;
+    esp_lcd_panel_io_i2c_config_t io_cfg = {};   // 全部 0
+
+    io_cfg.dev_addr            = 0x38;
+    io_cfg.on_color_trans_done = nullptr;
+    io_cfg.user_ctx            = nullptr;
+    io_cfg.control_phase_bytes = 1;
+    io_cfg.dc_bit_offset       = 0;
+    io_cfg.lcd_cmd_bits        = 8;
+    io_cfg.lcd_param_bits      = 8;
+    io_cfg.scl_speed_hz        = 400 * 1000;
+    io_cfg.flags.disable_control_phase = 1;
+    
+    ESP_RETURN_ON_ERROR(
+        esp_lcd_new_panel_io_i2c_v2(i2c_bus_, &io_cfg, &tp_io),
+        TAG, "new_panel_io_i2c_v2 failed");
+
+    /* ③ 创建驱动 */
+   /* 创建 FT5x06 触摸驱动 */
+esp_err_t err = esp_lcd_touch_new_i2c_ft5x06(tp_io, &tp_cfg, ret_touch);
+if (err != ESP_OK) {
+    ESP_LOGE(TAG, "touch_new_i2c_ft5x06 failed: %s", esp_err_to_name(err));
+    return err;          // 如果想让上层知道失败，保留这行
+}
+ESP_LOGI(TAG, "FT5x06 driver init OK"); 
+/* 成功则继续往下走 */
+
+
+    /* ④ （可选）把这个设备额外挂到 I²C，总线调试更方便 */
+    i2c_device_config_t dev_cfg = {
+        .dev_addr_length   = I2C_ADDR_BIT_LEN_7,
+        .device_address    = 0x38,
+        .scl_speed_hz      = 400*1000,
+    };
+    i2c_master_dev_handle_t tmp;
+    i2c_master_bus_add_device(i2c_bus_, &dev_cfg, &tmp);
+
+    return ESP_OK;
+}
+
+/* 2. 把触摸注册到 LVGL，并返回 indev 指针（如果你将来想自己用）*/
+    lv_indev_t *InitLvglIndev(lv_disp_t *disp)
+    {
+        ESP_ERROR_CHECK(InitTouchDriver(&tp_));
+        const lvgl_port_touch_cfg_t touch_cfg = {
+            .disp   = disp,
+            .handle = tp_,
+        };
+        return lvgl_port_add_touch(&touch_cfg);
+    }
+
     // 物联网初始化，添加对 AI 可见设备
     void InitializeIot() {
         auto& thing_manager = iot::ThingManager::GetInstance();
@@ -132,14 +212,49 @@ private:
         thing_manager.AddThing(iot::CreateThing("Screen"));
     }
 
+    /* --- 触摸调试任务：每 50 ms 打印一次坐标 ------------------ */
+    static void TouchLogTask(void *arg)
+{
+    auto *board = static_cast<LichuangDevBoard *>(arg);
+
+    uint16_t x, y;
+    uint8_t  points;
+
+    while (true) {
+        /* ① 采样：和触摸控制器走一次 I²C，把数据写入驱动缓存 */
+        esp_lcd_touch_read_data(board->GetTouchHandle());
+
+        /* ② 读取：从缓存里取第 1 个触点坐标 */
+        bool touched = esp_lcd_touch_get_coordinates(
+                           board->GetTouchHandle(),
+                           &x, &y,
+                           nullptr,     // strength 可忽略
+                           &points,     // 返回有效触点数
+                           1);          // 只取 1 个触点
+
+        if (touched && points) {
+            ESP_LOGI("TOUCH", "x=%u  y=%u", x, y);
+        }
+        vTaskDelay(pdMS_TO_TICKS(200));   // 5 Hz
+    }
+}
+
+
 public:
+    esp_lcd_touch_handle_t GetTouchHandle() const { return tp_; }
+
     LichuangDevBoard() : boot_button_(BOOT_BUTTON_GPIO) {
         InitializeI2c();
         InitializeSpi();
         InitializeSt7789Display();
         InitializeButtons();
+        InitLvglIndev(display_->GetLvDisp());
         InitializeIot();
         GetBacklight()->RestoreBrightness();
+        
+        #if CONFIG_DEBUG_TOUCH_LOG
+        xTaskCreate(TouchLogTask, "touch_log", 4096, this, 5, nullptr);
+        #endif
     }
 
     virtual AudioCodec* GetAudioCodec() override {
