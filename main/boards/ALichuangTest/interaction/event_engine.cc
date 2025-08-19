@@ -330,14 +330,10 @@ EventType EventEngine::ConvertTouchEventType(TouchEventType touch_type, TouchPos
             return EventType::MOTION_NONE;
             
         case TouchEventType::CRADLED:
-            // TODO: 可以添加特殊的摇篮模式事件类型
-            ESP_LOGI(TAG, "CRADLED event detected but not mapped to specific EventType");
-            return EventType::MOTION_NONE;
+            return EventType::TOUCH_CRADLED;
             
         case TouchEventType::TICKLED:
-            // TODO: 可以添加特殊的挠痒模式事件类型
-            ESP_LOGI(TAG, "TICKLED event detected but not mapped to specific EventType");
-            return EventType::MOTION_NONE;
+            return EventType::TOUCH_TICKLED;
             
         default:
             return EventType::MOTION_NONE;

@@ -11,6 +11,7 @@
 #include <deque>
 #include <vector>
 #include <memory>
+#include <cJSON.h>
 
 #include "protocol.h"
 #include "ota.h"
@@ -60,6 +61,8 @@ public:
     AecMode GetAecMode() const { return aec_mode_; }
     void PlaySound(const std::string_view& sound);
     AudioService& GetAudioService() { return audio_service_; }
+    Protocol* GetProtocol() { return protocol_.get(); }
+    void OnTimeSynchronized();
 
 private:
     Application();

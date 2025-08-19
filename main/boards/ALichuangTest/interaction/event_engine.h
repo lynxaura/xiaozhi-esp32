@@ -18,10 +18,12 @@ enum class EventType {
     MOTION_PICKUP,         // 设备被拿起
     MOTION_UPSIDE_DOWN,    // 设备被倒置（持续状态）
     
-    // 触摸事件（预留）
+    // 触摸事件
     TOUCH_TAP,
     TOUCH_DOUBLE_TAP,
     TOUCH_LONG_PRESS,
+    TOUCH_TICKLED,        // 挠痒模式
+    TOUCH_CRADLED,        // 摇篮模式
     TOUCH_SWIPE_UP,
     TOUCH_SWIPE_DOWN,
     TOUCH_SWIPE_LEFT,

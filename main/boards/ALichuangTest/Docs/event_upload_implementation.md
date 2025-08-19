@@ -4,10 +4,10 @@
 本文档描述如何使用MCP (Model Context Protocol) Notification机制，将交互事件（触摸事件、运动事件等）上传到服务器。采用标准的JSON-RPC 2.0 Notification格式，通过现有的MCP通信通道实现设备主动事件推送。
 
 **重要兼容性说明**：
-- 事件字段名保持与旧版`lx/v1/event`协议一致：`start_time`、`end_time`、`event_text`
+- 事件字段名更新为：`timestamp`（事件发生时间）、`duration_ms`（可选，持续时间）、`event_text`
 - 外层消息统一使用`type: "mcp"`，不再使用`type: "lx/v1/event"`
 - 所有事件统一使用单一方法`events/publish`，不区分touch/motion等子类型
-- 服务端仅需修改外层协议解析，事件体结构零改动
+- 服务端需适配新的字段结构（timestamp + duration_ms 替代 start_time/end_time）
 
 **关键改进点**：
 - ✅ **内存安全**：使用`unique_ptr<cJSON>`防止double free，确保内存管理安全
@@ -49,12 +49,20 @@
       "events": [
         {
           "event_type": "tickled",
-          "start_time": 1755222858360,
-          "end_time": 1755222859560,
-          "event_text": "User tickled the device with rapid touches",
+          "timestamp": 1755222858360,
+          "event_text": "主人在挠我痒痒，好痒啊",
           "metadata": {
             "touch_count": 5,
-            "intensity": "medium"
+            "position": "both"
+          }
+        },
+        {
+          "event_type": "long_press",
+          "timestamp": 1755222860000,
+          "duration_ms": 2500,
+          "event_text": "主人长时间按住了我的左侧",
+          "metadata": {
+            "position": "left"
           }
         }
       ]
@@ -78,7 +86,7 @@
 
 ## 事件数据结构
 
-### 事件参数格式（与旧版lx/v1/event保持一致）
+### 事件参数格式
 ```typescript
 interface EventParams {
   events: Event[];
@@ -86,8 +94,8 @@ interface EventParams {
 
 interface Event {
   event_type: string;        // 事件类型标识
-  start_time: number;        // 事件开始时间戳（int64 ms since epoch）
-  end_time: number;          // 事件结束时间戳（int64 ms since epoch）
+  timestamp: number;         // 事件发生时间戳（int64 ms since epoch）
+  duration_ms?: number;      // 事件持续时间（可选，仅当>0时存在）
   event_text: string;        // 事件描述文本（供LLM理解）
   metadata?: {               // 额外元数据（可选）
     event_id?: string;       // 事件唯一ID，用于去重（格式：{device_id}-{timestamp}-{seq}）
@@ -98,28 +106,33 @@ interface Event {
 
 ### 设备端事件类型映射
 
-#### 触摸事件映射
+#### 触摸事件映射（需要添加支持）
 ```cpp
-// TouchEventType → event_type字符串
-TouchEventType::TICKLED      → "tickled"      // 挠痒模式
-TouchEventType::CRADLED      → "cradled"      // 摇篮模式  
-TouchEventType::SINGLE_TAP   → "tap"          // 单击
-TouchEventType::DOUBLE_TAP   → "double_tap"   // 双击
-TouchEventType::LONG_PRESS   → "long_press"   // 长按
-TouchEventType::HOLD         → "hold"         // 持续按住
-TouchEventType::RELEASE      → "release"      // 释放
+// TouchEventType → EventType → event_type字符串 → event_text(区分左右)
+
+// ✅ 需要上传的触摸事件
+TouchEventType::SINGLE_TAP   → EventType::TOUCH_TAP        → "tap"        → "主人轻轻拍了我的左侧/右侧"
+TouchEventType::HOLD         → EventType::TOUCH_LONG_PRESS → "long_press" → "主人长时间按住了我的左侧/右侧"
+TouchEventType::CRADLED      → EventType::TOUCH_CRADLED    → "cradled"    → "主人温柔地抱着我"
+TouchEventType::TICKLED      → EventType::TOUCH_TICKLED    → "tickled"    → "主人在挠我痒痒"
+
+// ❌ 不上传的事件
+TouchEventType::RELEASE      → EventType::MOTION_NONE     // 释放事件（无需上传）
+
+// 触摸位置信息存储在 event.data.touch_data 中：
+// - touch_data.x: -1(左侧), +1(右侧), 0(双侧或ANY)
+// - touch_data.y: duration_ms(持续时间)
 ```
 
 #### 运动事件映射
 ```cpp
-// MotionEventType → event_type字符串
-EventType::MOTION_SHAKE           → "shake"           // 摇晃
-EventType::MOTION_SHAKE_VIOLENTLY → "shake_violently" // 剧烈摇晃
-EventType::MOTION_FLIP            → "flip"            // 翻转
-EventType::MOTION_FREE_FALL       → "free_fall"       // 自由落体
-EventType::MOTION_PICKUP          → "pickup"          // 拿起
-EventType::MOTION_UPSIDE_DOWN     → "upside_down"     // 倒置
-EventType::MOTION_TILT            → "tilt"            // 倾斜
+// MotionEventType → event_type字符串 → event_text
+EventType::MOTION_SHAKE           → "shake"           → "主人轻轻摇了摇我"
+EventType::MOTION_SHAKE_VIOLENTLY → "shake_violently" → "主人用力摇晃我" 
+EventType::MOTION_FLIP            → "flip"            → "主人把我翻了个身"
+EventType::MOTION_FREE_FALL       → "free_fall"       → "糟糕，我掉下去了"
+EventType::MOTION_PICKUP          → "pickup"          → "主人把我拿起来了"
+EventType::MOTION_UPSIDE_DOWN     → "upside_down"     → "主人把我倒立起来了"
 ```
 
 ## 发送策略
@@ -180,7 +193,7 @@ inline EventPriority GetEventPriority(EventType type) {
 
 ### 初始化
 
-注意：在实际集成时，需确保时间同步机制正常工作。未同步前先缓存事件但不发送；一旦 `IsTimesynced()==true` 或收到服务端时间校正，再附上正确的 `start_time`/`end_time` 发送缓存事件。
+注意：在实际集成时，需确保时间同步机制正常工作。未同步前先缓存事件但不发送；一旦 `IsTimesynced()==true` 或收到服务端时间校正，再附上正确的 `timestamp` 发送缓存事件。
 
 ### 1. 创建MCP事件通知器
 
@@ -234,8 +247,8 @@ public:
 private:
     struct CachedEvent {
         std::string event_type;
-        int64_t start_time;     // 毫秒时间戳，整型
-        int64_t end_time;       // 毫秒时间戳，整型
+        int64_t timestamp_ms;   // 事件发生时间（Unix时间戳，毫秒）
+        uint32_t duration_ms;   // 事件持续时间（毫秒，0表示瞬时事件）
         std::string event_text; // 事件描述文本（与旧版字段保持一致）
         cjson_uptr metadata;    // 智能指针管理metadata，防止double free
         
@@ -256,6 +269,7 @@ private:
     std::string GetEventTypeString(EventType type);
     std::string GenerateEventText(const Event& event);  // 生成event_text字段
     cjson_uptr GenerateEventMetadata(const Event& event); // 返回智能指针
+    uint32_t GetEventDuration(const Event& event);       // 获取事件持续时间
     
     // 泛型发送事件（模板定义在头文件，避免链接问题）
     template<class It>
@@ -280,8 +294,13 @@ private:
             const auto& event = *it;
             cJSON* event_obj = cJSON_CreateObject();
             cJSON_AddStringToObject(event_obj, "event_type", event.event_type.c_str());
-            cJSON_AddNumberToObject(event_obj, "start_time", event.start_time);  // 整型毫秒
-            cJSON_AddNumberToObject(event_obj, "end_time", event.end_time);
+            cJSON_AddNumberToObject(event_obj, "timestamp", event.timestamp_ms);  // 整型毫秒
+            
+            // 只有持续时间大于0时才添加duration_ms字段
+            if (event.duration_ms > 0) {
+                cJSON_AddNumberToObject(event_obj, "duration_ms", event.duration_ms);
+            }
+            
             cJSON_AddStringToObject(event_obj, "event_text", event.event_text.c_str());
             
             if (event.metadata) {
@@ -470,10 +489,9 @@ void McpEventNotifier::OnTimeSynced() {
         int64_t current_time_ms = static_cast<int64_t>(tv.tv_sec) * 1000 + tv.tv_usec / 1000;
         
         for (auto& event : events_to_send) {
-            // 保持事件的相对时长，但更新为同步后的绝对时间
-            int64_t duration = event.end_time - event.start_time;
-            event.start_time = current_time_ms;
-            event.end_time = current_time_ms + duration;
+            // 更新时间戳为同步后的时间，保持duration不变
+            event.timestamp_ms = current_time_ms;
+            // duration_ms保持原值，不需要更新
         }
         
         // 分批发送
@@ -492,24 +510,29 @@ CachedEvent McpEventNotifier::ConvertEvent(const Event& event) {
     cached.event_type = GetEventTypeString(event.type);
     
     // 获取当前时间戳（Unix epoch毫秒，整型）
-    // 注意：esp_timer_get_time()返回的是系统启动后的微秒数，不是Unix时间
-    // 实际应用中需要使用gettimeofday()或其他方式获取真实Unix时间
     struct timeval tv;
     gettimeofday(&tv, nullptr);
-    int64_t current_time_ms = static_cast<int64_t>(tv.tv_sec) * 1000 + tv.tv_usec / 1000;
+    cached.timestamp_ms = static_cast<int64_t>(tv.tv_sec) * 1000 + tv.tv_usec / 1000;
     
-    cached.start_time = current_time_ms;
-    
-    // 如果有持续时间，计算end_time；否则end_time等于start_time+1ms
-    if (event.duration_ms > 0) {
-        cached.end_time = current_time_ms + event.duration_ms;
-    } else {
-        cached.end_time = current_time_ms + 1; // 默认1毫秒持续时间
-    }
+    // 获取事件持续时间
+    cached.duration_ms = GetEventDuration(event);
     
     cached.event_text = GenerateEventText(event);
     cached.metadata = GenerateEventMetadata(event);
     return cached; // 移动语义自动生效，转移unique_ptr所有权
+}
+
+// 获取事件持续时间（毫秒）
+uint32_t McpEventNotifier::GetEventDuration(const Event& event) {
+    // 触摸事件从touch_data.y中获取持续时间
+    if (event.type == EventType::TOUCH_LONG_PRESS || 
+        event.type == EventType::TOUCH_TAP) {
+        // touch_data.y存储了TouchEvent的duration_ms
+        return static_cast<uint32_t>(event.data.touch_data.y);
+    }
+    
+    // 其他事件默认为瞬时事件（0ms）
+    return 0;
 }
 
 std::string McpEventNotifier::GetEventTypeString(EventType type) {
@@ -536,7 +559,6 @@ std::string McpEventNotifier::GetEventTypeString(EventType type) {
     }
 }
 
-// 不再需要GetNotificationMethod函数，统一使用events/publish
 
 std::string McpEventNotifier::GenerateEventText(const Event& event) {
     // 生成供LLM理解的event_text（与旧版字段保持一致）
@@ -867,20 +889,20 @@ def process_event(event):
     """处理单个事件"""
     event_type = event.get('event_type')
     
-    # 字段兼容性处理（支持新旧字段混合）
-    # 统一转换为标准字段名
-    if 'timestamp' in event and 'start_time' not in event:
-        event['start_time'] = event['timestamp']
-    if 'duration_ms' in event and 'end_time' not in event:
-        event['end_time'] = event['start_time'] + event['duration_ms']
-    if 'description' in event and 'event_text' not in event:
-        event['event_text'] = event['description']
+    # 字段处理
+    timestamp = event.get('timestamp')
+    duration_ms = event.get('duration_ms', 0)
+    event_text = event.get('event_text')
+    
+    # 如果需要计算结束时间（仅在需要时）
+    if duration_ms > 0:
+        end_time = timestamp + duration_ms
     
     # 写入数据库
     db.write_event(event)
     
     # 推送到LLM上下文
-    if event_type in ['tickled', 'cradled', 'shake']:
+    if event_type in ['shake', 'shake_violently', 'free_fall', 'long_press']:
         llm_context.add_interaction(event)
     
     # 触发相应的业务逻辑
@@ -971,14 +993,109 @@ class CustomEventNotifier : public McpEventNotifier {
 ✅ **最小侵入**：事件字段与旧版保持一致，服务端改动极小  
 ✅ **极简设计**：单一method处理所有事件，无需多个路由  
 ✅ **标准化**：遵循JSON-RPC 2.0 Notification规范（无id，不回包）  
-✅ **兼容性好**：`start_time`/`end_time`/`event_text`字段名不变  
+✅ **简化设计**：`timestamp`/`duration_ms`/`event_text`更加清晰  
 ✅ **统一协议**：外层统一`type: "mcp"`，内层JSON-RPC格式  
 ✅ **易于扩展**：新增事件类型只需定义新的event_type值  
 
 关键设计原则：
-- **字段兼容**：沿用旧版字段名，避免服务端大改
+- **字段简化**：使用`timestamp`+`duration_ms`，避免冗余计算
 - **协议统一**：所有消息走MCP通道，`type: "mcp"`
 - **方法唯一**：`events/publish`处理所有事件类型
 - **语义一致**：Notification不回包，符合设备主动推送场景
 
 通过本方案，在保持最大兼容性的前提下，实现了标准、高效的设备事件推送系统。
+
+---
+
+## 后端开发沟通指南
+
+### 🂯 核心信息
+
+新增 MCP 方法：`events/publish`，用于接收设备事件上传。
+
+### 📝 消息格式
+```json
+{
+  "session_id": "9aa008fa-c874-4829-b70b-fca7fa30e3da",
+  "type": "mcp",
+  "payload": {
+    "jsonrpc": "2.0",
+    "method": "events/publish",
+    "params": {
+      "events": [
+        {
+          "event_type": "tickled",
+          "timestamp": 1755222858360,
+          "event_text": "主人在挠我痒痒，好痒啊",
+          "metadata": {
+            "touch_count": 5,
+            "position": "both"
+          }
+        },
+        {
+          "event_type": "long_press",
+          "timestamp": 1755222860000,
+          "duration_ms": 2500,
+          "event_text": "主人长时间按住了我的左侧",
+          "metadata": {
+            "position": "left"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+### 🔧 实现方式
+
+**步骤1**: 在 MCP 路由器中添加新方法
+```python
+@mcp_handler.method("events/publish")
+def handle_events_publish(params):
+    events = params.get('events', [])
+    for event in events:
+        event_text = event.get('event_text', '')
+        print(f"Received device event: {event_text}")
+    return None  # Notification无需响应
+```
+
+**步骤2**: 提取 event_text 字段
+
+```python
+# 单个事件处理示例
+def process_event(event):
+    event_type = event.get('event_type')        # 事件类型："tap", "shake" 等
+    event_text = event.get('event_text')        # 事件描述："主人轻轻拍了我一下"
+    timestamp = event.get('timestamp')          # 时间戳
+    duration_ms = event.get('duration_ms', 0)   # 可选：持续时间
+    
+    # 你的业务逻辑...
+    print(f"{event_type}: {event_text}")
+```
+
+### 📝 事件类型列表
+
+**✅ 触摸事件**（区分左右位置）：
+- `tap` - 轻拍（主人轻轻拍了我的左侧/右侧，<500ms）
+- `long_press` - 长按（主人长时间按住了我的左侧/右侧，>500ms）
+- `cradled` - 摇篮（主人温柔地抱着我，双侧持续触摸>2秒且IMU静止）
+- `tickled` - 挠痒（主人在挠我痒痒，好痒啊，2秒内多次无规律触摸>4次）
+
+**✅ 运动事件**：
+- `shake` - 轻摇（主人轻轻摇了摇我）
+- `shake_violently` - 用力摇（主人用力摇晃我）
+- `flip` - 翻身（主人把我翻了个身）
+- `free_fall` - 掉落（糟糕，我掉下去了）
+- `pickup` - 被拿起（主人把我拿起来了）
+- `upside_down` - 倒立（主人把我倒立起来了）
+
+**触摸位置信息**：
+- 左侧触摸：metadata.position = "left"
+- 右侧触摸：metadata.position = "right"  
+- 双侧触摸：metadata.position = "both"
+
+### ⚠️ 注意
+
+- **JSON-RPC 2.0 Notification**: 无需返回响应
+- **批量事件**: `params.events` 是数组，可能包含多个事件

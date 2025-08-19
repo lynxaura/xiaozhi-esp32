@@ -393,9 +393,21 @@ void Application::Start() {
             ESP_LOGW(TAG, "Server sample rate %d does not match device output sample rate %d, resampling may cause distortion",
                 protocol_->server_sample_rate(), codec->output_sample_rate());
         }
+        
+        // 通知MCP事件通知器连接已建立
+        if (auto* notifier = board.GetEventNotifier()) {
+            notifier->Enable(true);
+            notifier->OnConnectionOpened();
+        }
     });
     protocol_->OnAudioChannelClosed([this, &board]() {
         board.SetPowerSaveMode(true);
+        
+        // 通知MCP事件通知器连接已关闭
+        if (auto* notifier = board.GetEventNotifier()) {
+            notifier->OnConnectionClosed();
+        }
+        
         Schedule([this]() {
             auto display = Board::GetInstance().GetDisplay();
             display->SetChatMessage("system", "");
@@ -770,4 +782,12 @@ void Application::SetAecMode(AecMode mode) {
 
 void Application::PlaySound(const std::string_view& sound) {
     audio_service_.PlaySound(sound);
+}
+
+void Application::OnTimeSynchronized() {
+    // 当SNTP同步完成或收到服务端时间校正时调用
+    auto& board = Board::GetInstance();
+    if (auto* notifier = board.GetEventNotifier()) {
+        notifier->OnTimeSynced();
+    }
 }

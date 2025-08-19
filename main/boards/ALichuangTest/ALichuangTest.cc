@@ -8,6 +8,7 @@
 #include "skills/vibration.h"
 #include "qmi8658.h"
 #include "interaction/event_engine.h"
+#include "interaction/mcp_event_notifier.h"
 #include "pca9685.h"
 
 #include <esp_log.h>
@@ -105,6 +106,7 @@ private:
     esp_timer_handle_t event_timer_ = nullptr;
     Pca9685* pca9685_ = nullptr;           // PCA9685 PWM控制器
     Vibration* vibration_skill_ = nullptr; // 振动技能管理器
+    std::unique_ptr<McpEventNotifier> mcp_event_notifier_; // MCP事件通知器
     TaskHandle_t delay_task_handle = nullptr;
 #if CONFIG_LINGXI_ANIMA_UI
     // 情感相关成员变量
@@ -679,6 +681,42 @@ private:
         ESP_LOGI(TAG, "Interaction system initialized and started");
     }
     
+    void InitializeMcpEventNotifier() {
+        // 创建MCP事件通知器
+        mcp_event_notifier_ = std::make_unique<McpEventNotifier>();
+        
+        // 配置事件过滤器（可选）
+        mcp_event_notifier_->SetEventFilter([](const Event& event) {
+            // 过滤掉不需要上报的事件，只上报重要的交互事件
+            switch (event.type) {
+                case EventType::TOUCH_TAP:
+                case EventType::TOUCH_LONG_PRESS:
+                case EventType::TOUCH_TICKLED:
+                case EventType::TOUCH_CRADLED:
+                case EventType::MOTION_SHAKE:
+                case EventType::MOTION_SHAKE_VIOLENTLY:
+                case EventType::MOTION_FLIP:
+                case EventType::MOTION_FREE_FALL:
+                case EventType::MOTION_PICKUP:
+                case EventType::MOTION_UPSIDE_DOWN:
+                    return true; // 上报这些事件
+                default:
+                    return false; // 其他事件不上报
+            }
+        });
+        
+        // 将MCP事件通知器作为事件回调添加到事件引擎
+        if (event_engine_) {
+            event_engine_->RegisterCallback([this](const Event& event) {
+                if (mcp_event_notifier_) {
+                    mcp_event_notifier_->HandleEvent(event);
+                }
+            });
+        }
+        
+        ESP_LOGI(TAG, "MCP event notifier initialized");
+    }
+    
     void HandleEvent(const Event& event) {
         // 在终端输出事件信息
         const char* event_name = "";
@@ -766,6 +804,7 @@ public:
         InitializePca9685();  // 初始化PCA9685 PWM控制器
         InitializeVibration();  // 初始化振动技能（使用PCA9685）
         InitializeInteractionSystem();  // 初始化交互系统
+        InitializeMcpEventNotifier();    // 初始化MCP事件通知器
 
         GetBacklight()->RestoreBrightness();
 #if CONFIG_LINGXI_ANIMA_UI       
@@ -819,6 +858,11 @@ public:
     // 获取振动技能管理器（可选，用于外部访问和测试）
     Vibration* GetVibration() {
         return vibration_skill_;
+    }
+    
+    // 获取MCP事件通知器（供Application使用）
+    McpEventNotifier* GetEventNotifier() { 
+        return mcp_event_notifier_.get(); 
     }
 };
 
