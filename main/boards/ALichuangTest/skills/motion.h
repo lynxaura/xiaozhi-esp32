@@ -213,6 +213,11 @@ private:
      * @return 转动时间(ms)
      */
     uint32_t CalculateRotationTime(float angle_diff, motion_speed_t speed);
+    
+    /**
+     * @brief 运行速度对比测试 - 展示快速和慢速的差异
+     */
+    void RunSpeedTest();
 };
 
 #endif // SKILLS_MOTION_H_

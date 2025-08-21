@@ -24,18 +24,44 @@ static const char* TAG = "Motion";
 #define SPEED_FAST_DELAY           10
 
 // 马达参数（242转减速马达）
-#define MOTOR_GEAR_RATIO           242.0f    // 减速比
-#define MOTOR_STEPS_PER_DEGREE     (MOTOR_GEAR_RATIO / 360.0f) // 每度需要的马达转数
-#define MOTOR_MIN_SPEED_PWM        800       // 最低速度PWM值（启动扭矩）
+#define MOTOR_RPM                  242.0f    // 马达转速：242转/分钟
+#define MOTOR_RPS                  (MOTOR_RPM / 60.0f)  // 4.03转/秒
+#define MOTOR_DEGREES_PER_SECOND   (MOTOR_RPS * 360.0f) // 1450.8度/秒
+#define MOTOR_MIN_SPEED_PWM        600       // 最低速度PWM值（启动扭矩）
 #define MOTOR_MAX_SPEED_PWM        4095      // 最高速度PWM值
-#define MOTOR_SPEED_SLOW_PWM       1200      // 慢速PWM值
-#define MOTOR_SPEED_MEDIUM_PWM     2400      // 中速PWM值
-#define MOTOR_SPEED_FAST_PWM       3600      // 快速PWM值
+#define MOTOR_SPEED_SLOW_PWM       400       // 慢速PWM值
+#define MOTOR_SPEED_MEDIUM_PWM     1200      // 中速PWM值
+#define MOTOR_SPEED_FAST_PWM       2000      // 快速PWM值
 
 // 角度控制精度参数
 #define ANGLE_TOLERANCE            0.5f      // 角度控制精度（度）
 #define POSITION_UPDATE_INTERVAL   10        // 位置更新间隔(ms)
 #define MOTOR_BRAKE_TIME           100       // 制动时间(ms)
+
+static const char* const motion_pattern_names[] = {
+    [MOTION_HAPPY_WIGGLE] = "HAPPY_WIGGLE",
+    [MOTION_SHAKE_HEAD] = "SHAKE_HEAD", 
+    [MOTION_DODGE_SUBTLE] = "DODGE_SUBTLE",
+    [MOTION_NUZZLE_FORWARD] = "NUZZLE_FORWARD",
+    [MOTION_TENSE_UP] = "TENSE_UP",
+    [MOTION_DODGE_SLOWLY] = "DODGE_SLOWLY",
+    [MOTION_QUICK_TURN_LEFT] = "QUICK_TURN_LEFT",
+    [MOTION_QUICK_TURN_RIGHT] = "QUICK_TURN_RIGHT",
+    [MOTION_CURIOUS_PEEK_LEFT] = "CURIOUS_PEEK_LEFT",
+    [MOTION_CURIOUS_PEEK_RIGHT] = "CURIOUS_PEEK_RIGHT",
+    [MOTION_SLOW_TURN_LEFT] = "SLOW_TURN_LEFT",
+    [MOTION_SLOW_TURN_RIGHT] = "SLOW_TURN_RIGHT",
+    [MOTION_DODGE_OPPOSITE_LEFT] = "DODGE_OPPOSITE_LEFT",
+    [MOTION_DODGE_OPPOSITE_RIGHT] = "DODGE_OPPOSITE_RIGHT",
+    [MOTION_BODY_SHIVER] = "BODY_SHIVER",
+    [MOTION_EXCITED_JIGGLE] = "EXCITED_JIGGLE",
+    [MOTION_RELAX_COMPLETELY] = "RELAX_COMPLETELY",
+    [MOTION_TICKLE_TWIST_DANCE] = "TICKLE_TWIST_DANCE",
+    [MOTION_ANNOYED_TWIST_TO_HAPPY] = "ANNOYED_TWIST_TO_HAPPY",
+    [MOTION_STRUGGLE_TWIST] = "STRUGGLE_TWIST",
+    [MOTION_UNWILLING_TURN_BACK] = "UNWILLING_TURN_BACK",
+    [MOTION_RELAX_TO_CENTER] = "RELAX_TO_CENTER",
+};
 
 Motion::Motion(Pca9685* pca9685, uint8_t channel_a, uint8_t channel_b)
     : pca9685_(pca9685), channel_a_(channel_a), channel_b_(channel_b),
@@ -93,6 +119,11 @@ esp_err_t Motion::StartTask() {
 
     task_running_ = true;
     ESP_LOGI(TAG, "Motion task started");
+    
+    // 启动速度对比测试
+    // vTaskDelay(pdMS_TO_TICKS(500)); // 等待任务完全启动
+    // RunSpeedTest();
+    
     return ESP_OK;
 }
 
@@ -209,7 +240,7 @@ void Motion::MotionTaskFunction(void* arg) {
 
 void Motion::MotorTurnToAngle(float target_angle, motion_speed_t speed) {
     if (!pca9685_) return;
-    pca9685_->IsDevicePresent();
+    // pca9685_->IsDevicePresent();
     
     // 限制目标角度
     if (target_angle > ANGLE_MAX) target_angle = ANGLE_MAX;
@@ -225,6 +256,11 @@ void Motion::MotorTurnToAngle(float target_angle, motion_speed_t speed) {
     if (std::abs(angle_diff) < ANGLE_TOLERANCE) {
         ESP_LOGI(TAG, "角度差异小于容差，无需转动");
         return;
+    }
+    
+    // 对于极小角度，给出警告但仍然执行
+    if (std::abs(angle_diff) < 2.0f) {
+        ESP_LOGW(TAG, "⚠️  角度很小(%.1f°)，可能存在精度问题", angle_diff);
     }
     
     // 确定转动方向
@@ -255,7 +291,7 @@ void Motion::MotorTurnToAngle(float target_angle, motion_speed_t speed) {
 }
 
 void Motion::ExecuteMotionSequence(motion_id_t motion_id) {
-    ESP_LOGI(TAG, "Executing motion sequence: %d", motion_id);
+    ESP_LOGI(TAG, "Executing motion sequence: %s", motion_pattern_names[motion_id]);
 
     switch (motion_id) {
         case MOTION_HAPPY_WIGGLE: {
@@ -306,9 +342,9 @@ void Motion::ExecuteMotionSequence(motion_id_t motion_id) {
             // 表达"紧张"或"害怕"的、身体瞬间绷紧的感觉
             // 通过短暂的高频小幅抖动模拟紧张
             for (int i = 0; i < 10; i++) {
-                MotorTurnToAngle(2.0f, MOTION_SPEED_FAST);
+                MotorTurnToAngle(5.0f, MOTION_SPEED_FAST);
                 vTaskDelay(pdMS_TO_TICKS(30));
-                MotorTurnToAngle(-2.0f, MOTION_SPEED_FAST);
+                MotorTurnToAngle(-5.0f, MOTION_SPEED_FAST);
                 vTaskDelay(pdMS_TO_TICKS(30));
             }
             MotorTurnToAngle(0.0f, MOTION_SPEED_FAST);
@@ -325,7 +361,7 @@ void Motion::ExecuteMotionSequence(motion_id_t motion_id) {
         }
 
         case MOTION_QUICK_TURN_LEFT: {
-            // 快速、精准地转到左侧
+            // 快速、精准地转到左侧 ok
             MotorTurnToAngle(-30.0f, MOTION_SPEED_FAST);
             vTaskDelay(pdMS_TO_TICKS(300));
             StopMotor(); // 确保马达停止在转向位置
@@ -333,7 +369,7 @@ void Motion::ExecuteMotionSequence(motion_id_t motion_id) {
         }
 
         case MOTION_QUICK_TURN_RIGHT: {
-            // 快速、精准地转到右侧
+            // 快速、精准地转到右侧 ok
             MotorTurnToAngle(30.0f, MOTION_SPEED_FAST);
             vTaskDelay(pdMS_TO_TICKS(300));
             StopMotor(); // 确保马达停止在转向位置
@@ -420,8 +456,8 @@ void Motion::ExecuteMotionSequence(motion_id_t motion_id) {
         }
 
         case MOTION_EXCITED_JIGGLE: {
-            // 极度兴奋的、原地快速晃动
-            for (int i = 0; i < 4; i++) {
+            // 极度兴奋的、原地快速晃动 ok
+            for (int i = 0; i < 3; i++) {
                 MotorTurnToAngle(15.0f, MOTION_SPEED_FAST);
                 vTaskDelay(pdMS_TO_TICKS(80));
                 MotorTurnToAngle(-15.0f, MOTION_SPEED_FAST);
@@ -599,16 +635,32 @@ uint32_t Motion::GetSpeedDelay(motion_speed_t speed) {
 }
 
 uint16_t Motion::GetSpeedPwm(motion_speed_t speed) {
+    uint16_t pwm_value;
+    const char* speed_name;
+    
     switch (speed) {
         case MOTION_SPEED_SLOW:
-            return MOTOR_SPEED_SLOW_PWM;
+            pwm_value = MOTOR_SPEED_SLOW_PWM;
+            speed_name = "慢速";
+            break;
         case MOTION_SPEED_MEDIUM:
-            return MOTOR_SPEED_MEDIUM_PWM;
+            pwm_value = MOTOR_SPEED_MEDIUM_PWM;
+            speed_name = "中速";
+            break;
         case MOTION_SPEED_FAST:
-            return MOTOR_SPEED_FAST_PWM;
+            pwm_value = MOTOR_SPEED_FAST_PWM;
+            speed_name = "快速";
+            break;
         default:
-            return MOTOR_SPEED_MEDIUM_PWM;
+            pwm_value = MOTOR_SPEED_MEDIUM_PWM;
+            speed_name = "默认(中速)";
+            break;
     }
+    
+    ESP_LOGI(TAG, "⚡ 设置马达速度: %s - PWM=%d (%.1f%%占空比)", 
+            speed_name, pwm_value, (float)pwm_value/4095.0*100);
+    
+    return pwm_value;
 }
 
 void Motion::SetMotorSpeed(int8_t direction, uint16_t speed_pwm) {
@@ -645,31 +697,70 @@ void Motion::SetMotorSpeed(int8_t direction, uint16_t speed_pwm) {
 }
 
 uint32_t Motion::CalculateRotationTime(float angle_diff, motion_speed_t speed) {
-    // 基于242转减速马达的估算公式
-    // 假设马达在满速时1秒能转360度
-    float base_time_per_degree = 1000.0f / 360.0f; // ms per degree at full speed
+    // 基于242转/分钟减速马达的精确计算
+    // 242转/分钟 = 4.03转/秒 = 1450.8度/秒 (在满速PWM=4095时)
     
-    // 根据速度调整时间
-    float speed_factor = 1.0f;
-    switch (speed) {
-        case MOTION_SPEED_SLOW:
-            speed_factor = 3.0f;  // 慢速为3倍时间
-            break;
-        case MOTION_SPEED_MEDIUM:
-            speed_factor = 2.0f;  // 中速为2倍时间
-            break;
-        case MOTION_SPEED_FAST:
-            speed_factor = 1.0f;  // 快速为基准时间
-            break;
-    }
+    // 获取当前速度的PWM值和对应的速度比例
+    uint16_t speed_pwm = GetSpeedPwm(speed);
+    float speed_ratio = (float)speed_pwm / MOTOR_MAX_SPEED_PWM;  // PWM占空比
     
-    uint32_t rotation_time = (uint32_t)(std::abs(angle_diff) * base_time_per_degree * speed_factor);
+    // 计算当前速度下的度/秒
+    float degrees_per_second = MOTOR_DEGREES_PER_SECOND * speed_ratio;
     
-    // 最小转动时间
-    if (rotation_time < 50) rotation_time = 50;
+    // 计算转动时间 (ms)
+    uint32_t rotation_time = (uint32_t)((std::abs(angle_diff) / degrees_per_second) * 1000.0f);
     
-    ESP_LOGD(TAG, "计算转动时间: 角度差=%.1f°, 速度=%d, 时间=%dms", 
-             angle_diff, speed, rotation_time);
+    // 设置合理的时间范围 - 直流马达必须使用精确计算的时间
+    if (rotation_time < 5) rotation_time = 5;        // 最小5ms，仅防止系统延迟
+    if (rotation_time > 5000) rotation_time = 5000;  // 最大5秒
+    
+    ESP_LOGI(TAG, "精确转动计算: 角度差=%.1f°, PWM=%d(%.1f%%), 预期速度=%.1f°/s, 时间=%dms", 
+             angle_diff, speed_pwm, speed_ratio*100, degrees_per_second, rotation_time);
     
     return rotation_time;
+}
+
+void Motion::RunSpeedTest() {
+    ESP_LOGI(TAG, "🚀 开始马达速度对比测试");
+    ESP_LOGI(TAG, "══════════════════════════════════════════");
+    
+    // 测试1: 超快速转动1秒
+    ESP_LOGI(TAG, "⚡ 第一阶段: 超快速转动 (1秒钟)");
+    ESP_LOGI(TAG, "PWM频率: 200Hz, PWM值: %d (%.1f%%占空比)", 
+             MOTOR_SPEED_FAST_PWM, 4000/4095.0*100);
+    
+    // pca9685_->IsDevicePresent();
+    SetMotorSpeed(1, 4000); // 超快速正向转动
+    vTaskDelay(pdMS_TO_TICKS(1000)); // 转动1秒
+    SetMotorSpeed(0, 0); // 停止
+
+    ESP_LOGI(TAG, "⏸️  暂停0.2秒以便观察差异...");
+    vTaskDelay(pdMS_TO_TICKS(200)); // 暂停0.2秒
+    
+    // 测试2: 快速转动1秒
+    ESP_LOGI(TAG, "⚡ 第二阶段: 快速转动 (1秒钟)");
+    ESP_LOGI(TAG, "PWM频率: 200Hz, PWM值: %d (%.1f%%占空比)", 
+             MOTOR_SPEED_FAST_PWM, MOTOR_SPEED_FAST_PWM/4095.0*100);
+    // pca9685_->IsDevicePresent();
+    SetMotorSpeed(1, MOTOR_SPEED_FAST_PWM); // 快速正向转动
+    vTaskDelay(pdMS_TO_TICKS(1000)); // 转动1秒
+    SetMotorSpeed(0, 0); // 停止
+    
+    ESP_LOGI(TAG, "⏸️  暂停0.2秒以便观察差异...");
+    vTaskDelay(pdMS_TO_TICKS(200)); // 暂停0.2秒
+    
+    // 测试3: 慢速转动1秒  
+    // pca9685_->IsDevicePresent();
+    ESP_LOGI(TAG, "🐌 第三阶段: 慢速转动 (1秒钟)");
+    ESP_LOGI(TAG, "PWM频率: 200Hz, PWM值: %d (%.1f%%占空比)", 
+             MOTOR_SPEED_SLOW_PWM, (float)MOTOR_SPEED_SLOW_PWM/4095.0*100);
+    
+    SetMotorSpeed(-1, MOTOR_SPEED_SLOW_PWM); // 慢速反向转动
+    vTaskDelay(pdMS_TO_TICKS(1000)); // 转动1秒
+    SetMotorSpeed(0, 0); // 停止
+    
+    ESP_LOGI(TAG, "✅ 速度对比测试完成!");
+    ESP_LOGI(TAG, "如果您看到明显的转速差异，说明PWM频率调整成功。");
+    ESP_LOGI(TAG, "如果转速仍然相似，可能需要进一步调整PWM频率或检查硬件连接。");
+    ESP_LOGI(TAG, "══════════════════════════════════════════");
 }

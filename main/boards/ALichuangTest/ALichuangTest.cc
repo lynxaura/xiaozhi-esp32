@@ -596,12 +596,12 @@ private:
     }
 
     void InitializePca9685() {
-        // 现在我们知道PCA9685在0x40地址，直接使用
-        IsDevicePresent(PCA9685_DEFAULT_ADDR);
+        // IsDevicePresent(PCA9685_DEFAULT_ADDR);
         ESP_LOGI(TAG, "Initializing PCA9685 at address 0x40...");
         pca9685_ = new Pca9685(i2c_bus_, PCA9685_DEFAULT_ADDR);
         
-        esp_err_t ret = pca9685_->Initialize(1000);
+        ESP_LOGI(TAG, "🔧 设置PCA9685 PWM频率为200Hz (适配DRV8837直流马达驱动)");
+        esp_err_t ret = pca9685_->Initialize(200);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to initialize PCA9685: %s", esp_err_to_name(ret));
             delete pca9685_;
@@ -737,7 +737,7 @@ private:
                 ESP_LOGI(TAG, "🔄 Device flipped! (gyro: x=%.1f y=%.1f z=%.1f deg/s)", 
                         data.gyro_x, data.gyro_y, data.gyro_z);
                 vibration_skill_->Play(VIBRATION_GIGGLE_PATTERN);
-                motion_skill_->Perform(MOTION_CURIOUS_PEEK_LEFT);
+                motion_skill_->Perform(MOTION_DODGE_SLOWLY);
                 break;
             case EventType::MOTION_SHAKE: 
                 event_name = "SHAKE";
@@ -749,7 +749,7 @@ private:
                 event_name = "PICKUP";
                 ESP_LOGI(TAG, "📱 Device picked up!");
                 vibration_skill_->Play(VIBRATION_TREMBLE_PATTERN);
-                motion_skill_->Perform(MOTION_EXCITED_JIGGLE);
+                motion_skill_->Perform(MOTION_DODGE_SUBTLE);
                 break;
             case EventType::MOTION_UPSIDE_DOWN:
                 event_name = "UPSIDE_DOWN";
@@ -767,9 +767,9 @@ private:
                         event.data.touch_data.y);
                 vibration_skill_->Play(VIBRATION_SHORT_BUZZ);
                 if (event.data.touch_data.x < 0) {
-                    motion_skill_->Perform(MOTION_QUICK_TURN_LEFT);
+                    motion_skill_->Perform(MOTION_SLOW_TURN_LEFT);
                 } else {
-                    motion_skill_->Perform(MOTION_QUICK_TURN_RIGHT);
+                    motion_skill_->Perform(MOTION_SLOW_TURN_RIGHT);
                 }
                 break;
             case EventType::TOUCH_DOUBLE_TAP:
