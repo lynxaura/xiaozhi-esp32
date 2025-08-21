@@ -7,7 +7,7 @@
 #include <algorithm>         // for std::min, std::remove_if
 
 EventUploader::EventUploader() 
-    : enabled_(false), time_synced_(false) {
+    : enabled_(false) {
     
     // 生成设备ID
     device_id_ = GenerateDeviceId();
@@ -47,17 +47,8 @@ void EventUploader::HandleEvent(const Event& event) {
     ESP_LOGI(TAG_EVENT_UPLOADER, "Duration: %lums, Start: %lld, End: %lld", 
              (long unsigned)cached.duration_ms, (long long)cached.start_time, (long long)cached.end_time);
     
-    // 检查是否应该立即发送或缓存
-    bool can_send = time_synced_;  // 暂时只检查时间同步，连接检查在SendEventMessage中处理
-    
-    if (can_send) {
-        // 立即发送
-        SendSingleEvent(std::move(cached));
-    } else {
-        // 添加到缓存
-        ESP_LOGI(TAG_EVENT_UPLOADER, "Time not synced, caching event");
-        AddToCache(std::move(cached));
-    }
+    // 立即发送事件
+    SendSingleEvent(std::move(cached));
     
     ESP_LOGI(TAG_EVENT_UPLOADER, "✓ Event processing completed");
     
@@ -77,25 +68,6 @@ void EventUploader::OnConnectionClosed() {
     ESP_LOGW(TAG_EVENT_UPLOADER, "Connection closed - events will be cached");
 }
 
-void EventUploader::OnTimeSynced() {
-    time_synced_ = true;
-    ESP_LOGI(TAG_EVENT_UPLOADER, "Time synchronized - backfilling cached event timestamps");
-    
-    // 获取当前时间用于回填计算
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    int64_t current_unix_ms = static_cast<int64_t>(tv.tv_sec) * 1000 + tv.tv_usec / 1000;
-    int64_t current_mono_ms = esp_timer_get_time() / 1000;
-    
-    // 计算时间偏移量
-    int64_t time_offset = current_unix_ms - current_mono_ms;
-    
-    // 回填缓存事件的时间戳
-    BackfillCachedTimestamps(time_offset);
-    
-    // 处理缓存事件
-    ProcessCachedEvents();
-}
 
 void EventUploader::AddToCache(CachedEvent&& event) {
     std::lock_guard<std::mutex> lock(cache_mutex_);
@@ -112,10 +84,6 @@ void EventUploader::AddToCache(CachedEvent&& event) {
 }
 
 void EventUploader::ProcessCachedEvents() {
-    if (!time_synced_) {
-        ESP_LOGD(TAG_EVENT_UPLOADER, "Time not synced, skipping cache processing");
-        return;
-    }
     
     std::lock_guard<std::mutex> lock(cache_mutex_);
     
@@ -189,7 +157,7 @@ void EventUploader::ClearExpiredEvents() {
     // 移除过期的事件
     auto it = std::remove_if(event_cache_.begin(), event_cache_.end(),
         [expiry_time](const CachedEvent& event) {
-            return event.mono_ms < expiry_time;
+            return event.end_time < expiry_time;
         });
     
     if (it != event_cache_.end()) {
@@ -199,26 +167,6 @@ void EventUploader::ClearExpiredEvents() {
     }
 }
 
-void EventUploader::BackfillCachedTimestamps(int64_t time_offset) {
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    
-    if (event_cache_.empty()) {
-        ESP_LOGD(TAG_EVENT_UPLOADER, "No cached events to backfill");
-        return;
-    }
-    
-    int backfilled_count = 0;
-    for (auto& cached_event : event_cache_) {
-        if (cached_event.start_time == 0 && cached_event.end_time == 0) {
-            // 使用单调时钟时间 + 偏移量计算Unix时间戳
-            cached_event.start_time = cached_event.mono_ms + time_offset - cached_event.duration_ms;
-            cached_event.end_time = cached_event.mono_ms + time_offset;
-            backfilled_count++;
-        }
-    }
-    
-    ESP_LOGI(TAG_EVENT_UPLOADER, "Backfilled timestamps for %d cached events", backfilled_count);
-}
 
 size_t EventUploader::GetCacheSize() const {
     std::lock_guard<std::mutex> lock(cache_mutex_);
@@ -230,9 +178,6 @@ EventUploader::CachedEvent EventUploader::ConvertEvent(const Event& event) {
     cached.event_type = GetEventTypeString(event);
     cached.event_text = GenerateEventText(event);
     
-    // 记录单调时钟时间（始终可用）
-    cached.mono_ms = esp_timer_get_time() / 1000;  // 微秒转毫秒
-    
     // 计算持续时间
     cached.duration_ms = CalculateDuration(event);
     
@@ -241,17 +186,10 @@ EventUploader::CachedEvent EventUploader::ConvertEvent(const Event& event) {
     gettimeofday(&tv, nullptr);
     int64_t system_time_ms = static_cast<int64_t>(tv.tv_sec) * 1000 + tv.tv_usec / 1000;
     
-    // 如果时间已同步，使用真实时间戳；否则使用系统时间（从1970开始但可能不准确）
-    if (time_synced_) {
-        cached.start_time = system_time_ms - cached.duration_ms;
-        cached.end_time = system_time_ms;
-        ESP_LOGD(TAG_EVENT_UPLOADER, "Using synced time: %lld", system_time_ms);
-    } else {
-        // 使用系统时间，但标记为未同步
-        cached.start_time = system_time_ms - cached.duration_ms;
-        cached.end_time = system_time_ms;
-        ESP_LOGD(TAG_EVENT_UPLOADER, "Using unsynced system time: %lld (may be 1970-based)", system_time_ms);
-    }
+    // 使用系统时间设置事件时间戳
+    cached.start_time = system_time_ms - cached.duration_ms;
+    cached.end_time = system_time_ms;
+    ESP_LOGD(TAG_EVENT_UPLOADER, "Using system time: %lld", system_time_ms);
     
     cached.event_payload = nullptr; // 通常为空
     return cached; // 移动语义自动生效
@@ -424,8 +362,8 @@ bool EventUploader::ValidateEvent(const CachedEvent& event) const {
     }
     
     // 检查时间戳逻辑
-    if (time_synced_ && (event.start_time <= 0 || event.end_time <= 0)) {
-        ESP_LOGW(TAG_EVENT_UPLOADER, "Invalid event: invalid timestamps when synced");
+    if (event.start_time <= 0 || event.end_time <= 0) {
+        ESP_LOGW(TAG_EVENT_UPLOADER, "Invalid event: invalid timestamps");
         return false;
     }
     

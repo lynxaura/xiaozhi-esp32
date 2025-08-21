@@ -30,7 +30,6 @@ public:
         std::string event_text;      // 事件描述文本（中文）
         int64_t start_time;          // 事件开始时间（Unix时间戳，毫秒）
         int64_t end_time;            // 事件结束时间（Unix时间戳，毫秒）
-        int64_t mono_ms;             // 单调时钟时间（毫秒，用于时间同步前）
         uint32_t duration_ms;        // 事件持续时间（毫秒）
         cjson_uptr event_payload;    // 额外数据（通常为空），智能指针管理
         
@@ -57,21 +56,16 @@ public:
     void OnConnectionOpened();
     void OnConnectionClosed();
     
-    // 时间同步状态回调
-    void OnTimeSynced();
-    
     // 缓存管理
     void AddToCache(CachedEvent&& event);
     void ProcessCachedEvents();
     void ClearExpiredEvents();
-    void BackfillCachedTimestamps(int64_t time_offset);
     size_t GetCacheSize() const;
     
 private:
     // 基础成员变量
     bool enabled_;
     std::string device_id_;  // 设备唯一标识
-    bool time_synced_;       // 时间同步状态
     
     // 事件缓存相关
     std::vector<CachedEvent> event_cache_;
