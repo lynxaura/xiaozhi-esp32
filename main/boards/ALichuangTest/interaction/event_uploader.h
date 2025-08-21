@@ -24,23 +24,7 @@ using cjson_uptr = std::unique_ptr<cJSON, CJsonDeleter>;
 
 class EventUploader {
 public:
-    EventUploader();
-    ~EventUploader();
-    
-    // 处理事件（决定立即发送或缓存）
-    void HandleEvent(const Event& event);
-    
-    // 启用/禁用通知
-    void Enable(bool enable) { enabled_ = enable; }
-    
-    // 连接状态回调
-    void OnConnectionOpened();
-    void OnConnectionClosed();
-    
-    // 时间同步状态回调
-    void OnTimeSynced();
-    
-private:
+    // 前向声明缓存事件结构体
     struct CachedEvent {
         std::string event_type;      // 事件类型（如 "Touch_Left_Tap"）
         std::string event_text;      // 事件描述文本（中文）
@@ -60,6 +44,30 @@ private:
         CachedEvent& operator=(const CachedEvent&) = delete;
     };
     
+    EventUploader();
+    ~EventUploader();
+    
+    // 处理事件（决定立即发送或缓存）
+    void HandleEvent(const Event& event);
+    
+    // 启用/禁用通知
+    void Enable(bool enable) { enabled_ = enable; }
+    
+    // 连接状态回调
+    void OnConnectionOpened();
+    void OnConnectionClosed();
+    
+    // 时间同步状态回调
+    void OnTimeSynced();
+    
+    // 缓存管理
+    void AddToCache(CachedEvent&& event);
+    void ProcessCachedEvents();
+    void ClearExpiredEvents();
+    void BackfillCachedTimestamps(int64_t time_offset);
+    size_t GetCacheSize() const;
+    
+private:
     // 基础成员变量
     bool enabled_;
     std::string device_id_;  // 设备唯一标识
@@ -67,7 +75,7 @@ private:
     
     // 事件缓存相关
     std::vector<CachedEvent> event_cache_;
-    std::mutex cache_mutex_;
+    mutable std::mutex cache_mutex_;
     
     // 事件序列号，用于生成唯一event_id
     std::atomic<uint32_t> event_sequence_{0};
@@ -117,6 +125,10 @@ private:
         
         return result;
     }
+    
+    // 私有辅助方法
+    void SendSingleEvent(CachedEvent&& event);
+    bool ValidateEvent(const CachedEvent& event) const;
 };
 
 #endif // EVENT_UPLOADER_H
