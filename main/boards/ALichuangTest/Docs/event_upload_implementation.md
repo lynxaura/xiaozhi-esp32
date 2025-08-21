@@ -45,22 +45,13 @@
   "payload": {
     "events": [
       {
-        "event_type": "tickled",
-        "event_payload": {
-          "touch_count": 5,
-          "position": "both",
-          "intensity": 3
-        },
+        "event_type": "Touch_Both_Tickled",
         "event_text": "主人在挠我痒痒，好痒啊",
         "start_time": 1755222858360,
         "end_time": 1755222858360
       },
       {
-        "event_type": "long_press",
-        "event_payload": {
-          "position": "left",
-          "pressure": 0.8
-        },
+        "event_type": "Touch_Left_LongPress",
         "event_text": "主人长时间按住了我的左侧",
         "start_time": 1755222860000,
         "end_time": 1755222862500
@@ -98,14 +89,13 @@ interface EventPayload {
 }
 
 interface Event {
-  event_type: string;        // 事件类型标识
-  event_payload: {           // 事件具体数据（原metadata内容）
-    event_id?: string;       // 事件唯一ID，用于去重
-    [key: string]: any;      // 其他事件相关数据
-  };
+  event_type: string;        // 事件类型标识（包含位置信息）
   event_text: string;        // 事件描述文本（供LLM理解）
   start_time: number;        // 事件开始时间戳（ms since epoch）
   end_time: number;          // 事件结束时间戳（ms since epoch）
+  event_payload?: {          // 可选的额外数据（通常为空）
+    [key: string]: any;
+  };
 }
 ```
 
@@ -113,34 +103,44 @@ interface Event {
 
 #### 触摸事件映射
 ```cpp
-// TouchEventType → EventType → event_type字符串 → event_text(区分左右)
+// TouchEventType + Position → event_type字符串 → event_text
 
-// ✅ 需要上传的触摸事件
-TouchEventType::SINGLE_TAP   → EventType::TOUCH_TAP        → "tap"        → "主人轻轻拍了我的左侧/右侧"
-TouchEventType::HOLD         → EventType::TOUCH_LONG_PRESS → "long_press" → "主人长时间按住了我的左侧/右侧"
-TouchEventType::CRADLED      → EventType::TOUCH_CRADLED    → "cradled"    → "主人温柔地抱着我"
-TouchEventType::TICKLED      → EventType::TOUCH_TICKLED    → "tickled"    → "主人在挠我痒痒"
+// ✅ 需要上传的触摸事件（Touch_[Position]_[Action]格式）
+// 单侧触摸事件
+TouchEventType::SINGLE_TAP + LEFT   → "Touch_Left_Tap"        → "主人轻轻拍了我的左侧"
+TouchEventType::SINGLE_TAP + RIGHT  → "Touch_Right_Tap"       → "主人轻轻拍了我的右侧"
+TouchEventType::HOLD + LEFT         → "Touch_Left_LongPress"  → "主人长时间按住了我的左侧"
+TouchEventType::HOLD + RIGHT        → "Touch_Right_LongPress" → "主人长时间按住了我的右侧"
+
+// 双侧触摸事件（特殊模式）
+TouchEventType::SINGLE_TAP + BOTH   → "Touch_Both_Tap"        → "主人同时拍了我的两侧"
+TouchEventType::CRADLED             → "Touch_Both_Cradled"    → "主人温柔地抱着我"
+TouchEventType::TICKLED             → "Touch_Both_Tickled"    → "主人在挠我痒痒"
 
 // ❌ 不上传的事件
-TouchEventType::RELEASE      → EventType::MOTION_NONE     // 释放事件（无需上传）
+TouchEventType::RELEASE      // 释放事件（无需上传）
 
-// 触摸位置和时间信息存储在 event_payload 中：
-// - position: "left"/"right"/"both"
-// - start_time: 事件开始时间戳
-// - end_time: 根据duration计算（start_time + duration，无duration时等于start_time）
+// 注意事项：
+// 1. event_payload通常为空，位置信息已包含在event_type中
+// 2. CRADLED是特殊的双侧长按模式，需要满足：
+//    - 双侧同时触摸超过2秒
+//    - IMU保持稳定（设备静止）
+//    - 这与普通的双侧长按不同，CRADLED更像是"温柔地抱着"的语义
+// 3. TICKLED需要在2秒内检测到4次以上的无规律触摸
 ```
 
 #### 运动事件映射
 ```cpp
-// MotionEventType → event_type字符串 → event_text
-EventType::MOTION_SHAKE           → "shake"           → "主人轻轻摇了摇我"
-EventType::MOTION_SHAKE_VIOLENTLY → "shake_violently" → "主人用力摇晃我" 
-EventType::MOTION_FLIP            → "flip"            → "主人把我翻了个身"
-EventType::MOTION_FREE_FALL       → "free_fall"       → "糟糕，我掉下去了"
-EventType::MOTION_PICKUP          → "pickup"          → "主人把我拿起来了"
-EventType::MOTION_UPSIDE_DOWN     → "upside_down"     → "主人把我倒立起来了"
+// MotionEventType → event_type字符串 → event_text（统一使用Motion_前缀）
+EventType::MOTION_SHAKE           → "Motion_Shake"           → "主人轻轻摇了摇我"
+EventType::MOTION_SHAKE_VIOLENTLY → "Motion_ShakeViolently"  → "主人用力摇晃我" 
+EventType::MOTION_FLIP            → "Motion_Flip"            → "主人把我翻了个身"
+EventType::MOTION_FREE_FALL       → "Motion_FreeFall"        → "糟糕，我掉下去了"
+EventType::MOTION_PICKUP          → "Motion_Pickup"          → "主人把我拿起来了"
+EventType::MOTION_UPSIDE_DOWN     → "Motion_UpsideDown"      → "主人把我倒立起来了"
 
-// 运动事件的时间处理：
+// 运动事件的event_payload为空或包含少量必要信息
+// 时间处理：
 // - 瞬时事件：start_time = end_time = 当前时间戳
 // - 持续事件：end_time = start_time + duration（如适用）
 ```
@@ -202,15 +202,15 @@ inline EventPriority GetEventPriority(EventType type) {
 
 ### 初始化
 
-注意：在实际集成时，需确保时间同步机制正常工作。未同步前先缓存事件但不发送；一旦 `IsTimesynced()==true` 或收到服务端时间校正，再附上正确的 `timestamp` 发送缓存事件。
+注意：在实际集成时，需确保时间同步机制正常工作。未同步前先缓存事件但不发送；一旦 `IsTimesynced()==true` 或收到服务端时间校正，再计算正确的 `start_time` 和 `end_time` 发送缓存事件。
 
 ### 1. 创建事件上传器
 
-**文件位置**: `main/boards/ALichuangTest/interaction/mcp_event_notifier.h`
+**文件位置**: `main/boards/ALichuangTest/interaction/event_uploader.h`
 
 ```cpp
-#ifndef MCP_EVENT_NOTIFIER_H
-#define MCP_EVENT_NOTIFIER_H
+#ifndef EVENT_UPLOADER_H
+#define EVENT_UPLOADER_H
 
 #include "event_engine.h"
 #include "application.h"
@@ -230,10 +230,10 @@ struct CJsonDeleter {
 };
 using cjson_uptr = std::unique_ptr<cJSON, CJsonDeleter>;
 
-class McpEventNotifier {
+class EventUploader {
 public:
-    McpEventNotifier();
-    ~McpEventNotifier();
+    EventUploader();
+    ~EventUploader();
     
     // 处理事件（决定立即发送或缓存）
     void HandleEvent(const Event& event);
@@ -255,11 +255,13 @@ public:
     
 private:
     struct CachedEvent {
-        std::string event_type;
-        int64_t start_time;     // 事件开始时间（Unix时间戳，毫秒）
-        int64_t end_time;       // 事件结束时间（Unix时间戳，毫秒）
-        std::string event_text; // 事件描述文本
-        cjson_uptr event_payload;    // 事件具体数据，智能指针管理防止double free
+        std::string event_type;      // 事件类型（如 "Touch_Left_Tap"）
+        std::string event_text;      // 事件描述文本（中文）
+        int64_t start_time;          // 事件开始时间（Unix时间戳，毫秒，时间同步后才有效）
+        int64_t end_time;            // 事件结束时间（Unix时间戳，毫秒，时间同步后才有效）
+        int64_t mono_ms;             // 单调时钟时间（毫秒，用于时间同步前的记录）
+        uint32_t duration_ms;        // 事件持续时间（毫秒）
+        cjson_uptr event_payload;    // 额外数据（通常为空），智能指针管理
         
         // 默认构造函数，unique_ptr自动初始化为nullptr
         CachedEvent() = default;
@@ -275,43 +277,38 @@ private:
     
     // 转换事件格式
     CachedEvent ConvertEvent(const Event& event);
-    std::string GetEventTypeString(EventType type);
-    std::string GenerateEventText(const Event& event);  // 生成event_text字段
-    cjson_uptr GenerateEventPayload(const Event& event); // 返回智能指针
-    int64_t CalculateEndTime(const Event& event, int64_t start_time);  // 计算结束时间
+    std::string GetEventTypeString(const Event& event);  // 需要完整event对象来获取位置信息
+    std::string GenerateEventText(const Event& event);   // 生成event_text字段
+    cjson_uptr GenerateEventPayload(const Event& event); // 返回智能指针（通常为空）
+    uint32_t CalculateDuration(const Event& event);      // 计算事件持续时间
     
     // 泛型发送事件（模板定义在头文件，避免链接问题）
     template<class It>
     void SendEvents(It first, It last) {
         if (first == last) return;
         
-        std::string message = BuildEventMessage(first, last);
-        Application::GetInstance().SendEventMessage(message);
+        std::string payload = BuildEventPayload(first, last);
+        Application::GetInstance().SendEventMessage(payload);
     }
     
-    // 泛型构建事件消息 payload（模板定义在头文件）
+    // 泛型构建事件payload（模板定义在头文件）
     template<class It>
-    std::string BuildEventMessage(It first, It last) {
-        cJSON* notification = cJSON_CreateObject();
-        cJSON_AddStringToObject(notification, "jsonrpc", "2.0");
-        cJSON_AddStringToObject(notification, "method", "events/publish");
-        
-        cJSON* params = cJSON_CreateObject();
+    std::string BuildEventPayload(It first, It last) {
+        // 只构建payload部分，session_id和type由Application添加
+        cJSON* payload = cJSON_CreateObject();
         cJSON* events_array = cJSON_CreateArray();
         
         for (auto it = first; it != last; ++it) {
             const auto& event = *it;
             cJSON* event_obj = cJSON_CreateObject();
+            
+            // 添加事件字段（只输出start_time/end_time，不输出内部的mono_ms）
             cJSON_AddStringToObject(event_obj, "event_type", event.event_type.c_str());
-            cJSON_AddNumberToObject(event_obj, "timestamp", event.timestamp_ms);  // 整型毫秒
-            
-            // 只有持续时间大于0时才添加duration_ms字段
-            if (event.duration_ms > 0) {
-                cJSON_AddNumberToObject(event_obj, "duration_ms", event.duration_ms);
-            }
-            
             cJSON_AddStringToObject(event_obj, "event_text", event.event_text.c_str());
+            cJSON_AddNumberToObject(event_obj, "start_time", event.start_time);
+            cJSON_AddNumberToObject(event_obj, "end_time", event.end_time);
             
+            // 只有在event_payload存在时才添加
             if (event.event_payload) {
                 cJSON_AddItemToObject(event_obj, "event_payload", 
                                     cJSON_Duplicate(event.event_payload.get(), true));
@@ -320,19 +317,18 @@ private:
             cJSON_AddItemToArray(events_array, event_obj);
         }
         
-        cJSON_AddItemToObject(params, "events", events_array);
-        cJSON_AddItemToObject(notification, "params", params);
+        cJSON_AddItemToObject(payload, "events", events_array);
         
-        char* json_str = cJSON_PrintUnformatted(notification);
+        char* json_str = cJSON_PrintUnformatted(payload);
         std::string result(json_str);
         
         cJSON_free(json_str);
-        cJSON_Delete(notification);
+        cJSON_Delete(payload);
         
         return result;
     }
     
-    // 检查MCP通道状态（避免"音频通道"误导）
+    // 检查连接状态
     bool IsConnected() const;
     
     // 检查时间是否已同步（避免1970时间戳）
@@ -349,9 +345,19 @@ private:
     bool time_synced_;       // 时间同步状态
     
     // 注意：缓存大小等配置统一从EventNotificationConfig获取，避免重复定义
+    
+#ifdef UNIT_TEST
+    // 测试友元声明，允许单元测试访问私有成员
+    friend class TestEventUploader;
+    friend std::string __test_build_payload(EventUploader& uploader,
+        std::vector<CachedEvent>::iterator first,
+        std::vector<CachedEvent>::iterator last) {
+        return uploader.BuildEventPayload(first, last);
+    }
+#endif
 };
 
-#endif // WEBSOCKET_EVENT_UPLOADER_H
+#endif // EVENT_UPLOADER_H
 ```
 
 **重要说明**：
@@ -365,6 +371,11 @@ private:
    - **性能**：无需构造临时vector，直接操作原始容器的迭代器
    - **灵活性**：支持单个事件、批量事件、范围事件等多种场景
    - **链接安全**：模板定义在头文件中，避免跨TU调用时的ODR/链接错误
+
+3. **职责分离**：
+   - **EventUploader**：只负责构建事件payload（`{"events": [...]}`）
+   - **Application**：负责添加session_id和type，构建完整消息
+   - **优势**：EventUploader不需要了解session管理，Application统一控制消息格式
 
 **文件位置**: `main/boards/ALichuangTest/interaction/event_uploader.cc`
 
@@ -408,9 +419,9 @@ void EventUploader::HandleEvent(const Event& event) {
     CachedEvent cached = ConvertEvent(event);
     
     if (IsConnected() && IsTimesynced()) {
-        // MCP通道已建立且时间已同步，立即发送
+        // 连接已建立且时间已同步，立即发送
         CachedEvent events[] = {std::move(cached)};
-        SendEvents(events, events + 1);
+        SendEvents(events, events + 1);  // 发送payload，Application会添加session_id和type
         ESP_LOGI(TAG, "Event sent immediately: %s", events[0].event_type.c_str());
     } else {
         // 缓存事件（最小锁粒度）
@@ -457,6 +468,31 @@ void EventUploader::OnConnectionOpened() {
         return;
     }
     
+    // 清理过期事件（TTL检查）
+    if (!events_to_send.empty() && EventNotificationConfig::CACHE_TIMEOUT_MS > 0) {
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        int64_t epoch_now_ms = static_cast<int64_t>(tv.tv_sec) * 1000 + tv.tv_usec / 1000;
+        int64_t mono_now_ms = esp_timer_get_time() / 1000;
+        
+        auto old_size = events_to_send.size();
+        events_to_send.erase(
+            std::remove_if(events_to_send.begin(), events_to_send.end(),
+                [&](const CachedEvent& e) {
+                    // 计算事件的实际时间
+                    int64_t event_time = e.start_time > 0 ? e.start_time 
+                                       : (epoch_now_ms - (mono_now_ms - e.mono_ms));
+                    return (epoch_now_ms - event_time) > EventNotificationConfig::CACHE_TIMEOUT_MS;
+                }),
+            events_to_send.end());
+        
+        if (old_size != events_to_send.size()) {
+            ESP_LOGW(TAG, "Dropped %zu expired events (TTL=%dms)", 
+                     old_size - events_to_send.size(), 
+                     EventNotificationConfig::CACHE_TIMEOUT_MS);
+        }
+    }
+    
     // 在锁外进行JSON序列化和网络发送
     if (!events_to_send.empty()) {
         // 分批发送以避免单个消息过大
@@ -490,17 +526,36 @@ void EventUploader::OnTimeSynced() {
         }
     }
     
-    // 发送缓存的事件（附上正确的时间戳）
+    // 回填正确的Unix时间戳
     if (!events_to_send.empty()) {
-        // 更新时间戳为当前同步后的时间
+        // 获取当前的Unix时间和单调时钟
         struct timeval tv;
         gettimeofday(&tv, nullptr);
-        int64_t current_time_ms = static_cast<int64_t>(tv.tv_sec) * 1000 + tv.tv_usec / 1000;
+        int64_t epoch_now_ms = static_cast<int64_t>(tv.tv_sec) * 1000 + tv.tv_usec / 1000;
+        int64_t mono_now_ms = esp_timer_get_time() / 1000;
         
         for (auto& event : events_to_send) {
-            // 更新时间戳为同步后的时间，保持duration不变
-            event.timestamp_ms = current_time_ms;
-            // duration_ms保持原值，不需要更新
+            // 使用单调时钟差值计算事件的真实Unix时间
+            // 事件发生时的Unix时间 = 当前Unix时间 - (当前单调时间 - 事件单调时间)
+            int64_t time_diff_ms = mono_now_ms - event.mono_ms;
+            event.start_time = epoch_now_ms - time_diff_ms;
+            event.end_time = event.start_time + event.duration_ms;
+        }
+        
+        // 清理过期事件（TTL检查）
+        if (EventNotificationConfig::CACHE_TIMEOUT_MS > 0) {
+            auto old_size = events_to_send.size();
+            events_to_send.erase(
+                std::remove_if(events_to_send.begin(), events_to_send.end(),
+                    [&](const CachedEvent& e) {
+                        return (epoch_now_ms - e.start_time) > EventNotificationConfig::CACHE_TIMEOUT_MS;
+                    }),
+                events_to_send.end());
+            
+            if (old_size != events_to_send.size()) {
+                ESP_LOGW(TAG, "Dropped %zu expired events after time sync", 
+                         old_size - events_to_send.size());
+            }
         }
         
         // 分批发送
@@ -512,147 +567,168 @@ void EventUploader::OnTimeSynced() {
     }
 }
 
-// 模板函数已移至头文件，避免链接问题
+// SendEvents和BuildEventPayload模板函数已移至头文件，避免链接问题
 
 CachedEvent EventUploader::ConvertEvent(const Event& event) {
     CachedEvent cached;
-    cached.event_type = GetEventTypeString(event.type);
-    
-    // 获取当前时间戳（Unix epoch毫秒，整型）
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    cached.start_time = static_cast<int64_t>(tv.tv_sec) * 1000 + tv.tv_usec / 1000;
-    
-    // 计算事件结束时间
-    cached.end_time = CalculateEndTime(event, cached.start_time);
-    
+    cached.event_type = GetEventTypeString(event);  // 传入完整的event对象
     cached.event_text = GenerateEventText(event);
+    
+    // 记录单调时钟时间（始终可用）
+    cached.mono_ms = esp_timer_get_time() / 1000;  // 微秒转毫秒
+    
+    // 计算持续时间
+    cached.duration_ms = CalculateDuration(event);
+    
+    // 如果时间已同步，计算Unix时间戳
+    if (IsTimesynced()) {
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        cached.start_time = static_cast<int64_t>(tv.tv_sec) * 1000 + tv.tv_usec / 1000;
+        cached.end_time = cached.start_time + cached.duration_ms;
+    } else {
+        // 时间未同步，先设为0，等同步后再回填
+        cached.start_time = 0;
+        cached.end_time = 0;
+    }
+    
     cached.event_payload = GenerateEventPayload(event);
     return cached; // 移动语义自动生效，转移unique_ptr所有权
 }
 
-// 计算事件结束时间
-int64_t EventUploader::CalculateEndTime(const Event& event, int64_t start_time) {
+// 计算事件持续时间
+uint32_t EventUploader::CalculateDuration(const Event& event) {
     // 触摸事件从touch_data.y中获取持续时间
     if (event.type == EventType::TOUCH_LONG_PRESS || 
-        event.type == EventType::TOUCH_TAP) {
+        event.type == EventType::TOUCH_TAP ||
+        event.type == EventType::TOUCH_CRADLED) {
         // touch_data.y存储了TouchEvent的duration_ms
         uint32_t duration_ms = static_cast<uint32_t>(event.data.touch_data.y);
         if (duration_ms > 0) {
-            return start_time + duration_ms;
+            return duration_ms;
         }
     }
     
-    // 其他事件或无持续时间的事件，end_time等于start_time
-    return start_time;
+    // TICKLED事件有2秒的语义窗口
+    if (event.type == EventType::TOUCH_TICKLED) {
+        return 2000;  // 2秒内多次触摸的检测窗口
+    }
+    
+    // 其他瞬时事件，持续时间为0
+    return 0;
 }
 
-std::string EventUploader::GetEventTypeString(EventType type) {
-    switch (type) {
-        // 触摸事件
-        case EventType::TOUCH_TICKLED: return "tickled";
-        case EventType::TOUCH_CRADLED: return "cradled";
-        case EventType::TOUCH_SINGLE_TAP: return "tap";
-        case EventType::TOUCH_DOUBLE_TAP: return "double_tap";
-        case EventType::TOUCH_LONG_PRESS: return "long_press";
-        case EventType::TOUCH_HOLD: return "hold";
-        case EventType::TOUCH_RELEASE: return "release";
+std::string EventUploader::GetEventTypeString(const Event& event) {
+    // 对于单侧触摸事件，需要结合位置信息生成完整的事件类型
+    if (event.type == EventType::TOUCH_TAP ||
+        event.type == EventType::TOUCH_LONG_PRESS) {
         
-        // 运动事件
-        case EventType::MOTION_SHAKE: return "shake";
-        case EventType::MOTION_SHAKE_VIOLENTLY: return "shake_violently";
-        case EventType::MOTION_FLIP: return "flip";
-        case EventType::MOTION_FREE_FALL: return "free_fall";
-        case EventType::MOTION_PICKUP: return "pickup";
-        case EventType::MOTION_UPSIDE_DOWN: return "upside_down";
-        case EventType::MOTION_TILT: return "tilt";
+        // 从event.data.touch_data.x获取位置信息
+        // x = 0: left, x = 1: right, x = 2: both
+        std::string position = "Both";
+        if (event.data.touch_data.x == 0) {
+            position = "Left";
+        } else if (event.data.touch_data.x == 1) {
+            position = "Right";
+        }
         
-        default: return "unknown";
+        // 构建完整的事件类型名称
+        switch (event.type) {
+            case EventType::TOUCH_TAP:
+                return "Touch_" + position + "_Tap";
+            case EventType::TOUCH_LONG_PRESS:
+                return "Touch_" + position + "_LongPress";
+            default:
+                break;
+        }
+    }
+    
+    // 特殊双侧触摸事件（这些事件本身就包含了双侧的含义）
+    switch (event.type) {
+        case EventType::TOUCH_TICKLED: return "Touch_Both_Tickled";
+        case EventType::TOUCH_CRADLED: return "Touch_Both_Cradled";
+        
+        // 运动事件（统一使用Motion_前缀）
+        case EventType::MOTION_SHAKE: return "Motion_Shake";
+        case EventType::MOTION_SHAKE_VIOLENTLY: return "Motion_ShakeViolently";
+        case EventType::MOTION_FLIP: return "Motion_Flip";
+        case EventType::MOTION_FREE_FALL: return "Motion_FreeFall";
+        case EventType::MOTION_PICKUP: return "Motion_Pickup";
+        case EventType::MOTION_UPSIDE_DOWN: return "Motion_UpsideDown";
+        case EventType::MOTION_TILT: return "Motion_Tilt";
+        
+        default: return "Unknown";
     }
 }
 
 
 std::string EventUploader::GenerateEventText(const Event& event) {
-    // 生成供LLM理解的event_text（与旧版字段保持一致）
+    // 生成供LLM理解的中文event_text
+    
+    // 对于需要区分位置的触摸事件
+    if (event.type == EventType::TOUCH_TAP) {
+        // 从event.data.touch_data.x获取位置信息
+        if (event.data.touch_data.x == 0) {
+            return "主人轻轻拍了我的左侧";
+        } else if (event.data.touch_data.x == 1) {
+            return "主人轻轻拍了我的右侧";
+        } else {
+            return "主人同时拍了我的两侧";
+        }
+    }
+    
+    if (event.type == EventType::TOUCH_LONG_PRESS) {
+        if (event.data.touch_data.x == 0) {
+            return "主人长时间按住了我的左侧";
+        } else if (event.data.touch_data.x == 1) {
+            return "主人长时间按住了我的右侧";
+        } else {
+            return "主人同时长按了我的两侧";
+        }
+    }
+    
+    // 特殊双侧触摸事件
     switch (event.type) {
         case EventType::TOUCH_TICKLED:
-            return "User tickled the device with multiple rapid touches";
+            return "主人在挠我痒痒";
         case EventType::TOUCH_CRADLED:
-            return "Device is being held gently on both sides";
+            return "主人温柔地抱着我";
+            
+        // 运动事件
         case EventType::MOTION_SHAKE:
-            return "Device was shaken by user";
+            return "主人轻轻摇了摇我";
         case EventType::MOTION_SHAKE_VIOLENTLY:
-            return "Device was shaken violently";
+            return "主人用力摇晃我";
         case EventType::MOTION_FLIP:
-            return "Device was flipped over";
+            return "主人把我翻了个身";
         case EventType::MOTION_FREE_FALL:
-            return "Device is in free fall - possible drop";
+            return "糟糕，我掉下去了";
         case EventType::MOTION_PICKUP:
-            return "Device was picked up by user";
-        case EventType::TOUCH_SINGLE_TAP:
-            return "User tapped the device once";
-        case EventType::TOUCH_LONG_PRESS:
-            return "User performed a long press";
+            return "主人把我拿起来了";
+        case EventType::MOTION_UPSIDE_DOWN:
+            return "主人把我倒立起来了";
+            
         default:
-            return "User interacted with the device";
+            return "主人和我互动了";
     }
 }
 
 cjson_uptr EventUploader::GenerateEventPayload(const Event& event) {
-    cJSON* event_payload = cJSON_CreateObject();
+    // 由于位置信息已经包含在event_type中，大多数事件不需要event_payload
+    // 只在需要额外信息时才创建payload
     
-    // 生成唯一的event_id用于去重
-    uint32_t seq = event_sequence_.fetch_add(1);
-    char event_id[64];
-    snprintf(event_id, sizeof(event_id), "%s-%lld-%u", 
-             device_id_.c_str(), 
-             (long long)esp_timer_get_time(), 
-             seq);
-    cJSON_AddStringToObject(event_payload, "event_id", event_id);
+    // 目前所有事件都不需要额外的payload
+    // 未来如果需要添加额外信息（如传感器数据等），可以在这里扩展
     
-    // 根据事件类型添加相关元数据
-    switch (event.type) {
-        case EventType::TOUCH_TICKLED:
-            if (event.touch_count > 0) {
-                cJSON_AddNumberToObject(event_payload, "touch_count", event.touch_count);
-            }
-            break;
-            
-        case EventType::MOTION_SHAKE:
-        case EventType::MOTION_SHAKE_VIOLENTLY:
-            if (event.intensity > 0) {
-                cJSON_AddNumberToObject(event_payload, "intensity", event.intensity);
-            }
-            break;
-            
-        case EventType::MOTION_TILT:
-            if (event.angle > 0) {
-                cJSON_AddNumberToObject(event_payload, "angle", event.angle);
-            }
-            break;
-            
-        default:
-            break;
-    }
-    
-    // 如果只有event_id，仍然返回（event_id总是需要的）
-    // 如果真的没有任何内容，删除并返回nullptr
-    if (cJSON_GetArraySize(event_payload) == 0) {
-        cJSON_Delete(event_payload);
-        return cjson_uptr{nullptr};
-    }
-    
-    return cjson_uptr{event_payload}; // 转移所有权到unique_ptr
+    return cjson_uptr{nullptr};  // 返回空payload
 }
 
 bool EventUploader::IsConnected() const {
     auto& app = Application::GetInstance();
-    // 检查连接状态
-    // 注：当前复用现有音频连接判断，建议Protocol层补充更通用的接口：
-    // - Protocol::IsControlChannelOpened() 或 
-    // - Protocol::IsJsonChannelOpened()
-    // 避免与音频概念混淆，握手/会话可独立于音频存在
-    return app.GetProtocol() && app.GetProtocol()->IsAudioChannelOpened();
+    // 检查WebSocket/MQTT控制通道连接状态
+    // IsConnected()语义：文本/控制通道是否已建立（不是音频通道）
+    // 事件上传使用控制通道，与音频流无关
+    return app.GetProtocol() && app.GetProtocol()->IsConnected();
 }
 
 bool EventUploader::IsTimesynced() const {
@@ -716,15 +792,38 @@ public:
 
 ```cpp
 // 在application.h中声明
- void SendEventMessage(const std::string& message);
+void SendEventMessage(const std::string& payload_str);
 
-// 在application.cc中实现（直接发送完整消息）
-void Application::SendEventMessage(const std::string& message) {
-    Schedule([this, message]() {
+// 在application.cc中实现（构建完整消息）
+void Application::SendEventMessage(const std::string& payload_str) {
+    Schedule([this, payload_str]() {
         if (!protocol_) return;
         
-        // 直接发送完整的JSON消息，无需额外封装
-        protocol_->SendText(message);
+        // 构建完整的消息
+        cJSON* message = cJSON_CreateObject();
+        
+        // 添加session_id
+        if (!session_id_.empty()) {
+            cJSON_AddStringToObject(message, "session_id", session_id_.c_str());
+        }
+        
+        // 添加消息类型
+        cJSON_AddStringToObject(message, "type", "lx/v1/event");
+        
+        // 解析并添加payload
+        cJSON* payload = cJSON_Parse(payload_str.c_str());
+        if (payload) {
+            cJSON_AddItemToObject(message, "payload", payload);
+        }
+        
+        // 发送完整消息
+        char* json_str = cJSON_PrintUnformatted(message);
+        std::string full_message(json_str);
+        
+        protocol_->SendText(full_message);
+        
+        cJSON_free(json_str);
+        cJSON_Delete(message);
     });
 }
 ```
@@ -781,7 +880,7 @@ void Application::OnTimeSynchronized() {
 #ifndef EVENT_NOTIFICATION_CONFIG_H
 #define EVENT_NOTIFICATION_CONFIG_H
 
-// MCP事件通知配置
+// 事件上传配置
 struct EventNotificationConfig {
     // 基本开关
     static constexpr bool ENABLED = true;
@@ -811,32 +910,123 @@ struct EventNotificationConfig {
 
 ### 1. 单元测试
 ```cpp
-// 测试MCP Notification payload格式
-void TestNotificationFormat() {
-    McpEventNotifier notifier;
-    Event test_event{EventType::TOUCH_TICKLED, /* ... */};
+// 测试事件payload格式
+void TestEventPayloadFormat() {
+    EventUploader uploader;
     
-    // 验证生成的JSON格式
-    std::string payload = notifier.BuildTestPayload(test_event);
-    cJSON* json = cJSON_Parse(payload.c_str());
+    // 1. 创建完整的CachedEvent测试数据
+    std::vector<EventUploader::CachedEvent> events;
     
-    assert(cJSON_GetObjectItem(json, "jsonrpc"));
-    assert(cJSON_GetObjectItem(json, "method"));
-    assert(!cJSON_GetObjectItem(json, "id")); // Notification不应有id
+    // 测试触摸事件
+    {
+        EventUploader::CachedEvent event;
+        event.event_type = "Touch_Left_Tap";
+        event.event_text = "主人轻轻拍了我的左侧";
+        event.start_time = 1755222858360;
+        event.end_time = 1755222858360;
+        event.mono_ms = esp_timer_get_time() / 1000;
+        event.duration_ms = 0;  // 瞬时事件
+        event.event_payload = nullptr;  // 触摸事件通常不需要额外payload
+        events.push_back(std::move(event));
+    }
     
-    cJSON_Delete(json);
+    // 测试长按事件（带持续时间）
+    {
+        EventUploader::CachedEvent event;
+        event.event_type = "Touch_Right_LongPress";
+        event.event_text = "主人长时间按住了我的右侧";
+        event.start_time = 1755222860000;
+        event.end_time = 1755222862500;
+        event.mono_ms = esp_timer_get_time() / 1000;
+        event.duration_ms = 2500;  // 2.5秒
+        event.event_payload = nullptr;
+        events.push_back(std::move(event));
+    }
+    
+    // 2. 调用BuildEventPayload（通过友元函数访问）
+#ifdef UNIT_TEST
+    std::string payload_str = __test_build_payload(uploader, events.begin(), events.end());
+#else
+    // 生产环境下，BuildEventPayload是私有的，需要通过公开接口测试
+    // 这里可以通过模拟HandleEvent和SendEvents的完整流程来测试
+    std::string payload_str = "{}";  // 占位符
+#endif
+    cJSON* payload = cJSON_Parse(payload_str.c_str());
+    
+    // 3. 验证payload结构
+    assert(payload != nullptr);
+    cJSON* events_array = cJSON_GetObjectItem(payload, "events");
+    assert(events_array != nullptr);
+    assert(cJSON_IsArray(events_array));
+    assert(cJSON_GetArraySize(events_array) == 2);
+    
+    // 4. 验证第一个事件
+    cJSON* event1 = cJSON_GetArrayItem(events_array, 0);
+    assert(cJSON_GetObjectItem(event1, "event_type"));
+    assert(cJSON_GetObjectItem(event1, "event_text"));
+    assert(cJSON_GetObjectItem(event1, "start_time"));
+    assert(cJSON_GetObjectItem(event1, "end_time"));
+    assert(strcmp(cJSON_GetObjectItem(event1, "event_type")->valuestring, "Touch_Left_Tap") == 0);
+    assert(strcmp(cJSON_GetObjectItem(event1, "event_text")->valuestring, "主人轻轻拍了我的左侧") == 0);
+    assert(cJSON_GetObjectItem(event1, "start_time")->valuedouble == 1755222858360);
+    assert(cJSON_GetObjectItem(event1, "end_time")->valuedouble == 1755222858360);
+    
+    // 5. 验证第二个事件（带持续时间）
+    cJSON* event2 = cJSON_GetArrayItem(events_array, 1);
+    assert(strcmp(cJSON_GetObjectItem(event2, "event_type")->valuestring, "Touch_Right_LongPress") == 0);
+    assert(cJSON_GetObjectItem(event2, "start_time")->valuedouble == 1755222860000);
+    assert(cJSON_GetObjectItem(event2, "end_time")->valuedouble == 1755222862500);
+    
+    cJSON_Delete(payload);
+}
+
+// 测试时间同步逻辑
+void TestTimeSynchronization() {
+    EventUploader uploader;
+    
+    // 模拟未同步时创建的事件
+    Event test_event{EventType::TOUCH_TAP};
+    test_event.data.touch_data.x = 0;  // LEFT
+    test_event.data.touch_data.y = 0;  // duration = 0
+    
+    // 转换事件（此时时间未同步）
+    auto cached = uploader.ConvertEvent(test_event);
+    
+    // 验证未同步时的字段
+    assert(cached.mono_ms > 0);  // 单调时钟应该有值
+    assert(cached.start_time == 0);  // Unix时间戳应该为0
+    assert(cached.end_time == 0);
+    assert(cached.duration_ms == 0);
+    
+    // 模拟时间同步后的处理
+    std::vector<EventUploader::CachedEvent> events;
+    events.push_back(std::move(cached));
+    
+    // 模拟OnTimeSynced的逻辑
+    int64_t epoch_now_ms = 1755222858360;
+    int64_t mono_now_ms = esp_timer_get_time() / 1000;
+    
+    for (auto& event : events) {
+        int64_t time_diff_ms = mono_now_ms - event.mono_ms;
+        event.start_time = epoch_now_ms - time_diff_ms;
+        event.end_time = event.start_time + event.duration_ms;
+    }
+    
+    // 验证时间同步后的时间戳
+    assert(events[0].start_time > 0);
+    assert(events[0].end_time >= events[0].start_time);
 }
 
 // 测试内存安全（防止double free）
 void TestMemorySafety() {
-    McpEventNotifier notifier;
+    EventUploader uploader;
     std::vector<Event> events;
     
     // 添加大量事件，触发vector扩容
     for (int i = 0; i < 100; ++i) {
         Event event{EventType::TOUCH_TICKLED, /* ... */};
         events.push_back(event);
-        notifier.HandleEvent(event); // 这会导致CachedEvent的移动和扩容
+        uploader.HandleEvent(event); // 这会导致CachedEvent的移动和扩容
     }
     
     // 如果没有崩溃，说明unique_ptr正确管理了内存
@@ -845,14 +1035,100 @@ void TestMemorySafety() {
 ```
 
 ### 2. 集成测试
-- 测试连接建立后事件立即发送
-- 测试断线重连后缓存事件批量发送
-- 测试不同类型事件的method路由
+```cpp
+// 测试连接状态变化时的事件处理
+void TestConnectionStateHandling() {
+    EventUploader uploader;
+    
+    // 模拟断线时的事件缓存
+    uploader.OnConnectionClosed();
+    
+    Event event1{EventType::TOUCH_TAP};
+    event1.data.touch_data.x = 0;  // LEFT
+    uploader.HandleEvent(event1);
+    
+    Event event2{EventType::MOTION_SHAKE};
+    uploader.HandleEvent(event2);
+    
+    // 验证事件被缓存（需要访问内部状态）
+    // assert(uploader.event_cache_.size() == 2);
+    
+    // 模拟连接恢复
+    uploader.OnConnectionOpened();
+    // 验证批量发送逻辑
+}
+
+// 测试批量发送
+void TestBatchSending() {
+    EventUploader uploader;
+    std::vector<EventUploader::CachedEvent> large_batch;
+    
+    // 创建超过BATCH_SIZE的事件
+    for (int i = 0; i < EventNotificationConfig::BATCH_SIZE * 2 + 1; ++i) {
+        EventUploader::CachedEvent event;
+        event.event_type = "Motion_Shake";
+        event.event_text = "主人轻轻摇了摇我";
+        event.start_time = 1755222858360 + i * 1000;
+        event.end_time = event.start_time;
+        event.mono_ms = esp_timer_get_time() / 1000 + i * 1000;
+        event.duration_ms = 0;
+        large_batch.push_back(std::move(event));
+    }
+    
+    // 验证会分成3批发送
+    // 第1批: BATCH_SIZE个
+    // 第2批: BATCH_SIZE个
+    // 第3批: 1个
+}
+```
 
 ### 3. 端到端测试
-- 触发各种交互事件，验证服务器接收
-- 验证LLM对事件描述的理解和响应
-- 测试高频事件的性能影响
+```cpp
+// 完整的事件流测试
+void TestEndToEndEventFlow() {
+    // 1. 初始化整个系统
+    ALichuangTest board;
+    board.Initialize();
+    
+    // 2. 模拟触摸事件
+    TouchEvent touch_event;
+    touch_event.type = TouchEventType::SINGLE_TAP;
+    touch_event.position = TouchPosition::LEFT;
+    touch_event.timestamp_us = esp_timer_get_time();
+    touch_event.duration_ms = 100;
+    
+    // 3. 触发事件处理链
+    // TouchEngine → EventEngine → EventUploader → Application → Protocol
+    
+    // 4. 验证服务器收到的消息格式
+    // 使用mock服务器或者抓包工具验证：
+    // - 消息type是否为"lx/v1/event"
+    // - payload.events数组是否包含正确的事件
+    // - event_type是否为"Touch_Left_Tap"
+    // - 时间戳是否合理
+}
+
+// 性能测试
+void TestHighFrequencyEvents() {
+    EventUploader uploader;
+    auto start_time = esp_timer_get_time();
+    
+    // 快速生成100个事件
+    for (int i = 0; i < 100; ++i) {
+        Event event{EventType::TOUCH_TAP};
+        event.data.touch_data.x = i % 2;  // 交替左右
+        uploader.HandleEvent(event);
+    }
+    
+    auto end_time = esp_timer_get_time();
+    auto duration_us = end_time - start_time;
+    
+    // 验证处理时间在可接受范围内
+    assert(duration_us < 100000);  // 100ms内处理完100个事件
+    
+    ESP_LOGI("TEST", "Processed 100 events in %lld us", duration_us);
+}
+```
 
 ## 服务器端处理
 
@@ -896,12 +1172,17 @@ def process_event(event):
         'event_payload': event_payload
     })
     
-    # 推送到LLM上下文
-    if event_type in ['shake', 'shake_violently', 'free_fall', 'long_press']:
+    # 推送到LLM上下文（使用正确的事件类型名称）
+    important_events = [
+        'Motion_Shake', 'Motion_ShakeViolently', 'Motion_FreeFall',
+        'Touch_Left_LongPress', 'Touch_Right_LongPress',
+        'Touch_Both_Cradled', 'Touch_Both_Tickled'
+    ]
+    if event_type in important_events:
         llm_context.add_interaction(event)
     
     # 触发相应的业务逻辑
-    if event_type == 'free_fall':
+    if event_type == 'Motion_FreeFall':
         handle_emergency_event(event)
 ```
 
@@ -949,56 +1230,64 @@ def process_event(event):
 
 ### 未来可扩展的事件类型
 
-通过`events/publish`统一发送，使用event_type区分：
+通过统一的事件上传机制，使用event_type区分，保持命名规范一致：
 
 ```json
 {
-  "event_type": "battery_low",      // 电量事件
-  "event_type": "network_changed",  // 网络状态
-  "event_type": "pattern_detected", // 行为模式
-  "event_type": "gesture_swipe",    // 手势识别
-  "event_type": "proximity_near",   // 接近感应
-  "event_type": "light_changed"     // 环境光线
+  "event_type": "Battery_Low",         // 电量事件
+  "event_type": "Network_Changed",     // 网络状态
+  "event_type": "Pattern_Detected",    // 行为模式
+  "event_type": "Gesture_SwipeUp",     // 手势识别
+  "event_type": "Proximity_Near",      // 接近感应
+  "event_type": "Light_Changed"        // 环境光线
 }
 ```
 
-所有新增事件类型都通过同一个`events/publish`方法发送，服务端根据event_type字段路由处理。
+所有新增事件类型都通过同一个事件上传通道发送，服务端根据event_type字段路由处理。命名规范：`Category_Action` 格式。
 
 ### 自定义事件支持
 ```cpp
-class CustomEventNotifier : public McpEventNotifier {
+class CustomEventUploader : public EventUploader {
     // 继承并扩展，支持应用特定的事件类型
 };
 ```
 
 ## 迁移路径
 
-### 从旧协议迁移到MCP Notification
+### 从旧协议迁移到新的事件上传协议
 
-1. **阶段1**：实现MCP Notification发送器
+1. **阶段1**：实现新的事件上传器
 2. **阶段2**：服务器同时支持两种格式
-3. **阶段3**：新设备使用MCP，旧设备继续使用原协议
+3. **阶段3**：新设备使用lx/v1/event，旧设备继续使用原协议
 4. **阶段4**：逐步升级旧设备固件
-5. **阶段5**：完全迁移到MCP Notification
+5. **阶段5**：完全迁移到新协议
 
 ## 总结
 
-使用统一的`events/publish`方法实现事件上传具有以下优势：
+使用独立的`lx/v1/event`协议实现事件上传具有以下优势：
 
-✅ **最小侵入**：事件字段与旧版保持一致，服务端改动极小  
-✅ **极简设计**：单一method处理所有事件，无需多个路由  
-✅ **标准化**：遵循JSON-RPC 2.0 Notification规范（无id，不回包）  
-✅ **简化设计**：`timestamp`/`duration_ms`/`event_text`更加清晰  
-✅ **统一协议**：外层统一`type: "mcp"`，内层JSON-RPC格式  
+✅ **协议独立**：不依赖MCP协议，使用独立的`type: "lx/v1/event"`  
+✅ **职责清晰**：EventUploader构建payload，Application添加外层字段  
+✅ **极简设计**：直接的事件推送，无需响应机制  
+✅ **时间语义清晰**：`start_time`和`end_time`明确表示事件时间范围  
+✅ **事件类型自描述**：位置信息包含在event_type中（如`Touch_Left_Tap`）  
 ✅ **易于扩展**：新增事件类型只需定义新的event_type值  
 
 关键设计原则：
-- **字段简化**：使用`timestamp`+`duration_ms`，避免冗余计算
-- **协议统一**：所有消息走MCP通道，`type: "mcp"`
-- **方法唯一**：`events/publish`处理所有事件类型
-- **语义一致**：Notification不回包，符合设备主动推送场景
+- **字段简化**：使用`start_time`+`end_time`，语义清晰
+- **协议独立**：独立的`lx/v1/event`消息类型
+- **职责分离**：EventUploader负责payload，Application负责完整消息
+- **单向推送**：无需服务器响应，符合设备事件推送场景
 
-通过本方案，在保持最大兼容性的前提下，实现了标准、高效的设备事件推送系统。
+数据流程：
+```
+Event对象 → EventUploader::ConvertEvent() → CachedEvent
+         → EventUploader::BuildEventPayload() → payload JSON
+         → Application::SendEventMessage() → 添加session_id和type
+         → Protocol::SendText() → 服务器
+```
+
+通过本方案，在保持架构清晰的前提下，实现了简单、高效的设备事件推送系统。
 
 ---
 
@@ -1012,58 +1301,57 @@ class CustomEventNotifier : public McpEventNotifier {
 ```json
 {
   "session_id": "9aa008fa-c874-4829-b70b-fca7fa30e3da",
-  "type": "mcp",
+  "type": "lx/v1/event",
   "payload": {
-    "jsonrpc": "2.0",
-    "method": "events/publish",
-    "params": {
-      "events": [
-        {
-          "event_type": "tickled",
-          "timestamp": 1755222858360,
-          "event_text": "主人在挠我痒痒，好痒啊",
-          "metadata": {
-            "touch_count": 5,
-            "position": "both"
-          }
-        },
-        {
-          "event_type": "long_press",
-          "timestamp": 1755222860000,
-          "duration_ms": 2500,
-          "event_text": "主人长时间按住了我的左侧",
-          "metadata": {
-            "position": "left"
-          }
-        }
-      ]
-    }
+    "events": [
+      {
+        "event_type": "Touch_Both_Tickled",
+        "start_time": 1755222858360,
+        "end_time": 1755222858360,
+        "event_text": "主人在挠我痒痒，好痒啊"
+      },
+      {
+        "event_type": "Touch_Left_LongPress",
+        "start_time": 1755222860000,
+        "end_time": 1755222862500,
+        "event_text": "主人长时间按住了我的左侧"
+      }
+    ]
   }
 }
 ```
 
 ### 🔧 实现方式
 
-**步骤1**: 在 MCP 路由器中添加新方法
+**步骤1**: 处理事件消息
 ```python
-@mcp_handler.method("events/publish")
-def handle_events_publish(params):
-    events = params.get('events', [])
-    for event in events:
-        event_text = event.get('event_text', '')
-        print(f"Received device event: {event_text}")
-    return None  # Notification无需响应
+def handle_message(message):
+    if message.get('type') == 'lx/v1/event':
+        payload = message.get('payload', {})
+        events = payload.get('events', [])
+        for event in events:
+            process_event(event)
+        return True
+    return False
 ```
 
-**步骤2**: 提取 event_text 字段
+**步骤2**: 提取事件字段
 
 ```python
 # 单个事件处理示例
 def process_event(event):
-    event_type = event.get('event_type')        # 事件类型："tap", "shake" 等
-    event_text = event.get('event_text')        # 事件描述："主人轻轻拍了我一下"
-    timestamp = event.get('timestamp')          # 时间戳
-    duration_ms = event.get('duration_ms', 0)   # 可选：持续时间
+    event_type = event.get('event_type')        # 事件类型："Touch_Left_Tap", "Motion_Shake" 等
+    event_text = event.get('event_text')        # 事件描述："主人轻轻拍了我的左侧"
+    start_time = event.get('start_time')        # 开始时间戳
+    end_time = event.get('end_time')            # 结束时间戳
+    event_payload = event.get('event_payload')  # 额外数据（通常为None）
+    
+    # 从event_type中解析位置信息
+    if event_type.startswith('Touch_'):
+        parts = event_type.split('_')
+        if len(parts) >= 3:
+            position = parts[1].lower()  # "left", "right", "both"
+            action = '_'.join(parts[2:])  # "Tap", "LongPress", etc.
     
     # 你的业务逻辑...
     print(f"{event_type}: {event_text}")
@@ -1071,26 +1359,39 @@ def process_event(event):
 
 ### 📝 事件类型列表
 
-**✅ 触摸事件**（区分左右位置）：
-- `tap` - 轻拍（主人轻轻拍了我的左侧/右侧，<500ms）
-- `long_press` - 长按（主人长时间按住了我的左侧/右侧，>500ms）
-- `cradled` - 摇篮（主人温柔地抱着我，双侧持续触摸>2秒且IMU静止）
-- `tickled` - 挠痒（主人在挠我痒痒，好痒啊，2秒内多次无规律触摸>4次）
+**✅ 触摸事件**（Touch_[Position]_[Action]格式）：
 
-**✅ 运动事件**：
-- `shake` - 轻摇（主人轻轻摇了摇我）
-- `shake_violently` - 用力摇（主人用力摇晃我）
-- `flip` - 翻身（主人把我翻了个身）
-- `free_fall` - 掉落（糟糕，我掉下去了）
-- `pickup` - 被拿起（主人把我拿起来了）
-- `upside_down` - 倒立（主人把我倒立起来了）
+单侧触摸：
+- `Touch_Left_Tap` - 主人轻轻拍了我的左侧（<500ms）
+- `Touch_Right_Tap` - 主人轻轻拍了我的右侧（<500ms）
+- `Touch_Left_LongPress` - 主人长时间按住了我的左侧（>500ms）
+- `Touch_Right_LongPress` - 主人长时间按住了我的右侧（>500ms）
 
-**触摸位置信息**：
-- 左侧触摸：metadata.position = "left"
-- 右侧触摸：metadata.position = "right"  
-- 双侧触摸：metadata.position = "both"
+双侧触摸（特殊模式）：
+- `Touch_Both_Tap` - 主人同时拍了我的两侧
+- `Touch_Both_Cradled` - 主人温柔地抱着我（双侧持续触摸>2秒且IMU静止）
+- `Touch_Both_Tickled` - 主人在挠我痒痒（2秒内多次无规律触摸>4次）
+
+**✅ 运动事件**（Motion_前缀）：
+- `Motion_Shake` - 主人轻轻摇了摇我
+- `Motion_ShakeViolently` - 主人用力摇晃我
+- `Motion_Flip` - 主人把我翻了个身
+- `Motion_FreeFall` - 糟糕，我掉下去了
+- `Motion_Pickup` - 主人把我拿起来了
+- `Motion_UpsideDown` - 主人把我倒立起来了
+
+**服务端处理提示**：
+所有事件类型都采用 `Category_[Position_]Action` 的命名格式，便于解析和分类处理。
+例如：可以通过 `event_type.startswith('Touch_')` 判断是否为触摸事件，
+通过 `'Left' in event_type` 判断是否为左侧触摸。
+
+**注意**：
+- event_payload字段通常为空，所有必要信息都已包含在event_type中
+- 位置信息直接体现在事件类型名称中，无需额外解析
 
 ### ⚠️ 注意
 
-- **JSON-RPC 2.0 Notification**: 无需返回响应
-- **批量事件**: `params.events` 是数组，可能包含多个事件
+- **非MCP协议**: 使用独立的 `lx/v1/event` 消息类型，不是MCP/JSON-RPC格式
+- **无需响应**: 这是单向事件推送，服务器不需要返回响应
+- **批量事件**: `payload.events` 是数组，可能包含多个事件
+- **位置信息**: 触摸位置已包含在 event_type 中（如 Touch_Left_Tap, Touch_Right_LongPress）

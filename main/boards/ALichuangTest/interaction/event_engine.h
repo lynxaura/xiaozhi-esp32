@@ -18,14 +18,14 @@ enum class EventType {
     MOTION_PICKUP,         // 设备被拿起
     MOTION_UPSIDE_DOWN,    // 设备被倒置（持续状态）
     
-    // 触摸事件（预留）
-    TOUCH_TAP,
-    TOUCH_DOUBLE_TAP,
-    TOUCH_LONG_PRESS,
-    TOUCH_SWIPE_UP,
-    TOUCH_SWIPE_DOWN,
-    TOUCH_SWIPE_LEFT,
-    TOUCH_SWIPE_RIGHT,
+    // 触摸事件
+    TOUCH_TAP,             // 单击
+    TOUCH_DOUBLE_TAP,      // 双击（预留）
+    TOUCH_LONG_PRESS,      // 长按
+    TOUCH_CRADLED,         // 摇篮模式（双侧持续触摸>2秒且IMU静止）
+    TOUCH_TICKLED,         // 挠痒模式（2秒内多次无规律触摸>4次）
+    TOUCH_HOLD,            // 持续按住（预留）
+    TOUCH_RELEASE,         // 释放（预留）
     
     // 音频事件（预留）
     AUDIO_WAKE_WORD,
