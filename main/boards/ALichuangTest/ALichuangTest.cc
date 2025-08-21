@@ -6,6 +6,7 @@
 #include "i2c_device.h"
 #include "esp32_camera.h"
 #include "skills/vibration.h"
+#include "skills/motion.h"
 #include "qmi8658.h"
 #include "interaction/event_engine.h"
 #include "pca9685.h"
@@ -105,6 +106,7 @@ private:
     esp_timer_handle_t event_timer_ = nullptr;
     Pca9685* pca9685_ = nullptr;           // PCA9685 PWM控制器
     Vibration* vibration_skill_ = nullptr; // 振动技能管理器
+    Motion* motion_skill_ = nullptr;       // 直流马达动作控制技能
     TaskHandle_t delay_task_handle = nullptr;
 #if CONFIG_LINGXI_ANIMA_UI
     // 情感相关成员变量
@@ -594,12 +596,12 @@ private:
     }
 
     void InitializePca9685() {
-        // 现在我们知道PCA9685在0x40地址，直接使用
-        IsDevicePresent(PCA9685_DEFAULT_ADDR);
+        // IsDevicePresent(PCA9685_DEFAULT_ADDR);
         ESP_LOGI(TAG, "Initializing PCA9685 at address 0x40...");
         pca9685_ = new Pca9685(i2c_bus_, PCA9685_DEFAULT_ADDR);
         
-        esp_err_t ret = pca9685_->Initialize(1000);
+        ESP_LOGI(TAG, "🔧 设置PCA9685 PWM频率为200Hz (适配DRV8837直流马达驱动)");
+        esp_err_t ret = pca9685_->Initialize(200);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to initialize PCA9685: %s", esp_err_to_name(ret));
             delete pca9685_;
@@ -625,6 +627,25 @@ private:
         }
     }
     
+    void InitializeMotion() {
+        if (pca9685_ == nullptr) {
+            ESP_LOGW(TAG, "PCA9685 not available, skipping motion initialization");
+            return;
+        }
+        
+        // 使用PCA9685的通道1和通道2连接DRV883X的IN1和IN2
+        motion_skill_ = new Motion(pca9685_, 1, 2);
+        
+        esp_err_t ret = motion_skill_->Initialize();
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Motion skill initialized successfully");
+        } else {
+            ESP_LOGE(TAG, "Failed to initialize motion skill: %s", esp_err_to_name(ret));
+            delete motion_skill_;
+            motion_skill_ = nullptr;
+        }
+    }
+    
     void StartVibrationTask() {
         if (vibration_skill_) {
             esp_err_t ret = vibration_skill_->StartTask();
@@ -639,6 +660,16 @@ private:
         }
     }
     
+    void StartMotionTask() {
+        if (motion_skill_) {
+            esp_err_t ret = motion_skill_->StartTask();
+            if (ret == ESP_OK) {
+                ESP_LOGI(TAG, "Motion task started successfully");
+            } else {
+                ESP_LOGE(TAG, "Failed to start motion task: %s", esp_err_to_name(ret));
+            }
+        }
+    }
     
     void InitializeInteractionSystem() {
         // 创建事件引擎
@@ -692,33 +723,39 @@ private:
                                 data.accel_y * data.accel_y + 
                                 data.accel_z * data.accel_z));
                 vibration_skill_->Play(VIBRATION_SHARP_BUZZ);
+                motion_skill_->Perform(MOTION_STRUGGLE_TWIST);
                 break;
             case EventType::MOTION_SHAKE_VIOLENTLY:
                 event_name = "SHAKE_VIOLENTLY";
                 ESP_LOGW(TAG, "⚡ VIOLENT SHAKE! Accel: X=%.2f Y=%.2f Z=%.2f g", 
                         data.accel_x, data.accel_y, data.accel_z);
                 vibration_skill_->Play(VIBRATION_ERRATIC_STRONG);
+                motion_skill_->Perform(MOTION_SHAKE_HEAD);
                 break;
             case EventType::MOTION_FLIP: 
                 event_name = "FLIP";
                 ESP_LOGI(TAG, "🔄 Device flipped! (gyro: x=%.1f y=%.1f z=%.1f deg/s)", 
                         data.gyro_x, data.gyro_y, data.gyro_z);
                 vibration_skill_->Play(VIBRATION_GIGGLE_PATTERN);
+                motion_skill_->Perform(MOTION_DODGE_SLOWLY);
                 break;
             case EventType::MOTION_SHAKE: 
                 event_name = "SHAKE";
                 ESP_LOGI(TAG, "🔔 Device shaken!");
                 vibration_skill_->Play(VIBRATION_SHARP_BUZZ);
+                motion_skill_->Perform(MOTION_HAPPY_WIGGLE);
                 break;
             case EventType::MOTION_PICKUP: 
                 event_name = "PICKUP";
                 ESP_LOGI(TAG, "📱 Device picked up!");
                 vibration_skill_->Play(VIBRATION_TREMBLE_PATTERN);
+                motion_skill_->Perform(MOTION_DODGE_SUBTLE);
                 break;
             case EventType::MOTION_UPSIDE_DOWN:
                 event_name = "UPSIDE_DOWN";
                 ESP_LOGI(TAG, "🙃 Device is upside down! (Z-axis: %.2f g)", data.accel_z);
                 vibration_skill_->Play(VIBRATION_STRUGGLE_PATTERN);
+                motion_skill_->Perform(MOTION_STRUGGLE_TWIST);
                 break;
             // 处理触摸事件
             case EventType::TOUCH_TAP:
@@ -729,12 +766,18 @@ private:
                         event.data.touch_data.x < 0 ? "LEFT" : "RIGHT",
                         event.data.touch_data.y);
                 vibration_skill_->Play(VIBRATION_SHORT_BUZZ);
+                if (event.data.touch_data.x < 0) {
+                    motion_skill_->Perform(MOTION_SLOW_TURN_LEFT);
+                } else {
+                    motion_skill_->Perform(MOTION_SLOW_TURN_RIGHT);
+                }
                 break;
             case EventType::TOUCH_DOUBLE_TAP:
                 event_name = "TOUCH_DOUBLE_TAP";
                 ESP_LOGI(TAG, "👆👆 Touch DOUBLE TAP on RIGHT side! (duration: %d ms)", 
                         event.data.touch_data.y);
                 vibration_skill_->Play(VIBRATION_PURR_PATTERN);
+                motion_skill_->Perform(MOTION_HAPPY_WIGGLE);
                 break;
             case EventType::TOUCH_LONG_PRESS:
                 event_name = "TOUCH_LONG_PRESS";
@@ -742,6 +785,7 @@ private:
                         event.data.touch_data.x < 0 ? "LEFT" : "RIGHT",
                         event.data.touch_data.y);
                 vibration_skill_->Play(VIBRATION_HEARTBEAT_STRONG);
+                if (motion_skill_) motion_skill_->Perform(MOTION_NUZZLE_FORWARD);
                 break;
             default: 
                 return;
@@ -765,6 +809,7 @@ public:
         InitializeImu();  // 初始化IMU硬件
         InitializePca9685();  // 初始化PCA9685 PWM控制器
         InitializeVibration();  // 初始化振动技能（使用PCA9685）
+        InitializeMotion();  // 初始化直流马达动作控制技能
         InitializeInteractionSystem();  // 初始化交互系统
 
         GetBacklight()->RestoreBrightness();
@@ -772,8 +817,10 @@ public:
         // 启动图片循环显示任务
         StartImageSlideshow();
 #endif
-        // 启动振动任务 当需要检查振动马达功能时启用（此时用GPIO11作为按键输入）
+        // 启动振动任务
         StartVibrationTask();
+        // 启动直流马达动作控制任务
+        StartMotionTask();
     }
 
     virtual AudioCodec* GetAudioCodec() override {
@@ -819,6 +866,11 @@ public:
     // 获取振动技能管理器（可选，用于外部访问和测试）
     Vibration* GetVibration() {
         return vibration_skill_;
+    }
+    
+    // 获取直流马达动作控制技能（可选，用于外部访问和测试）
+    Motion* GetMotion() {
+        return motion_skill_;
     }
 };
 

@@ -58,9 +58,7 @@
 
 #define XCLK_FREQ_HZ 24000000
 
-/* 直流马达测试按键引脚 - GPIO10 */
-// #define MOTOR_TEST_GPIO GPIO_NUM_10
 /* 振动测试按键引脚 - GPIO11 */
-#define VIBRATION_TEST_BUTTON_GPIO GPIO_NUM_11
+#define VIBRATION_TEST_BUTTON_GPIO GPIO_NUM_NC
 
 #endif // _BOARD_CONFIG_H_

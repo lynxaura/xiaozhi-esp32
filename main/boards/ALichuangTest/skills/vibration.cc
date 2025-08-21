@@ -330,7 +330,7 @@ void Vibration::PlayVibrationPattern(const vibration_keyframe_t* pattern) {
     
     const vibration_keyframe_t* frame = pattern;
     
-    pca9685_->IsDevicePresent();
+    // pca9685_->IsDevicePresent();
     while (frame->duration_ms > 0 || frame->strength > 0) {
         // 设置振动强度
         SetVibrationStrength(frame->strength);
@@ -424,7 +424,7 @@ void Vibration::VibrationTask(void* parameter) {
         if (xQueueReceive(skill->vibration_queue_, &pattern_id, portMAX_DELAY) == pdTRUE) {
             
             if (pattern_id == VIBRATION_STOP) {
-                skill->pca9685_->IsDevicePresent();
+                // skill->pca9685_->IsDevicePresent();
                 ESP_LOGI(TAG, "🛑 Stopping all vibrations");
                 skill->SetVibrationStrength(0);
                 skill->current_pattern_ = VIBRATION_MAX;

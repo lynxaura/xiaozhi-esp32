@@ -17,7 +17,8 @@
       "Bash(git fetch:*)",
       "Bash(git pull:*)",
       "WebFetch(domain:docs.espressif.com)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(git rm:*)"
     ],
     "deny": []
   }
