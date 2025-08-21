@@ -8,6 +8,7 @@
 #include "skills/vibration.h"
 #include "qmi8658.h"
 #include "interaction/event_engine.h"
+#include "interaction/event_uploader.h"
 #include "pca9685.h"
 
 #include <esp_log.h>
@@ -102,6 +103,7 @@ private:
     Esp32Camera* camera_;
     Qmi8658* imu_ = nullptr;
     EventEngine* event_engine_ = nullptr;
+    EventUploader* event_uploader_ = nullptr;
     esp_timer_handle_t event_timer_ = nullptr;
     Pca9685* pca9685_ = nullptr;           // PCA9685 PWM控制器
     Vibration* vibration_skill_ = nullptr; // 振动技能管理器
@@ -653,6 +655,11 @@ private:
         // 初始化触摸引擎
         event_engine_->InitializeTouchEngine();
         
+        // 创建事件上传器
+        event_uploader_ = new EventUploader();
+        event_uploader_->Enable(true);
+        ESP_LOGI(TAG, "EventUploader created and enabled");
+        
         // 事件处理策略已通过配置文件自动加载
         // 如需覆盖特定策略，可在此处调用：
         // event_engine_->ConfigureEventProcessing(EventType::TOUCH_TAP, custom_config);
@@ -660,6 +667,11 @@ private:
         // 设置事件回调
         event_engine_->RegisterCallback([this](const Event& event) {
             HandleEvent(event);
+            
+            // 添加事件上传处理
+            if (event_uploader_) {
+                event_uploader_->HandleEvent(event);
+            }
         });
         
         // 创建定时器，每50ms处理一次事件
@@ -809,6 +821,11 @@ public:
     // 获取运动检测器（可选，用于外部访问）
     EventEngine* GetEventEngine() {
         return event_engine_;
+    }
+    
+    // 获取事件上传器（供Application使用）
+    EventUploader* GetEventUploader() { 
+        return event_uploader_; 
     }
     
     // 获取IMU（可选，用于外部访问）

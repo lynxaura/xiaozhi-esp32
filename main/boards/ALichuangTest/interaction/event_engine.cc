@@ -298,7 +298,11 @@ void EventEngine::OnTouchEvent(const TouchEvent& touch_event) {
     }
     
     // 将触摸位置信息存储在touch_data中
-    if (touch_event.position == TouchPosition::LEFT) {
+    if (event.type == EventType::TOUCH_CRADLED || event.type == EventType::TOUCH_TICKLED) {
+        // 双手模式事件用0表示
+        event.data.touch_data.x = 0;  
+        event.data.touch_data.y = static_cast<int>(touch_event.duration_ms);
+    } else if (touch_event.position == TouchPosition::LEFT) {
         event.data.touch_data.x = -1;  // 左侧用负值表示
         event.data.touch_data.y = static_cast<int>(touch_event.duration_ms);
     } else {
@@ -330,14 +334,12 @@ EventType EventEngine::ConvertTouchEventType(TouchEventType touch_type, TouchPos
             return EventType::MOTION_NONE;
             
         case TouchEventType::CRADLED:
-            // TODO: 可以添加特殊的摇篮模式事件类型
-            ESP_LOGI(TAG, "CRADLED event detected but not mapped to specific EventType");
-            return EventType::MOTION_NONE;
+            ESP_LOGI(TAG, "CRADLED event detected, mapping to TOUCH_CRADLED");
+            return EventType::TOUCH_CRADLED;
             
         case TouchEventType::TICKLED:
-            // TODO: 可以添加特殊的挠痒模式事件类型
-            ESP_LOGI(TAG, "TICKLED event detected but not mapped to specific EventType");
-            return EventType::MOTION_NONE;
+            ESP_LOGI(TAG, "TICKLED event detected, mapping to TOUCH_TICKLED");
+            return EventType::TOUCH_TICKLED;
             
         default:
             return EventType::MOTION_NONE;
