@@ -3,6 +3,7 @@
 #include <esp_timer.h>
 #include <cmath>
 #include <algorithm>
+#include <cJSON.h>
 
 #define TAG "MotionEngine"
 
@@ -170,11 +171,11 @@ bool MotionEngine::DetectPickup(const ImuData& data) {
         }
         
         // 检测向上的运动（拿起动作）
-        bool upward_motion = z_diff > PICKUP_THRESHOLD_G;  // Z轴正向加速
-        bool magnitude_increase = (current_magnitude - CalculateAccelMagnitude(last_imu_data_)) > PICKUP_THRESHOLD_G;
+        bool upward_motion = z_diff > config_.pickup_threshold_g;  // Z轴正向加速
+        bool magnitude_increase = (current_magnitude - CalculateAccelMagnitude(last_imu_data_)) > config_.pickup_threshold_g;
         
         // 排除向下运动（放置动作）
-        bool downward_motion = z_diff < -PICKUP_THRESHOLD_G;
+        bool downward_motion = z_diff < -config_.pickup_threshold_g;
         
         if ((upward_motion || magnitude_increase) && !downward_motion) {
             // 检测到拿起动作
@@ -243,13 +244,13 @@ bool MotionEngine::DetectUpsideDown(const ImuData& data) {
     bool is_stable = accel_delta < 0.5f;  // 相对稳定，没有剧烈运动
     
     // 检查Z轴是否接近-1g（倒置）
-    bool z_axis_inverted = data.accel_z < UPSIDE_DOWN_THRESHOLD_G;
+    bool z_axis_inverted = data.accel_z < config_.upside_down_threshold_g;
     
     if (z_axis_inverted && is_stable) {
         upside_down_count_++;
         
         // 需要持续一定帧数才判定为倒置
-        if (!is_upside_down_ && upside_down_count_ >= UPSIDE_DOWN_STABLE_COUNT) {
+        if (!is_upside_down_ && upside_down_count_ >= config_.upside_down_stable_count) {
             is_upside_down_ = true;
             ESP_LOGD(TAG, "Device is now upside down: Z=%.2f g", data.accel_z);
             return true;
@@ -269,7 +270,7 @@ bool MotionEngine::DetectUpsideDown(const ImuData& data) {
 bool MotionEngine::DetectShake(const ImuData& data) {
     // 检测快速来回运动
     float accel_delta = CalculateAccelDelta(data, last_imu_data_);
-    return accel_delta > SHAKE_THRESHOLD_G;
+    return accel_delta > config_.shake_normal_threshold_g;
 }
 
 bool MotionEngine::DetectFreeFall(const ImuData& data, int64_t current_time) {
@@ -277,7 +278,7 @@ bool MotionEngine::DetectFreeFall(const ImuData& data, int64_t current_time) {
     float magnitude = CalculateAccelMagnitude(data);
     
     // 检测是否处于自由落体状态（总加速度小于阈值）
-    bool is_falling = magnitude < FREE_FALL_THRESHOLD_G;
+    bool is_falling = magnitude < config_.free_fall_threshold_g;
     
     if (is_falling) {
         if (!in_free_fall_) {
@@ -288,7 +289,7 @@ bool MotionEngine::DetectFreeFall(const ImuData& data, int64_t current_time) {
         } else {
             // 检查是否持续足够长时间
             int64_t fall_duration = current_time - free_fall_start_time_;
-            if (fall_duration >= FREE_FALL_MIN_TIME_US) {
+            if (fall_duration >= config_.free_fall_min_duration_ms * 1000) {
                 ESP_LOGD(TAG, "Free fall confirmed: duration=%lld ms, magnitude=%.3f g", 
                         fall_duration / 1000, magnitude);
                 return true;
@@ -316,7 +317,7 @@ bool MotionEngine::DetectShakeViolently(const ImuData& data) {
                                    data.gyro_z * data.gyro_z);
     
     // 剧烈摇晃：大幅度加速度变化 或 高速旋转伴随加速度变化
-    bool violent_shake = (accel_delta > SHAKE_VIOLENTLY_THRESHOLD_G) || 
+    bool violent_shake = (accel_delta > config_.shake_violently_threshold_g) || 
                         (accel_delta > 2.0f && gyro_magnitude > 300.0f);
     
     if (violent_shake) {
@@ -341,8 +342,8 @@ bool MotionEngine::DetectFlip(const ImuData& data) {
     // 需要同时满足：
     // 1. 总旋转速度超过阈值
     // 2. 至少有一个轴的旋转速度超过阈值的70%（避免轻微晃动的累加效应）
-    bool high_rotation = gyro_magnitude > FLIP_THRESHOLD_DEG_S;
-    bool dominant_axis = max_single_axis > (FLIP_THRESHOLD_DEG_S * 0.7f);
+    bool high_rotation = gyro_magnitude > config_.flip_threshold_deg_s;
+    bool dominant_axis = max_single_axis > (config_.flip_threshold_deg_s * 0.7f);
     
     // 3. 加速度也要有明显变化（真正翻转时会有）
     float accel_change = CalculateAccelDelta(data, last_imu_data_);
@@ -364,4 +365,110 @@ bool MotionEngine::IsStable(const ImuData& data, const ImuData& last_data) {
     
     // 判断是否稳定（加速度变化小于0.1g）
     return accel_delta < 0.1f;
+}
+
+void MotionEngine::UpdateConfigFromJson(const cJSON* json) {
+    if (!json) return;
+    
+    // 查找 motion_detection_parameters 节点
+    const cJSON* motion_params = cJSON_GetObjectItem(json, "motion_detection_parameters");
+    if (!motion_params) {
+        ESP_LOGW(TAG, "No motion_detection_parameters found in config");
+        return;
+    }
+    
+    // 自由落体参数
+    const cJSON* free_fall = cJSON_GetObjectItem(motion_params, "free_fall");
+    if (free_fall) {
+        const cJSON* item = cJSON_GetObjectItem(free_fall, "threshold_g");
+        if (item && cJSON_IsNumber(item)) {
+            config_.free_fall_threshold_g = item->valuedouble;
+        }
+        item = cJSON_GetObjectItem(free_fall, "min_duration_ms");
+        if (item && cJSON_IsNumber(item)) {
+            config_.free_fall_min_duration_ms = item->valueint;
+        }
+    }
+    
+    // 摇晃参数
+    const cJSON* shake = cJSON_GetObjectItem(motion_params, "shake");
+    if (shake) {
+        const cJSON* item = cJSON_GetObjectItem(shake, "normal_threshold_g");
+        if (item && cJSON_IsNumber(item)) {
+            config_.shake_normal_threshold_g = item->valuedouble;
+        }
+        item = cJSON_GetObjectItem(shake, "violently_threshold_g");
+        if (item && cJSON_IsNumber(item)) {
+            config_.shake_violently_threshold_g = item->valuedouble;
+        }
+    }
+    
+    // 翻转参数
+    const cJSON* flip = cJSON_GetObjectItem(motion_params, "flip");
+    if (flip) {
+        const cJSON* item = cJSON_GetObjectItem(flip, "threshold_deg_s");
+        if (item && cJSON_IsNumber(item)) {
+            config_.flip_threshold_deg_s = item->valuedouble;
+        }
+    }
+    
+    // 拿起参数
+    const cJSON* pickup = cJSON_GetObjectItem(motion_params, "pickup");
+    if (pickup) {
+        const cJSON* item = cJSON_GetObjectItem(pickup, "threshold_g");
+        if (item && cJSON_IsNumber(item)) {
+            config_.pickup_threshold_g = item->valuedouble;
+        }
+        item = cJSON_GetObjectItem(pickup, "stable_threshold_g");
+        if (item && cJSON_IsNumber(item)) {
+            config_.pickup_stable_threshold_g = item->valuedouble;
+        }
+        item = cJSON_GetObjectItem(pickup, "stable_count");
+        if (item && cJSON_IsNumber(item)) {
+            config_.pickup_stable_count = item->valueint;
+        }
+        item = cJSON_GetObjectItem(pickup, "min_duration_ms");
+        if (item && cJSON_IsNumber(item)) {
+            config_.pickup_min_duration_ms = item->valueint;
+        }
+    }
+    
+    // 倒置参数
+    const cJSON* upside_down = cJSON_GetObjectItem(motion_params, "upside_down");
+    if (upside_down) {
+        const cJSON* item = cJSON_GetObjectItem(upside_down, "threshold_g");
+        if (item && cJSON_IsNumber(item)) {
+            config_.upside_down_threshold_g = item->valuedouble;
+        }
+        item = cJSON_GetObjectItem(upside_down, "stable_count");
+        if (item && cJSON_IsNumber(item)) {
+            config_.upside_down_stable_count = item->valueint;
+        }
+    }
+    
+    // 调试参数
+    const cJSON* debug = cJSON_GetObjectItem(motion_params, "debug");
+    if (debug) {
+        const cJSON* item = cJSON_GetObjectItem(debug, "interval_ms");
+        if (item && cJSON_IsNumber(item)) {
+            config_.debug_interval_ms = item->valueint;
+        }
+        item = cJSON_GetObjectItem(debug, "enabled");
+        if (item && cJSON_IsBool(item)) {
+            config_.debug_enabled = cJSON_IsTrue(item);
+            debug_output_ = config_.debug_enabled;
+        }
+    }
+    
+    ESP_LOGI(TAG, "Motion config updated from JSON:");
+    ESP_LOGI(TAG, "  Free fall: threshold=%.2fg, duration=%lldms", 
+             config_.free_fall_threshold_g, config_.free_fall_min_duration_ms);
+    ESP_LOGI(TAG, "  Shake: normal=%.2fg, violently=%.2fg", 
+             config_.shake_normal_threshold_g, config_.shake_violently_threshold_g);
+    ESP_LOGI(TAG, "  Flip: threshold=%.1f°/s", config_.flip_threshold_deg_s);
+    ESP_LOGI(TAG, "  Pickup: threshold=%.2fg, stable=%.2fg, count=%d", 
+             config_.pickup_threshold_g, config_.pickup_stable_threshold_g, 
+             config_.pickup_stable_count);
+    ESP_LOGI(TAG, "  Upside down: threshold=%.2fg, count=%d", 
+             config_.upside_down_threshold_g, config_.upside_down_stable_count);
 }

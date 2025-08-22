@@ -90,6 +90,12 @@ EventProcessor::EventStats EventEngine::GetEventStats(EventType type) const {
     return EventProcessor::EventStats{0, 0, 0, 0, 0};
 }
 
+void EventEngine::UpdateMotionEngineConfig(const cJSON* json) {
+    if (motion_engine_ && json) {
+        motion_engine_->UpdateConfigFromJson(json);
+    }
+}
+
 void EventEngine::InitializeMotionEngine(Qmi8658* imu, bool enable_debug) {
     if (!imu) {
         ESP_LOGW(TAG, "Cannot initialize motion engine without IMU");

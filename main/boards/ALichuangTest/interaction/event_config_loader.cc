@@ -186,6 +186,13 @@ bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engi
         }
     }
     
+    // 解析运动检测参数并应用到 motion_engine
+    cJSON* motion_params = cJSON_GetObjectItem(root, "motion_detection_parameters");
+    if (motion_params) {
+        engine->UpdateMotionEngineConfig(root);
+        ESP_LOGI(TAG, "Applied motion detection parameters to motion engine");
+    }
+    
     // 解析响应映射
     cJSON* response_mappings = cJSON_GetObjectItem(root, "response_mappings");
     if (response_mappings) {

@@ -122,6 +122,9 @@ public:
     // 获取事件统计
     EventProcessor::EventStats GetEventStats(EventType type) const;
     
+    // 更新运动引擎配置
+    void UpdateMotionEngineConfig(const cJSON* json);
+    
 private:
     // 运动引擎（内部创建和管理）
     MotionEngine* motion_engine_;

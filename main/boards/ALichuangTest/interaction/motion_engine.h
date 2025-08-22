@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
+#include <cJSON.h>
 
 // 运动事件类型
 enum class MotionEventType {
@@ -29,6 +30,34 @@ struct MotionEvent {
 };
 
 // 运动引擎类 - 专门处理IMU相关的运动检测
+// 运动检测配置结构
+struct MotionDetectionConfig {
+    // 自由落体参数
+    float free_fall_threshold_g = 0.3f;
+    int64_t free_fall_min_duration_ms = 200;
+    
+    // 摇晃参数
+    float shake_normal_threshold_g = 1.5f;
+    float shake_violently_threshold_g = 3.0f;
+    
+    // 翻转参数
+    float flip_threshold_deg_s = 400.0f;
+    
+    // 拿起参数
+    float pickup_threshold_g = 0.15f;
+    float pickup_stable_threshold_g = 0.05f;
+    int pickup_stable_count = 5;
+    int64_t pickup_min_duration_ms = 300;
+    
+    // 倒置参数
+    float upside_down_threshold_g = -0.8f;
+    int upside_down_stable_count = 10;
+    
+    // 调试参数
+    int64_t debug_interval_ms = 1000;
+    bool debug_enabled = false;
+};
+
 class MotionEngine {
 public:
     using MotionEventCallback = std::function<void(const MotionEvent&)>;
@@ -53,6 +82,11 @@ public:
     bool IsPickedUp() const { return is_picked_up_; }
     bool IsUpsideDown() const { return is_upside_down_; }
     const ImuData& GetCurrentImuData() const { return current_imu_data_; }
+    
+    // 配置相关方法
+    void SetConfig(const MotionDetectionConfig& config) { config_ = config; debug_output_ = config.debug_enabled; }
+    const MotionDetectionConfig& GetConfig() const { return config_; }
+    void UpdateConfigFromJson(const cJSON* json);
     
     // 调试输出控制
     void SetDebugOutput(bool enable) { debug_output_ = enable; }
@@ -87,16 +121,8 @@ private:
     float stable_z_reference_;
     int64_t pickup_start_time_;
     
-    // 运动检测阈值
-    static constexpr float FREE_FALL_THRESHOLD_G = 0.3f;
-    static constexpr int64_t FREE_FALL_MIN_TIME_US = 200000;
-    static constexpr float SHAKE_VIOLENTLY_THRESHOLD_G = 3.0f;
-    static constexpr float SHAKE_THRESHOLD_G = 1.5f;
-    static constexpr float FLIP_THRESHOLD_DEG_S = 400.0f;
-    static constexpr float PICKUP_THRESHOLD_G = 0.15f;
-    static constexpr float UPSIDE_DOWN_THRESHOLD_G = -0.8f;
-    static constexpr int UPSIDE_DOWN_STABLE_COUNT = 10;
-    static constexpr int64_t DEBUG_INTERVAL_US = 1000000;
+    // 运动检测配置
+    MotionDetectionConfig config_;
     
     // 事件特定的冷却时间（微秒）
     static constexpr int64_t FREE_FALL_COOLDOWN_US = 500000;      // 500ms
