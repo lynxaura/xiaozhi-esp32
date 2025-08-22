@@ -297,11 +297,19 @@ bool EventProcessor::ProcessCooldown(Event& event, EventState& state) {
 void EventProcessor::MergeEvents(Event& existing, const Event& new_event) {
     // 合并逻辑：根据事件类型决定如何合并
     if (existing.type == new_event.type) {
-        // 对于触摸事件，增加计数
+        // 对于触摸事件，增加点击次数
         if (existing.type == EventType::TOUCH_TAP) {
-            // 使用touch_data.y存储点击次数（原本是持续时间）
-            existing.data.touch_data.y++;
-            ESP_LOGD(TAG, "Merged tap event, count: %d", existing.data.touch_data.y);
+            existing.data.touch_data.tap_count++;
+            ESP_LOGD(TAG, "Merged tap event, count: %lu", 
+                     (unsigned long)existing.data.touch_data.tap_count);
+        }
+        // 对于长按事件，更新持续时间为较长的那个
+        else if (existing.type == EventType::TOUCH_LONG_PRESS) {
+            if (new_event.data.touch_data.duration_ms > existing.data.touch_data.duration_ms) {
+                existing.data.touch_data.duration_ms = new_event.data.touch_data.duration_ms;
+            }
+            ESP_LOGD(TAG, "Merged long press, duration: %lums", 
+                     (unsigned long)existing.data.touch_data.duration_ms);
         }
         // 可以根据需要添加其他事件类型的合并逻辑
     }

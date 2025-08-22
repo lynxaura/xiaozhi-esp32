@@ -278,7 +278,13 @@ EventResponse EventConfigLoader::GetResponseForEvent(EventType type, const Event
     // 根据事件类型和数据获取响应
     if (type == EventType::TOUCH_TAP) {
         // 检查是左侧还是右侧
-        std::string key = event.data.touch_data.x < 0 ? "tap_left" : "tap_right";
+        std::string key;
+        switch (event.data.touch_data.position) {
+            case TouchPosition::LEFT: key = "tap_left"; break;
+            case TouchPosition::RIGHT: key = "tap_right"; break;
+            case TouchPosition::BOTH: key = "tap_both"; break;
+            default: key = "tap_any"; break;
+        }
         auto it = response_map_.find(key);
         if (it != response_map_.end()) {
             return it->second;

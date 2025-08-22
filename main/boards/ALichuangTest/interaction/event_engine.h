@@ -38,22 +38,37 @@ enum class EventType {
     SYSTEM_ERROR
 };
 
+// 触摸事件特定数据
+// 使用 touch_engine.h 中定义的 TouchPosition 枚举
+struct TouchEventData {
+    TouchPosition position;     // 触摸位置
+    uint32_t duration_ms;      // 持续时间（毫秒）
+    uint32_t tap_count;        // 点击次数（用于合并事件）
+};
+
 // 事件数据结构
 struct Event {
     EventType type;
     int64_t timestamp_us;
     union {
-        ImuData imu_data;      // 运动事件的IMU数据
-        struct {                // 触摸事件的坐标数据
-            int x;
-            int y;
-        } touch_data;
-        int audio_level;        // 音频事件的音量级别
-        int error_code;         // 系统事件的错误码
+        ImuData imu_data;           // 运动事件的IMU数据
+        TouchEventData touch_data;  // 触摸事件的专用数据
+        int audio_level;            // 音频事件的音量级别
+        int error_code;             // 系统事件的错误码
     } data;
     
-    Event() : type(EventType::MOTION_NONE), timestamp_us(0) {}
-    Event(EventType t) : type(t), timestamp_us(0) {}
+    Event() : type(EventType::MOTION_NONE), timestamp_us(0) {
+        // 初始化触摸数据为默认值
+        data.touch_data.position = TouchPosition::ANY;
+        data.touch_data.duration_ms = 0;
+        data.touch_data.tap_count = 1;
+    }
+    Event(EventType t) : type(t), timestamp_us(0) {
+        // 初始化触摸数据为默认值
+        data.touch_data.position = TouchPosition::ANY;
+        data.touch_data.duration_ms = 0;
+        data.touch_data.tap_count = 1;
+    }
 };
 
 // 现在可以包含 event_processor.h，因为 Event 和 EventType 已定义

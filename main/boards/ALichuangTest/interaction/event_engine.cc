@@ -297,24 +297,29 @@ void EventEngine::OnTouchEvent(const TouchEvent& touch_event) {
         return;
     }
     
-    // 将触摸位置信息存储在touch_data中
+    // 使用新的TouchEventData结构
     if (event.type == EventType::TOUCH_CRADLED || event.type == EventType::TOUCH_TICKLED) {
-        // 双手模式事件用0表示
-        event.data.touch_data.x = 0;  
-        event.data.touch_data.y = static_cast<int>(touch_event.duration_ms);
-    } else if (touch_event.position == TouchPosition::LEFT) {
-        event.data.touch_data.x = -1;  // 左侧用负值表示
-        event.data.touch_data.y = static_cast<int>(touch_event.duration_ms);
+        event.data.touch_data.position = TouchPosition::BOTH;
+        event.data.touch_data.duration_ms = touch_event.duration_ms;
     } else {
-        event.data.touch_data.x = 1;   // 右侧用正值表示
-        event.data.touch_data.y = static_cast<int>(touch_event.duration_ms);
+        event.data.touch_data.position = touch_event.position;
+        event.data.touch_data.duration_ms = touch_event.duration_ms;
+    }
+    event.data.touch_data.tap_count = 1;  // 初始点击次数为1
+    
+    const char* position_str = "UNKNOWN";
+    switch (event.data.touch_data.position) {
+        case TouchPosition::LEFT: position_str = "LEFT"; break;
+        case TouchPosition::RIGHT: position_str = "RIGHT"; break;
+        case TouchPosition::BOTH: position_str = "BOTH"; break;
+        case TouchPosition::ANY: position_str = "ANY"; break;
     }
     
-    ESP_LOGI(TAG, "Touch event received: touch_type=%d -> event_type=%d, position=%s, duration=%ldms", 
+    ESP_LOGI(TAG, "Touch event received: touch_type=%d -> event_type=%d, position=%s, duration=%lums", 
             (int)touch_event.type,
             (int)event.type,
-            touch_event.position == TouchPosition::LEFT ? "LEFT" : "RIGHT",
-            touch_event.duration_ms);
+            position_str,
+            (unsigned long)event.data.touch_data.duration_ms);
     
     // 分发事件
     DispatchEvent(event);

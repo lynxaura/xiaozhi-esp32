@@ -36,8 +36,19 @@ void EventUploader::HandleEvent(const Event& event) {
     
     ESP_LOGI(TAG_EVENT_UPLOADER, "=== Event Processing Debug ===");
     ESP_LOGI(TAG_EVENT_UPLOADER, "Raw event type: %d", (int)event.type);
-    ESP_LOGI(TAG_EVENT_UPLOADER, "Touch data: x=%d, y=%d", 
-             event.data.touch_data.x, event.data.touch_data.y);
+    if (event.type == EventType::TOUCH_TAP || event.type == EventType::TOUCH_LONG_PRESS ||
+        event.type == EventType::TOUCH_CRADLED || event.type == EventType::TOUCH_TICKLED) {
+        const char* pos_str = "UNKNOWN";
+        switch (event.data.touch_data.position) {
+            case TouchPosition::LEFT: pos_str = "LEFT"; break;
+            case TouchPosition::RIGHT: pos_str = "RIGHT"; break;
+            case TouchPosition::BOTH: pos_str = "BOTH"; break;
+            case TouchPosition::ANY: pos_str = "ANY"; break;
+        }
+        ESP_LOGI(TAG_EVENT_UPLOADER, "Touch data: position=%s, duration=%lums, tap_count=%lu", 
+                 pos_str, (unsigned long)event.data.touch_data.duration_ms, 
+                 (unsigned long)event.data.touch_data.tap_count);
+    }
     
     // 转换事件
     auto cached = ConvertEvent(event);
@@ -203,26 +214,22 @@ EventUploader::CachedEvent EventUploader::ConvertEvent(const Event& event) {
 std::string EventUploader::GetEventTypeString(const Event& event) {
     // 根据事件日志中看到的事件类型来映射
     switch (event.type) {
-        // 触摸事件 - 需要结合位置信息
+        // 触摸事件 - 使用新的TouchPosition枚举
         case EventType::TOUCH_TAP: {
-            // 从event.data.touch_data.x获取位置信息
-            // 根据现有日志，LEFT position=0, RIGHT position=1
-            if (event.data.touch_data.x == -1) {
-                return "Touch_Left_Tap";
-            } else if (event.data.touch_data.x == 1) {
-                return "Touch_Right_Tap";
-            } else {
-                return "Touch_Both_Tap";
+            switch (event.data.touch_data.position) {
+                case TouchPosition::LEFT: return "Touch_Left_Tap";
+                case TouchPosition::RIGHT: return "Touch_Right_Tap";
+                case TouchPosition::BOTH: return "Touch_Both_Tap";
+                default: return "Touch_Unknown_Tap";
             }
         }
         
         case EventType::TOUCH_LONG_PRESS: {
-            if (event.data.touch_data.x == -1) {
-                return "Touch_Left_LongPress";
-            } else if (event.data.touch_data.x == 1) {
-                return "Touch_Right_LongPress";
-            } else {
-                return "Touch_Both_LongPress";
+            switch (event.data.touch_data.position) {
+                case TouchPosition::LEFT: return "Touch_Left_LongPress";
+                case TouchPosition::RIGHT: return "Touch_Right_LongPress";
+                case TouchPosition::BOTH: return "Touch_Both_LongPress";
+                default: return "Touch_Unknown_LongPress";
             }
         }
         
@@ -256,22 +263,27 @@ std::string EventUploader::GenerateEventText(const Event& event) {
     // 生成供LLM理解的中文描述
     switch (event.type) {
         case EventType::TOUCH_TAP: {
-            if (event.data.touch_data.x == -1) {
-                return "主人轻轻拍了我的左侧";
-            } else if (event.data.touch_data.x == 1) {
-                return "主人轻轻拍了我的右侧";
-            } else {
-                return "主人同时拍了我的两侧";
+            // 支持合并事件的多次点击
+            std::string tap_text;
+            switch (event.data.touch_data.position) {
+                case TouchPosition::LEFT: tap_text = "主人轻轻拍了我的左侧"; break;
+                case TouchPosition::RIGHT: tap_text = "主人轻轻拍了我的右侧"; break;
+                case TouchPosition::BOTH: tap_text = "主人同时拍了我的两侧"; break;
+                default: tap_text = "主人轻轻拍了我"; break;
             }
+            
+            if (event.data.touch_data.tap_count > 1) {
+                return tap_text + "（连续" + std::to_string(event.data.touch_data.tap_count) + "次）";
+            }
+            return tap_text;
         }
         
         case EventType::TOUCH_LONG_PRESS: {
-            if (event.data.touch_data.x == -1) {
-                return "主人长时间按住了我的左侧";
-            } else if (event.data.touch_data.x == 1) {
-                return "主人长时间按住了我的右侧";
-            } else {
-                return "主人同时长按了我的两侧";
+            switch (event.data.touch_data.position) {
+                case TouchPosition::LEFT: return "主人长时间按住了我的左侧";
+                case TouchPosition::RIGHT: return "主人长时间按住了我的右侧";
+                case TouchPosition::BOTH: return "主人同时长按了我的两侧";
+                default: return "主人长时间按住了我";
             }
         }
         
@@ -300,15 +312,12 @@ std::string EventUploader::GenerateEventText(const Event& event) {
 }
 
 uint32_t EventUploader::CalculateDuration(const Event& event) {
-    // 从event.data.touch_data.y中获取持续时间（毫秒）
+    // 从新的TouchEventData结构中获取持续时间
     if (event.type == EventType::TOUCH_LONG_PRESS || 
         event.type == EventType::TOUCH_TAP ||
         event.type == EventType::TOUCH_CRADLED) {
-        // touch_data.y存储了duration_ms
-        uint32_t duration_ms = static_cast<uint32_t>(event.data.touch_data.y);
-        if (duration_ms > 0) {
-            return duration_ms;
-        }
+        // 使用专用的duration_ms字段
+        return event.data.touch_data.duration_ms;
     }
     
     // TICKLED事件有2秒的语义窗口

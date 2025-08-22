@@ -733,28 +733,78 @@ private:
                 vibration_skill_->Play(VIBRATION_STRUGGLE_PATTERN);
                 break;
             // 处理触摸事件
-            case EventType::TOUCH_TAP:
+            case EventType::TOUCH_TAP: {
                 event_name = "TOUCH_TAP";
-                // touch_data.x: -1表示左侧，1表示右侧
-                // touch_data.y: 持续时间（毫秒）
-                ESP_LOGI(TAG, "👆 Touch TAP on %s side! (duration: %d ms)", 
-                        event.data.touch_data.x < 0 ? "LEFT" : "RIGHT",
-                        event.data.touch_data.y);
+                // 使用新的TouchEventData结构
+                const char* side_str = "UNKNOWN";
+                switch (event.data.touch_data.position) {
+                    case TouchPosition::LEFT: side_str = "LEFT"; break;
+                    case TouchPosition::RIGHT: side_str = "RIGHT"; break;
+                    case TouchPosition::BOTH: side_str = "BOTH"; break;
+                    case TouchPosition::ANY: side_str = "ANY"; break;
+                }
+                ESP_LOGI(TAG, "👆 Touch TAP on %s side! (duration: %lu ms, count: %lu)", 
+                        side_str,
+                        (unsigned long)event.data.touch_data.duration_ms,
+                        (unsigned long)event.data.touch_data.tap_count);
                 vibration_skill_->Play(VIBRATION_SHORT_BUZZ);
                 break;
+            }
             case EventType::TOUCH_DOUBLE_TAP:
                 event_name = "TOUCH_DOUBLE_TAP";
-                ESP_LOGI(TAG, "👆👆 Touch DOUBLE TAP on RIGHT side! (duration: %d ms)", 
-                        event.data.touch_data.y);
+                ESP_LOGI(TAG, "👆👆 Touch DOUBLE TAP! (duration: %lu ms)", 
+                        (unsigned long)event.data.touch_data.duration_ms);
                 vibration_skill_->Play(VIBRATION_PURR_PATTERN);
                 break;
             case EventType::TOUCH_LONG_PRESS:
                 event_name = "TOUCH_LONG_PRESS";
-                ESP_LOGI(TAG, "👇 Touch LONG PRESS on %s side! (duration: %d ms)", 
-                        event.data.touch_data.x < 0 ? "LEFT" : "RIGHT",
-                        event.data.touch_data.y);
+                {
+                    const char* press_side = "UNKNOWN";
+                    switch (event.data.touch_data.position) {
+                        case TouchPosition::LEFT: press_side = "LEFT"; break;
+                        case TouchPosition::RIGHT: press_side = "RIGHT"; break;
+                        case TouchPosition::BOTH: press_side = "BOTH"; break;
+                        case TouchPosition::ANY: press_side = "ANY"; break;
+                    }
+                    ESP_LOGI(TAG, "👇 Touch LONG PRESS on %s side! (duration: %lu ms)", 
+                            press_side,
+                            (unsigned long)event.data.touch_data.duration_ms);
+                }
                 vibration_skill_->Play(VIBRATION_HEARTBEAT_STRONG);
                 break;
+            
+            // 其他触摸事件
+            case EventType::TOUCH_CRADLED:
+                event_name = "TOUCH_CRADLED";
+                ESP_LOGI(TAG, "🤗 Device is being cradled!");
+                vibration_skill_->Play(VIBRATION_PURR_PATTERN);
+                break;
+            case EventType::TOUCH_TICKLED:
+                event_name = "TOUCH_TICKLED";
+                ESP_LOGI(TAG, "😄 Device is being tickled!");
+                vibration_skill_->Play(VIBRATION_SHORT_BUZZ);
+                break;
+            case EventType::TOUCH_HOLD:
+            case EventType::TOUCH_RELEASE:
+                // 暂时不处理
+                return;
+                
+            // 音频事件（预留）
+            case EventType::AUDIO_WAKE_WORD:
+            case EventType::AUDIO_SPEAKING:
+            case EventType::AUDIO_LISTENING:
+                // 暂时不处理
+                return;
+                
+            // 系统事件（预留）
+            case EventType::SYSTEM_BOOT:
+            case EventType::SYSTEM_SHUTDOWN:
+            case EventType::SYSTEM_ERROR:
+                // 暂时不处理
+                return;
+                
+            // 默认情况
+            case EventType::MOTION_NONE:
             default: 
                 return;
         }
