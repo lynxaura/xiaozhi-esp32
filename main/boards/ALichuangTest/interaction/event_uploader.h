@@ -28,8 +28,8 @@ public:
     struct CachedEvent {
         std::string event_type;      // 事件类型（如 "Touch_Left_Tap"）
         std::string event_text;      // 事件描述文本（中文）
-        int64_t start_time;          // 事件开始时间（Unix时间戳，毫秒）
-        int64_t end_time;            // 事件结束时间（Unix时间戳，毫秒）
+        int64_t start_time;          // 事件开始时间（esp_timer微秒）
+        int64_t end_time;            // 事件结束时间（esp_timer微秒）
         uint32_t duration_ms;        // 事件持续时间（毫秒）
         cjson_uptr event_payload;    // 额外数据（通常为空），智能指针管理
         

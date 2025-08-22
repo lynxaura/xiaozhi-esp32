@@ -2,7 +2,7 @@
 #include "application.h"     // for Application::GetInstance()
 #include <esp_log.h>
 #include <esp_timer.h>
-#include <sys/time.h>        // for gettimeofday
+// Removed sys/time.h - using esp_timer_get_time() for unified timeline
 #include <inttypes.h>        // for PRIu32, PRId64
 #include <algorithm>         // for std::min, std::remove_if
 
@@ -181,15 +181,20 @@ EventUploader::CachedEvent EventUploader::ConvertEvent(const Event& event) {
     // 计算持续时间
     cached.duration_ms = CalculateDuration(event);
     
-    // 获取系统时间
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    int64_t system_time_ms = static_cast<int64_t>(tv.tv_sec) * 1000 + tv.tv_usec / 1000;
+    // 使用统一的esp_timer时间轴（微秒）
+    int64_t current_time_us = esp_timer_get_time();
     
-    // 使用系统时间设置事件时间戳
-    cached.start_time = system_time_ms - cached.duration_ms;
-    cached.end_time = system_time_ms;
-    ESP_LOGD(TAG_EVENT_UPLOADER, "Using system time: %lld", system_time_ms);
+    // 使用事件的实际时间戳（如果有的话）
+    if (event.timestamp_us > 0) {
+        cached.end_time = event.timestamp_us;
+        cached.start_time = cached.end_time - (cached.duration_ms * 1000);
+    } else {
+        // 如果事件没有时间戳，使用当前时间
+        cached.start_time = current_time_us - (cached.duration_ms * 1000);
+        cached.end_time = current_time_us;
+    }
+    ESP_LOGD(TAG_EVENT_UPLOADER, "Using esp_timer timeline: end=%lld us, start=%lld us", 
+             cached.end_time, cached.start_time);
     
     cached.event_payload = nullptr; // 通常为空
     return cached; // 移动语义自动生效
