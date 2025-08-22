@@ -4,6 +4,7 @@
 #include <queue>
 #include <map>
 #include <esp_timer.h>
+#include <optional>
 
 // 前向声明
 struct Event;
@@ -39,7 +40,7 @@ struct EventProcessingConfig {
 class EventProcessor {
 public:
     EventProcessor();
-    ~EventProcessor() = default;
+    ~EventProcessor();
     
     // 配置特定事件类型的处理策略
     void ConfigureEventType(EventType type, const EventProcessingConfig& config);
@@ -55,6 +56,9 @@ public:
     
     // 清空特定类型的事件队列
     void ClearEventQueue(EventType type);
+    
+    // 清空所有队列事件
+    void ClearEventQueueAll();
     
     // 检查是否在冷却期
     bool IsInCooldown(EventType type) const;
@@ -76,7 +80,7 @@ private:
         int64_t last_trigger_time;
         int64_t last_process_time;
         uint32_t pending_count;
-        void* pending_event;  // 使用void*避免依赖Event定义
+        void* pending_event;  // 暂时保持void*以避免循环依赖
         bool has_pending;
         EventProcessingConfig config;
         EventStats stats;
@@ -88,17 +92,13 @@ private:
             , pending_event(nullptr)
             , has_pending(false)
             , stats{0, 0, 0, 0, 0} {}
-        
-        ~EventState() {
-            // 清理pending_event内存将在EventProcessor中处理
-        }
     };
     
     // 每种事件类型的状态
     std::map<int, EventState> event_states_;  // 使用int代替EventType
     
     // 事件队列（用于QUEUE策略）
-    std::queue<void*> event_queue_;  // 使用void*代替Event
+    std::queue<void*> event_queue_;  // 暂时保持void*以避免循环依赖
     
     // 默认配置
     EventProcessingConfig default_config_;

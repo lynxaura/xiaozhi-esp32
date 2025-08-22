@@ -25,6 +25,25 @@ EventProcessor::EventProcessor() {
     ESP_LOGI(TAG, "EventProcessor created with default strategy IMMEDIATE");
 }
 
+EventProcessor::~EventProcessor() {
+    // 清理队列中的事件
+    while (!event_queue_.empty()) {
+        Event* event = (Event*)event_queue_.front();
+        delete event;
+        event_queue_.pop();
+    }
+    
+    // 清理pending事件
+    for (auto& pair : event_states_) {
+        if (pair.second.pending_event) {
+            delete (Event*)pair.second.pending_event;
+            pair.second.pending_event = nullptr;
+        }
+    }
+    
+    ESP_LOGI(TAG, "EventProcessor destroyed, memory cleaned");
+}
+
 void EventProcessor::ConfigureEventType(EventType type, const EventProcessingConfig& config) {
     event_states_[(int)type].config = config;
     ESP_LOGI(TAG, "Configured event type %d with strategy %d, interval %ldms", 
@@ -103,35 +122,51 @@ bool EventProcessor::ProcessImmediate(Event& event, EventState& state) {
 }
 
 bool EventProcessor::ProcessDebounce(Event& event, EventState& state) {
-    int64_t current_time = esp_timer_get_time();
-    
-    // 保存事件，等待防抖时间结束
-    if (state.pending_event) delete (Event*)state.pending_event;
-    state.pending_event = new Event(event);
-    state.has_pending = true;
-    state.last_trigger_time = current_time;
-    state.pending_count++;
-    
-    ESP_LOGD(TAG, "[DEBOUNCE] Event saved, pending count: %ld, waiting %ldms", 
-            state.pending_count, state.config.interval_ms);
-    
-    // 检查是否应该处理
-    if (state.pending_count == 1) {
-        // 第一个事件，等待防抖时间
-        return false;
+    const int64_t now_us = esp_timer_get_time();
+    const int64_t interval_us = (int64_t)state.config.interval_ms * 1000;
+
+    // interval=0 视为立即通过
+    if (interval_us <= 0) {
+        state.last_process_time = now_us;
+        if (state.pending_event) {
+            delete (Event*)state.pending_event;
+            state.pending_event = nullptr;
+        }
+        state.has_pending = false;
+        state.pending_count = 0;
+        return true;
     }
-    
-    // 检查防抖时间是否已过
-    if ((current_time - state.last_trigger_time) >= (state.config.interval_ms * 1000)) {
+
+    bool ready = false;
+
+    // 若"上一次记录的事件"距离现在已超过防抖区间，则先输出上一条
+    if (state.has_pending &&
+        (now_us - state.last_trigger_time) >= interval_us) {
         event = *(Event*)state.pending_event;
         delete (Event*)state.pending_event;
         state.pending_event = nullptr;
         state.has_pending = false;
         state.pending_count = 0;
-        return true;
+        state.last_process_time = now_us;
+        ready = true; // 这次调用产出的是"上一条"
     }
-    
-    return false;
+
+    // 记录/更新当前这条为"待输出"
+    if (state.has_pending) {
+        *(Event*)state.pending_event = event;  // 覆盖为最新
+        state.pending_count++;
+    } else {
+        state.pending_event = new Event(event);   // 首条进入
+        state.has_pending = true;
+        state.pending_count = 1;
+    }
+    state.last_trigger_time = now_us;
+
+    ESP_LOGD(TAG, "[DEBOUNCE] pending=%d, count=%lu, interval_ms=%lu, ready=%d",
+             state.has_pending, (unsigned long)state.pending_count,
+             (unsigned long)state.config.interval_ms, (int)ready);
+
+    return ready;
 }
 
 bool EventProcessor::ProcessThrottle(Event& event, EventState& state) {
@@ -151,64 +186,96 @@ bool EventProcessor::ProcessThrottle(Event& event, EventState& state) {
 }
 
 bool EventProcessor::ProcessQueue(Event& event, EventState& state) {
-    // 添加到队列
+    // 入队
     if (event_queue_.size() < state.config.max_queue_size) {
         event_queue_.push(new Event(event));
-        ESP_LOGD(TAG, "Event queued, queue size: %zu", event_queue_.size());
+        ESP_LOGD(TAG, "[QUEUE] enqueued, size=%zu", event_queue_.size());
     } else {
-        ESP_LOGW(TAG, "Event queue full, dropping event");
+        state.stats.dropped_count++;
+        ESP_LOGW(TAG, "[QUEUE] full, drop. dropped=%ld", state.stats.dropped_count);
         return false;
     }
-    
-    // 检查是否可以处理队列中的事件
-    int64_t current_time = esp_timer_get_time();
-    if ((current_time - state.last_process_time) >= (state.config.interval_ms * 1000)) {
+
+    const int64_t now_us = esp_timer_get_time();
+    const int64_t interval_us = (int64_t)state.config.interval_ms * 1000;
+
+    // interval=0 直接弹出
+    if (interval_us <= 0) {
         if (!event_queue_.empty()) {
             Event* queued_event = (Event*)event_queue_.front();
             event = *queued_event;
             delete queued_event;
             event_queue_.pop();
+            state.last_process_time = now_us;
+            ESP_LOGD(TAG, "[QUEUE] popped(immediate), size=%zu", event_queue_.size());
             return true;
         }
+        return false;
     }
-    
+
+    // 基于 last_process_time 做"节流式"出队
+    if ((now_us - state.last_process_time) >= interval_us && !event_queue_.empty()) {
+        Event* queued_event = (Event*)event_queue_.front();
+        event = *queued_event;
+        delete queued_event;
+        event_queue_.pop();
+        state.last_process_time = now_us;
+        ESP_LOGD(TAG, "[QUEUE] popped, size=%zu", event_queue_.size());
+        return true;
+    }
+
     return false;
 }
 
 bool EventProcessor::ProcessMerge(Event& event, EventState& state) {
-    int64_t current_time = esp_timer_get_time();
-    
-    // 检查是否在合并窗口内
-    if (state.has_pending && 
-        (current_time - state.last_trigger_time) < (state.config.merge_window_ms * 1000)) {
-        // 合并事件
+    const int64_t now_us = esp_timer_get_time();
+    const int64_t win_us = (int64_t)state.config.merge_window_ms * 1000;
+
+    // merge_window=0 视为不合并，直接通过
+    if (win_us <= 0) {
+        state.last_process_time = now_us;
+        if (state.pending_event) {
+            delete (Event*)state.pending_event;
+            state.pending_event = nullptr;
+        }
+        state.has_pending = false;
+        state.pending_count = 0;
+        return true;
+    }
+
+    const bool in_window =
+        state.has_pending &&
+        (now_us - state.last_trigger_time) < win_us;
+
+    if (in_window) {
+        // 合并到已有 pending
         MergeEvents(*(Event*)state.pending_event, event);
         state.pending_count++;
         state.stats.merged_count++;
-        state.last_trigger_time = current_time;
-        
-        ESP_LOGI(TAG, "[MERGE] Event merged, total %ld events in window, merged count: %ld", 
-                state.pending_count, state.stats.merged_count);
-        return false;  // 继续等待更多事件
+        state.last_trigger_time = now_us;
+        ESP_LOGD(TAG, "[MERGE] merged, count=%lu", (unsigned long)state.pending_count);
+        return false; // 仍在窗口内，不输出
     }
-    
-    // 合并窗口结束或第一个事件
+
+    // 不在窗口：如果之前有 pending，先把它输出
     if (state.has_pending) {
-        // 处理之前合并的事件
         event = *(Event*)state.pending_event;
         delete (Event*)state.pending_event;
         state.pending_event = nullptr;
         state.has_pending = false;
         state.pending_count = 0;
-        return true;
-    } else {
-        // 开始新的合并窗口
-        state.pending_event = new Event(event);
-        state.has_pending = true;
-        state.pending_count = 1;
-        state.last_trigger_time = current_time;
-        return false;
+        state.last_process_time = now_us;
+        ESP_LOGD(TAG, "[MERGE] window closed -> flush");
+        return true;  // 产出上一窗口的汇总事件
     }
+
+    // 开启新窗口：当前事件成为 pending
+    state.pending_event = new Event(event);
+    state.has_pending = true;
+    state.pending_count = 1;
+    state.last_trigger_time = now_us;
+    ESP_LOGD(TAG, "[MERGE] window started");
+    return false;
 }
 
 bool EventProcessor::ProcessCooldown(Event& event, EventState& state) {
@@ -240,30 +307,46 @@ void EventProcessor::MergeEvents(Event& existing, const Event& new_event) {
     }
 }
 
-bool EventProcessor::GetNextQueuedEvent(Event& event) {
-    if (!event_queue_.empty()) {
-        Event* queued_event = (Event*)event_queue_.front();
-        event = *queued_event;
-        delete queued_event;
-        event_queue_.pop();
-        return true;
-    }
-    return false;
+bool EventProcessor::GetNextQueuedEvent(Event& out) {
+    if (event_queue_.empty()) return false;
+    Event* queued_event = (Event*)event_queue_.front();
+    out = *queued_event;
+    delete queued_event;
+    event_queue_.pop();
+    ESP_LOGD(TAG, "[QUEUE] manual pop, size=%zu", event_queue_.size());
+    return true;
 }
 
 void EventProcessor::ClearEventQueue(EventType type) {
-    // 清空特定类型的事件
-    std::queue<void*> new_queue;
+    if (event_queue_.empty()) return;
+
+    std::queue<void*> kept;           // 保留的事件
+    size_t removed = 0;
+
     while (!event_queue_.empty()) {
-        Event* e = (Event*)event_queue_.front();
-        event_queue_.pop();
-        if (e->type != type) {
-            new_queue.push(e);
+        Event* front = (Event*)event_queue_.front();
+        if (front->type != type) {
+            // 保留这个事件
+            kept.push(front);
         } else {
-            delete e;
+            delete front;  // 删除匹配类型的事件
+            removed++;
         }
+        event_queue_.pop();
     }
-    event_queue_ = new_queue;
+
+    event_queue_.swap(kept);
+    ESP_LOGI(TAG, "[QUEUE] cleared type=%d, removed=%zu, remain=%zu",
+             static_cast<int>(type), removed, event_queue_.size());
+}
+
+void EventProcessor::ClearEventQueueAll() {
+    while (!event_queue_.empty()) {
+        Event* front = (Event*)event_queue_.front();
+        delete front;
+        event_queue_.pop();
+    }
+    ESP_LOGI(TAG, "[QUEUE] cleared all, remain=%zu", event_queue_.size());
 }
 
 bool EventProcessor::IsInCooldown(EventType type) const {
