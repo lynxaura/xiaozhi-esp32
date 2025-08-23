@@ -115,6 +115,9 @@ public:
     bool IsLeftTouched() const;
     bool IsRightTouched() const;
     
+    // 获取IMU稳定状态（供TouchEngine使用）
+    bool IsIMUStable() const;
+    
     // 配置事件处理策略
     void ConfigureEventProcessing(EventType type, const EventProcessingConfig& config);
     void SetDefaultProcessingStrategy(const EventProcessingConfig& config);

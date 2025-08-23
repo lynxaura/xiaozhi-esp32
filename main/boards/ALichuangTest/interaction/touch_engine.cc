@@ -222,6 +222,10 @@ void TouchEngine::RegisterCallback(TouchEventCallback callback) {
     callbacks_.push_back(callback);
 }
 
+void TouchEngine::SetIMUStabilityCallback(IMUStabilityCallback callback) {
+    imu_stability_callback_ = callback;
+}
+
 void TouchEngine::TouchTask(void* param) {
     TouchEngine* engine = static_cast<TouchEngine*>(param);
     ESP_LOGI(TAG, "Touch task started");
@@ -518,9 +522,15 @@ void TouchEngine::ProcessSpecialEvents() {
 }
 
 bool TouchEngine::IsIMUStable() {
-    // TODO: 需要从MotionEngine获取IMU稳定状态
-    // 暂时返回true，后续集成MotionEngine时实现
-    return true;
+    if (imu_stability_callback_) {
+        bool is_stable = imu_stability_callback_();
+        ESP_LOGD(TAG, "IMU stability check: %s", is_stable ? "STABLE" : "UNSTABLE");
+        return is_stable;
+    }
+    
+    // 没有回调时，保守地返回false（认为不稳定）
+    ESP_LOGW(TAG, "No IMU stability callback set, assuming unstable");
+    return false;
 }
 
 

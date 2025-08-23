@@ -159,7 +159,15 @@ void EventEngine::SetupTouchEngineCallbacks() {
                 this->OnTouchEvent(event);
             }
         );
-        ESP_LOGI(TAG, "Touch engine callback registered");
+        
+        // 设置IMU稳定性查询回调
+        touch_engine_->SetIMUStabilityCallback(
+            [this]() -> bool {
+                return this->IsIMUStable();
+            }
+        );
+        
+        ESP_LOGI(TAG, "Touch engine callback and IMU stability callback registered");
     } else {
         ESP_LOGW(TAG, "Touch engine is null, cannot register callback");
     }
@@ -289,6 +297,13 @@ bool EventEngine::IsRightTouched() const {
         return touch_engine_->IsRightTouched();
     }
     return false;
+}
+
+bool EventEngine::IsIMUStable() const {
+    if (motion_engine_) {
+        return motion_engine_->IsCurrentlyStable();
+    }
+    return false;  // 没有motion_engine时认为不稳定
 }
 
 void EventEngine::OnTouchEvent(const TouchEvent& touch_event) {

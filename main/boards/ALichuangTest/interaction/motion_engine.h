@@ -83,6 +83,9 @@ public:
     bool IsUpsideDown() const { return is_upside_down_; }
     const ImuData& GetCurrentImuData() const { return current_imu_data_; }
     
+    // 检查设备当前是否稳定（用于触摸事件如 Cradled 检测）
+    bool IsCurrentlyStable() const;
+    
     // 配置相关方法
     void SetConfig(const MotionDetectionConfig& config) { config_ = config; debug_output_ = config.debug_enabled; }
     const MotionDetectionConfig& GetConfig() const { return config_; }
@@ -141,10 +144,10 @@ private:
     bool DetectPickup(const ImuData& data);
     bool DetectUpsideDown(const ImuData& data);
     float CalculateAccelMagnitude(const ImuData& data);
-    float CalculateAccelDelta(const ImuData& current, const ImuData& last);
+    float CalculateAccelDelta(const ImuData& current, const ImuData& last) const;
     
     // 辅助函数
-    bool IsStable(const ImuData& data, const ImuData& last_data);
+    bool IsStable(const ImuData& data, const ImuData& last_data) const;
     
     // 事件分发
     void DispatchEvent(const MotionEvent& event);

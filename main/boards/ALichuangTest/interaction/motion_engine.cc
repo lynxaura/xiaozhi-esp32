@@ -142,7 +142,7 @@ float MotionEngine::CalculateAccelMagnitude(const ImuData& data) {
                     data.accel_z * data.accel_z);
 }
 
-float MotionEngine::CalculateAccelDelta(const ImuData& current, const ImuData& last) {
+float MotionEngine::CalculateAccelDelta(const ImuData& current, const ImuData& last) const {
     float dx = current.accel_x - last.accel_x;
     float dy = current.accel_y - last.accel_y;
     float dz = current.accel_z - last.accel_z;
@@ -359,12 +359,22 @@ bool MotionEngine::DetectFlip(const ImuData& data) {
     return flip_detected;
 }
 
-bool MotionEngine::IsStable(const ImuData& data, const ImuData& last_data) {
+bool MotionEngine::IsStable(const ImuData& data, const ImuData& last_data) const {
     // 计算加速度变化量
     float accel_delta = CalculateAccelDelta(data, last_data);
     
     // 判断是否稳定（加速度变化小于0.1g）
     return accel_delta < 0.1f;
+}
+
+bool MotionEngine::IsCurrentlyStable() const {
+    // 检查是否有有效的IMU数据
+    if (!enabled_ || !imu_) {
+        return false;  // 没有IMU或未启用时认为不稳定
+    }
+    
+    // 使用当前和上一次的IMU数据进行稳定性检查
+    return IsStable(current_imu_data_, last_imu_data_);
 }
 
 void MotionEngine::UpdateConfigFromJson(const cJSON* json) {
