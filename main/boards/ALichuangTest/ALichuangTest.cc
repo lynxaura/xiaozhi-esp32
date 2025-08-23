@@ -9,6 +9,7 @@
 #include "skills/motion.h"
 #include "qmi8658.h"
 #include "interaction/event_engine.h"
+#include "interaction/local_response_controller.h"
 #include "pca9685.h"
 
 #include <esp_log.h>
@@ -107,6 +108,7 @@ private:
     Pca9685* pca9685_ = nullptr;           // PCA9685 PWM控制器
     Vibration* vibration_skill_ = nullptr; // 振动技能管理器
     Motion* motion_skill_ = nullptr;       // 直流马达动作控制技能
+    LocalResponseController* local_response_controller_ = nullptr; // MCP本地响应控制器
     TaskHandle_t delay_task_handle = nullptr;
 #if CONFIG_LINGXI_ANIMA_UI
     // 情感相关成员变量
@@ -710,6 +712,37 @@ private:
         ESP_LOGI(TAG, "Interaction system initialized and started");
     }
     
+    void InitializeMcpTools() {
+        ESP_LOGI(TAG, "Initializing MCP local response tools...");
+        
+        try {
+            // 创建LocalResponseController实例
+            local_response_controller_ = new LocalResponseController(
+                motion_skill_,
+                vibration_skill_,
+                event_engine_,
+                [this]() -> Display* { return GetDisplay(); },
+                [this]() -> std::string { return GetCurrentEmotion(); },
+                [this](const std::string& emotion) { SetCurrentEmotion(emotion); }
+            );
+            
+            // 初始化MCP工具
+            if (local_response_controller_->Initialize()) {
+                ESP_LOGI(TAG, "✅ MCP local response system initialized successfully");
+            } else {
+                ESP_LOGE(TAG, "❌ Failed to initialize MCP local response system");
+                delete local_response_controller_;
+                local_response_controller_ = nullptr;
+            }
+        } catch (const std::exception& e) {
+            ESP_LOGE(TAG, "Exception during MCP tools initialization: %s", e.what());
+            if (local_response_controller_) {
+                delete local_response_controller_;
+                local_response_controller_ = nullptr;
+            }
+        }
+    }
+    
     void HandleEvent(const Event& event) {
         // 在终端输出事件信息
         const char* event_name = "";
@@ -821,6 +854,9 @@ public:
         StartVibrationTask();
         // 启动直流马达动作控制任务
         StartMotionTask();
+        
+        // 所有skills初始化完成后，初始化MCP工具
+        InitializeMcpTools();
     }
 
     virtual AudioCodec* GetAudioCodec() override {
