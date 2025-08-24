@@ -49,6 +49,9 @@ public:
     // 处理事件（决定立即发送或缓存）
     void HandleEvent(const Event& event);
     
+    // 尝试发送或缓存事件（新方法）
+    void TrySendOrCache(CachedEvent&& event);
+    
     // 启用/禁用通知
     void Enable(bool enable) { enabled_ = enable; }
     

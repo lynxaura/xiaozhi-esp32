@@ -58,20 +58,39 @@ void EventUploader::HandleEvent(const Event& event) {
     ESP_LOGI(TAG_EVENT_UPLOADER, "Duration: %lums, Start: %lld, End: %lld", 
              (long unsigned)cached.duration_ms, (long long)cached.start_time, (long long)cached.end_time);
     
-    // 立即发送事件
-    SendSingleEvent(std::move(cached));
+    // 尝试发送或缓存事件
+    TrySendOrCache(std::move(cached));
     
     ESP_LOGI(TAG_EVENT_UPLOADER, "✓ Event processing completed");
     
-    // 定期清理过期事件（性能优化）
+    // 定期清理过期事件（更频繁，因为缓存时间缩短到5秒）
     static uint32_t cleanup_counter = 0;
-    if (++cleanup_counter % 50 == 0) {  // 每50个事件清理一次
+    if (++cleanup_counter % 10 == 0) {  // 每10个事件清理一次
         ClearExpiredEvents();
     }
 }
 
+void EventUploader::TrySendOrCache(CachedEvent&& event) {
+    // 这个方法决定是立即发送还是缓存事件
+    // 策略：
+    // 1. 总是先尝试立即发送（SendEventMessage会处理网络和WebSocket连接）
+    // 2. 如果我们检测到没有网络，可以选择缓存（但实际上SendEventMessage会失败）
+    
+    // 暂时缓存事件，以防SendEventMessage失败时可以重试
+    // 但目前的设计是：如果没有连接，SendEventMessage会尝试建立连接
+    // 所以我们直接发送，让Application层处理连接逻辑
+    
+    SendSingleEvent(std::move(event));
+    
+    // 注意：如果需要实现失败后缓存的逻辑，可以在这里添加
+    // 但根据需求，我们不希望缓存超过5秒的事件
+}
+
 void EventUploader::OnConnectionOpened() {
-    ESP_LOGI(TAG_EVENT_UPLOADER, "Connection opened - processing cached events");
+    ESP_LOGI(TAG_EVENT_UPLOADER, "Connection opened - processing recent cached events (5s window)");
+    // 先清理超过5秒的过期事件
+    ClearExpiredEvents();
+    // 然后发送剩余的缓存事件
     ProcessCachedEvents();
 }
 
@@ -162,19 +181,19 @@ void EventUploader::ClearExpiredEvents() {
         return;
     }
     
-    int64_t current_time = esp_timer_get_time() / 1000;  // 转换为毫秒
-    int64_t expiry_time = current_time - EventNotificationConfig::CACHE_TIMEOUT_MS;
+    int64_t current_time_us = esp_timer_get_time();  // 微秒
+    int64_t expiry_time_us = current_time_us - (EventNotificationConfig::CACHE_TIMEOUT_MS * 1000);  // 转换为微秒
     
-    // 移除过期的事件
+    // 移除超过5秒的过期事件
     auto it = std::remove_if(event_cache_.begin(), event_cache_.end(),
-        [expiry_time](const CachedEvent& event) {
-            return event.end_time < expiry_time;
+        [expiry_time_us](const CachedEvent& event) {
+            return event.end_time < expiry_time_us;
         });
     
     if (it != event_cache_.end()) {
         size_t removed = std::distance(it, event_cache_.end());
         event_cache_.erase(it, event_cache_.end());
-        ESP_LOGI(TAG_EVENT_UPLOADER, "Removed %d expired events from cache", removed);
+        ESP_LOGI(TAG_EVENT_UPLOADER, "Removed %d expired events (>5s old) from cache", removed);
     }
 }
 
@@ -337,6 +356,13 @@ void EventUploader::SendSingleEvent(CachedEvent&& event) {
             return;
         }
         
+        // 检查事件是否过期（超过5秒的事件不发送）
+        int64_t current_time_us = esp_timer_get_time();
+        if (current_time_us - event.end_time > EventNotificationConfig::CACHE_TIMEOUT_MS * 1000) {
+            ESP_LOGW(TAG_EVENT_UPLOADER, "Event is too old (>5s), dropping it");
+            return;
+        }
+        
         // 构建单事件JSON
         std::vector<CachedEvent> event_vec;
         event_vec.push_back(std::move(event));
@@ -350,7 +376,9 @@ void EventUploader::SendSingleEvent(CachedEvent&& event) {
             ESP_LOGD(TAG_EVENT_UPLOADER, "✓ JSON valid, sending to server");
             cJSON_Delete(json);
             
-            // 发送到服务器
+            // 发送到服务器（Application::SendEventMessage会处理连接逻辑）
+            // - 如果没有网络，会失败
+            // - 如果有网络但无WebSocket，会尝试建立连接
             Application::GetInstance().SendEventMessage(payload);
         } else {
             ESP_LOGE(TAG_EVENT_UPLOADER, "✗ JSON invalid, not sending");

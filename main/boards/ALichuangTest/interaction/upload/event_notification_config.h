@@ -8,9 +8,9 @@ struct EventNotificationConfig {
     
     // 通知策略
     static constexpr bool IMMEDIATE_SEND = true;         // 立即发送
-    static constexpr int MAX_CACHE_SIZE = 20;            // 最大缓存数（统一配置）
-    static constexpr int CACHE_TIMEOUT_MS = 300000;      // 5分钟超时
-    static constexpr int BATCH_SIZE = 10;                // 批量发送大小
+    static constexpr int MAX_CACHE_SIZE = 10;            // 最大缓存数（减少到10个）
+    static constexpr int CACHE_TIMEOUT_MS = 5000;        // 5秒超时（避免发送过期事件）
+    static constexpr int BATCH_SIZE = 5;                 // 批量发送大小（减少延迟）
     
     // 事件类型过滤
     static constexpr bool NOTIFY_TOUCH_EVENTS = true;
