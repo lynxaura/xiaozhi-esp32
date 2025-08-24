@@ -86,17 +86,15 @@ void TouchEngine::LoadConfiguration(const char* config_path) {
 }
 
 void TouchEngine::InitializeGPIO() {
-    // 1. 配置触摸通道
+    // 1. 配置触摸通道 - 即使一侧失败，另一侧也继续工作
     esp_err_t ret = touch_pad_config(TOUCH_PAD_NUM10);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to config touch pad 10: %s", esp_err_to_name(ret));
-        return;
+        ESP_LOGE(TAG, "Failed to config touch pad 10 (LEFT): %s", esp_err_to_name(ret));
     }
     
     ret = touch_pad_config(TOUCH_PAD_NUM11);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to config touch pad 11: %s", esp_err_to_name(ret));
-        return;
+        ESP_LOGE(TAG, "Failed to config touch pad 11 (RIGHT): %s", esp_err_to_name(ret));
     }
     
     // 2. 配置去噪功能（重要！防止误触发）
@@ -120,6 +118,8 @@ void TouchEngine::InitializeGPIO() {
 void TouchEngine::ReadBaseline() {
     uint32_t sum10 = 0, sum11 = 0;
     const int samples = 30;  // 增加采样次数
+    int successful_reads = 0;
+    int error_count = 0;
     
     // 读取多次建立稳定基准
     for(int i = 0; i < samples; i++) {
@@ -127,30 +127,45 @@ void TouchEngine::ReadBaseline() {
         
         // TIMER模式下自动测量，直接读取
         esp_err_t ret10 = touch_pad_read_raw_data(TOUCH_PAD_NUM10, &val10);
-        if (ret10 == ESP_OK) {
-            sum10 += val10;
-        } else if (i == 0) {
-            ESP_LOGE(TAG, "Failed to read TOUCH_PAD_NUM10: %s", esp_err_to_name(ret10));
-        }
-        
         esp_err_t ret11 = touch_pad_read_raw_data(TOUCH_PAD_NUM11, &val11);
-        if (ret11 == ESP_OK) {
-            sum11 += val11;
-        } else if (i == 0) {
-            ESP_LOGE(TAG, "Failed to read TOUCH_PAD_NUM11: %s", esp_err_to_name(ret11));
-        }
         
+        if (ret10 == ESP_OK && ret11 == ESP_OK) {
+            sum10 += val10;
+            sum11 += val11;
+            successful_reads++;
+            
             // 首次和最后一次读取时显示原始值
-        if (i == 0 || i == samples - 1) {
-            ESP_LOGI(TAG, "Sample %d raw values - Touch10: %ld, Touch11: %ld", i, val10, val11);
+            if (i == 0 || i == samples - 1) {
+                ESP_LOGI(TAG, "Sample %d raw values - Touch10: %ld, Touch11: %ld", i, val10, val11);
+            }
+        } else {
+            error_count++;
+            if (error_count <= 5) {
+                ESP_LOGE(TAG, "Failed to read touch sensors: ret10=%s, ret11=%s (error %d/%d)", 
+                        esp_err_to_name(ret10), esp_err_to_name(ret11), error_count, samples);
+            }
         }
         
         vTaskDelay(pdMS_TO_TICKS(10));
     }
     
-    // 计算平均值作为基准
-    left_baseline_ = sum10 / samples;
-    right_baseline_ = sum11 / samples;
+    // 如果成功读取的次数太少，说明传感器有问题
+    if (successful_reads < samples / 2) {
+        ESP_LOGE(TAG, "Touch sensor baseline reading failed! Only %d/%d successful reads", 
+                successful_reads, samples);
+        ESP_LOGW(TAG, "Baseline reading critically failed, hardware may need reset");
+        // 注意：这里不能直接调用 ResetTouchSensor()，因为会造成无限递归
+        // 设置一个标志，让主循环处理
+        left_baseline_ = 0;
+        right_baseline_ = 0;
+        left_threshold_ = 0;
+        right_threshold_ = 0;
+        return;
+    }
+    
+    // 使用成功读取的次数计算平均值作为基准
+    left_baseline_ = sum10 / successful_reads;
+    right_baseline_ = sum11 / successful_reads;
     
     // 设置更保守的阈值，减少误触发
     // ESP32-S3触摸时数值会增加（不是减少）
@@ -254,25 +269,49 @@ void TouchEngine::TouchTask(void* param) {
 }
 
 void TouchEngine::Process() {
+    // 首先检查基线是否有效，如果基线为0说明初始化失败需要恢复
+    if (left_baseline_ == 0 || right_baseline_ == 0) {
+        static int baseline_error_count = 0;
+        baseline_error_count++;
+        
+        if (baseline_error_count <= 3) {
+            ESP_LOGE(TAG, "Invalid baseline detected (L=%ld, R=%ld), count=%d", 
+                    left_baseline_, right_baseline_, baseline_error_count);
+        }
+        
+        if (baseline_error_count >= 5) {
+            ESP_LOGE(TAG, "Baseline remains invalid after %d checks, triggering recovery...", 
+                    baseline_error_count);
+            ResetTouchSensor();
+            baseline_error_count = 0;
+        }
+        return;  // 基线无效，跳过这次处理
+    }
+    
     // TIMER模式下自动测量，直接读取值
     uint32_t left_value = 0, right_value = 0;
     esp_err_t ret1 = touch_pad_read_raw_data(TOUCH_PAD_NUM10, &left_value);
     esp_err_t ret2 = touch_pad_read_raw_data(TOUCH_PAD_NUM11, &right_value);
     
+    static int read_error_count = 0;  // 移到外面，便于在成功时重置
+    
     if (ret1 != ESP_OK || ret2 != ESP_OK) {
-        static int error_count = 0;
-        if (++error_count <= 10) {  // 增加错误报告次数
+        if (++read_error_count <= 10) {  // 增加错误报告次数
             ESP_LOGE(TAG, "Failed to read touch values: ret1=%s, ret2=%s (count: %d)", 
-                    esp_err_to_name(ret1), esp_err_to_name(ret2), error_count);
+                    esp_err_to_name(ret1), esp_err_to_name(ret2), read_error_count);
         }
         
-        // 如果连续失败超过20次，尝试重新初始化
-        if (error_count > 20 && error_count % 50 == 0) {
-            ESP_LOGE(TAG, "Touch sensor persistent failure, attempting recovery...");
-            // TODO: 实现触摸传感器重新初始化
+        // 如果连续失败超过20次，触发恢复机制
+        if (read_error_count > 20) {
+            ESP_LOGE(TAG, "Touch sensor persistent failure (count: %d), triggering recovery...", read_error_count);
+            ResetTouchSensor();
+            read_error_count = 0;  // 重置错误计数
         }
         return;  // 读取失败，跳过这次
     }
+    
+    // 读取成功，重置错误计数
+    read_error_count = 0;
     
     // 简化检测逻辑 - ESP32-S3触摸时数值减少
     // 添加死区防止噪声触发
