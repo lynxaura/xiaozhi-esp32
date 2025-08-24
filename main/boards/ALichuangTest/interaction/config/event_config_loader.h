@@ -1,8 +1,8 @@
 #ifndef ALICHUANGTEST_EVENT_CONFIG_LOADER_H
 #define ALICHUANGTEST_EVENT_CONFIG_LOADER_H
 
-#include "event_processor.h"
-#include "event_engine.h"
+#include "../core/event_processor.h"
+#include "../core/event_engine.h"
 #include <string>
 #include <map>
 

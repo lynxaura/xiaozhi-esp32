@@ -7,8 +7,8 @@
 #include "esp32_camera.h"
 #include "skills/vibration.h"
 #include "qmi8658.h"
-#include "interaction/event_engine.h"
-#include "interaction/event_uploader.h"
+#include "interaction/core/event_engine.h"
+#include "interaction/upload/event_uploader.h"
 #include "pca9685.h"
 
 #include <esp_log.h>

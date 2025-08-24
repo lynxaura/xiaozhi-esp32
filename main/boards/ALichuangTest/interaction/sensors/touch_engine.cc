@@ -1,5 +1,5 @@
 #include "touch_engine.h"
-#include "touch_config.h"
+#include "../config/touch_config.h"
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <driver/touch_pad.h>

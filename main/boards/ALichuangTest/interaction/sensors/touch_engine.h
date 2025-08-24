@@ -7,7 +7,7 @@
 #include <functional>
 #include <vector>
 #include <algorithm>
-#include "touch_config.h"
+#include "../config/touch_config.h"
 
 // 触摸事件类型
 enum class TouchEventType {

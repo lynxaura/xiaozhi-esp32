@@ -1,8 +1,8 @@
 #ifndef ALICHUANGTEST_EVENT_ENGINE_H
 #define ALICHUANGTEST_EVENT_ENGINE_H
 
-#include "motion_engine.h"
-#include "touch_engine.h"
+#include "../sensors/motion_engine.h"
+#include "../sensors/touch_engine.h"
 #include <functional>
 #include <memory>
 #include <vector>

@@ -1,7 +1,7 @@
 #ifndef ALICHUANGTEST_MOTION_ENGINE_H
 #define ALICHUANGTEST_MOTION_ENGINE_H
 
-#include "../qmi8658.h"
+#include "../../qmi8658.h"
 #include <functional>
 #include <memory>
 #include <vector>

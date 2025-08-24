@@ -1,8 +1,8 @@
 #include "event_engine.h"
-#include "motion_engine.h"
-#include "touch_engine.h"
+#include "../sensors/motion_engine.h"
+#include "../sensors/touch_engine.h"
 #include "event_processor.h"
-#include "event_config_loader.h"
+#include "../config/event_config_loader.h"
 #include <esp_log.h>
 #include <esp_timer.h>
 

@@ -1,7 +1,7 @@
 #ifndef EVENT_UPLOADER_H
 #define EVENT_UPLOADER_H
 
-#include "event_engine.h"
+#include "../core/event_engine.h"
 #include "event_notification_config.h"
 #include <vector>
 #include <mutex>
