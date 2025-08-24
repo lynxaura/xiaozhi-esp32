@@ -121,50 +121,5 @@
       "interval_ms": 0,
       "comment": "默认立即处理所有未配置的事件"
     }
-  },
-  
-  "response_mappings": {
-    "comment": "事件响应映射 - 定义不同事件触发的动作",
-    
-    "single_tap": {
-      "left": {
-        "motion": "happy_wiggle",
-        "sound": "chuckle",
-        "emotion": "happy"
-      },
-      "right": {
-        "motion": "curious_tilt",
-        "sound": "hmm",
-        "emotion": "curious"
-      }
-    },
-    
-    "multi_tap": {
-      "3_taps": {
-        "motion": "excited_bounce",
-        "sound": "laugh",
-        "emotion": "laughing"
-      },
-      "5_taps": {
-        "motion": "tickled_shake",
-        "sound": "giggle",
-        "emotion": "tickled"
-      }
-    },
-    
-    "combined_events": {
-      "tap_while_shaking": {
-        "description": "摇晃时点击",
-        "motion": "dizzy_spin",
-        "sound": "whoa",
-        "emotion": "dizzy"
-      },
-      "tap_while_upside_down": {
-        "description": "倒置时点击",
-        "motion": "confused_wobble",
-        "sound": "huh",
-        "emotion": "confused"
-      }
-    }
   }
 }
