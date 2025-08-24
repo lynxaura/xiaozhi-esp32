@@ -354,7 +354,7 @@ ESP_LOGI(TAG, "Received: %d, Processed: %d, Dropped: %d",
 
 **总体评价**: 当前 `EventEngine` 及其子系统（`EventProcessor`, `EventUploader`, `MotionEngine`, `TouchEngine`）的架构设计良好，功能基本完整。但通过深入分析代码，发现存在一些在**内存安全、架构耦合、错误处理、可维护性**方面的风险和待改进点。本章节将对这些问题进行详细阐述。
 
-### 10.1 内存管理问题 (Memory Management)
+### 10.1 内存管理问题 (Memory Management) （已处理）
 
 #### 10.1.1 [高风险] EventProcessor 内存与类型安全问题
 **问题描述**: `EventProcessor` 在实现 `DEBOUNCE`, `MERGE`, `QUEUE` 等策略时，使用了 `void*` 指针来存储待处理的 `Event` 对象，并依赖手动 `new` 和 `delete` 进行内存管理。这是整个系统中最严重的安全隐患。
@@ -408,7 +408,7 @@ std::queue<std::unique_ptr<Event>> event_queue_; // 队列同样使用智能指�
 - **`NetworkEventSender` (实现)**: 实现 `IEventSender` 接口，其内部调用 `Application::GetInstance()`，将耦合点隔离在此处。
 - **`EventUploader` (重构后)**: 作为协调器，接收 `Event`，调用 `EventFormatter` 和 `EventCache`，并通过注入的 `IEventSender` 接口发送数据。
 
-#### 10.2.2 缓存机制与网络错误处理不匹配
+#### 10.2.2 缓存机制与网络错误处理不匹配 （已处理）
 **问题描述**: 当前的缓存机制 (`event_cache_`) 主要用于**网络离线时的缓冲**，当连接恢复时 (`OnConnectionOpened`) 批量发送。但是，对于网络在线时 `SendSingleEvent` 发送失败的场景，**缺乏即时的、带重试逻辑的错误处理**。
 
 **风险分析**: 如果设备在线但网络暂时抖动，`SendSingleEvent` 的调用会失败，而该事件会**被直接丢弃**，不会进入缓存或重试，导致事件丢失。
@@ -428,7 +428,7 @@ std::queue<std::unique_ptr<Event>> event_queue_; // 队列同样使用智能指�
 - 设计一个统一的配置管理器，支持分层加载和运行时热重载。
 - 为所有主要引擎（`TouchEngine`, `EventProcessor`）提供 `UpdateConfig(const cJSON&)` 接口。
 
-#### 10.3.2 错误恢复机制不一致
+#### 10.3.2 错误恢复机制不一致 （已处理）
 **问题描述**: `TouchEngine` 中包含了非常好的硬件卡死恢复逻辑 (`ResetTouchSensor`)，当检测到触摸读数长时间不变时会触发。然而，在其他错误路径下（如 `touch_pad_read_raw_data` 返回错误），却没有调用此恢复机制，只是打印日志。
 
 **具体表现**:
@@ -444,7 +444,7 @@ std::queue<std::unique_ptr<Event>> event_queue_; // 队列同样使用智能指�
 
 **建议改进**: 引入批量处理机制。收集一小段时间内（如100ms）或一定数量（如5个）的事件，然后进行一次JSON序列化和发送，减少I/O和计算开销。
 
-#### 10.4.2 配置文件版本管理
+#### 10.4.2 配置文件版本管理 （小概率事件，不处理）
 **问题描述**: `event_config.json` 缺乏版本号。如果未来固件升级，修改了配置项的名称或结构，旧的配置文件可能会导致解析失败或行为异常。
 
 **建议改进**: 在JSON文件中增加一个 `config_version` 字段，并在加载时进行校验，以支持向后兼容和配置迁移。
