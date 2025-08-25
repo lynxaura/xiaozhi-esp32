@@ -240,7 +240,7 @@ void Motion::MotionTaskFunction(void* arg) {
 
 void Motion::MotorTurnToAngle(float target_angle, motion_speed_t speed) {
     if (!pca9685_) return;
-    // pca9685_->IsDevicePresent();
+    pca9685_->IsDevicePresent();
     
     // 限制目标角度
     if (target_angle > ANGLE_MAX) target_angle = ANGLE_MAX;
@@ -729,7 +729,7 @@ void Motion::RunSpeedTest() {
     ESP_LOGI(TAG, "PWM频率: 200Hz, PWM值: %d (%.1f%%占空比)", 
              MOTOR_SPEED_FAST_PWM, 4000/4095.0*100);
     
-    // pca9685_->IsDevicePresent();
+    pca9685_->IsDevicePresent();
     SetMotorSpeed(1, 4000); // 超快速正向转动
     vTaskDelay(pdMS_TO_TICKS(1000)); // 转动1秒
     SetMotorSpeed(0, 0); // 停止
@@ -741,7 +741,7 @@ void Motion::RunSpeedTest() {
     ESP_LOGI(TAG, "⚡ 第二阶段: 快速转动 (1秒钟)");
     ESP_LOGI(TAG, "PWM频率: 200Hz, PWM值: %d (%.1f%%占空比)", 
              MOTOR_SPEED_FAST_PWM, MOTOR_SPEED_FAST_PWM/4095.0*100);
-    // pca9685_->IsDevicePresent();
+    pca9685_->IsDevicePresent();
     SetMotorSpeed(1, MOTOR_SPEED_FAST_PWM); // 快速正向转动
     vTaskDelay(pdMS_TO_TICKS(1000)); // 转动1秒
     SetMotorSpeed(0, 0); // 停止
@@ -750,7 +750,7 @@ void Motion::RunSpeedTest() {
     vTaskDelay(pdMS_TO_TICKS(200)); // 暂停0.2秒
     
     // 测试3: 慢速转动1秒  
-    // pca9685_->IsDevicePresent();
+    pca9685_->IsDevicePresent();
     ESP_LOGI(TAG, "🐌 第三阶段: 慢速转动 (1秒钟)");
     ESP_LOGI(TAG, "PWM频率: 200Hz, PWM值: %d (%.1f%%占空比)", 
              MOTOR_SPEED_SLOW_PWM, (float)MOTOR_SPEED_SLOW_PWM/4095.0*100);

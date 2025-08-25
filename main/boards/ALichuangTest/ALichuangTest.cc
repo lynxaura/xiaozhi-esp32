@@ -598,7 +598,7 @@ private:
     }
 
     void InitializePca9685() {
-        // IsDevicePresent(PCA9685_DEFAULT_ADDR);
+        IsDevicePresent(PCA9685_DEFAULT_ADDR);
         ESP_LOGI(TAG, "Initializing PCA9685 at address 0x40...");
         pca9685_ = new Pca9685(i2c_bus_, PCA9685_DEFAULT_ADDR);
         
