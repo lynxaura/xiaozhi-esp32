@@ -231,8 +231,14 @@ if(CONFIG_BOARD_TYPE_ALICHUANGTEST)
     file(GLOB ALICHUANGTEST_EXTRA_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/skills/*.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/skills/*.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/*.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/*.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/core/*.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/core/*.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/sensors/*.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/sensors/*.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/upload/*.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/upload/*.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/config/*.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/config/*.c
     )
     list(APPEND BOARD_SOURCES ${ALICHUANGTEST_EXTRA_SOURCES})
 endif()

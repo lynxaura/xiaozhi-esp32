@@ -186,6 +186,13 @@ bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engi
         }
     }
     
+    // 解析运动检测参数并应用到 motion_engine
+    cJSON* motion_params = cJSON_GetObjectItem(root, "motion_detection_parameters");
+    if (motion_params) {
+        engine->UpdateMotionEngineConfig(root);
+        ESP_LOGI(TAG, "Applied motion detection parameters to motion engine");
+    }
+    
     // 解析响应映射
     cJSON* response_mappings = cJSON_GetObjectItem(root, "response_mappings");
     if (response_mappings) {
@@ -278,7 +285,13 @@ EventResponse EventConfigLoader::GetResponseForEvent(EventType type, const Event
     // 根据事件类型和数据获取响应
     if (type == EventType::TOUCH_TAP) {
         // 检查是左侧还是右侧
-        std::string key = event.data.touch_data.x < 0 ? "tap_left" : "tap_right";
+        std::string key;
+        switch (event.data.touch_data.position) {
+            case TouchPosition::LEFT: key = "tap_left"; break;
+            case TouchPosition::RIGHT: key = "tap_right"; break;
+            case TouchPosition::BOTH: key = "tap_both"; break;
+            default: key = "tap_any"; break;
+        }
         auto it = response_map_.find(key);
         if (it != response_map_.end()) {
             return it->second;

@@ -8,7 +8,8 @@
 #include "skills/vibration.h"
 #include "skills/motion.h"
 #include "qmi8658.h"
-#include "interaction/event_engine.h"
+#include "interaction/core/event_engine.h"
+#include "interaction/upload/event_uploader.h"
 #include "pca9685.h"
 
 #include <esp_log.h>
@@ -103,6 +104,7 @@ private:
     Esp32Camera* camera_;
     Qmi8658* imu_ = nullptr;
     EventEngine* event_engine_ = nullptr;
+    EventUploader* event_uploader_ = nullptr;
     esp_timer_handle_t event_timer_ = nullptr;
     Pca9685* pca9685_ = nullptr;           // PCA9685 PWM控制器
     Vibration* vibration_skill_ = nullptr; // 振动技能管理器
@@ -684,6 +686,11 @@ private:
         // 初始化触摸引擎
         event_engine_->InitializeTouchEngine();
         
+        // 创建事件上传器
+        event_uploader_ = new EventUploader();
+        event_uploader_->Enable(true);
+        ESP_LOGI(TAG, "EventUploader created and enabled");
+        
         // 事件处理策略已通过配置文件自动加载
         // 如需覆盖特定策略，可在此处调用：
         // event_engine_->ConfigureEventProcessing(EventType::TOUCH_TAP, custom_config);
@@ -691,6 +698,11 @@ private:
         // 设置事件回调
         event_engine_->RegisterCallback([this](const Event& event) {
             HandleEvent(event);
+            
+            // 添加事件上传处理
+            if (event_uploader_) {
+                event_uploader_->HandleEvent(event);
+            }
         });
         
         // 创建定时器，每50ms处理一次事件
@@ -758,13 +770,20 @@ private:
                 motion_skill_->Perform(MOTION_STRUGGLE_TWIST);
                 break;
             // 处理触摸事件
-            case EventType::TOUCH_TAP:
+            case EventType::TOUCH_TAP: {
                 event_name = "TOUCH_TAP";
-                // touch_data.x: -1表示左侧，1表示右侧
-                // touch_data.y: 持续时间（毫秒）
-                ESP_LOGI(TAG, "👆 Touch TAP on %s side! (duration: %d ms)", 
-                        event.data.touch_data.x < 0 ? "LEFT" : "RIGHT",
-                        event.data.touch_data.y);
+                // 使用新的TouchEventData结构
+                const char* side_str = "UNKNOWN";
+                switch (event.data.touch_data.position) {
+                    case TouchPosition::LEFT: side_str = "LEFT"; break;
+                    case TouchPosition::RIGHT: side_str = "RIGHT"; break;
+                    case TouchPosition::BOTH: side_str = "BOTH"; break;
+                    case TouchPosition::ANY: side_str = "ANY"; break;
+                }
+                ESP_LOGI(TAG, "👆 Touch TAP on %s side! (duration: %lu ms, count: %lu)", 
+                        side_str,
+                        (unsigned long)event.data.touch_data.duration_ms,
+                        (unsigned long)event.data.touch_data.tap_count);
                 vibration_skill_->Play(VIBRATION_SHORT_BUZZ);
                 if (event.data.touch_data.x < 0) {
                     motion_skill_->Perform(MOTION_SLOW_TURN_LEFT);
@@ -772,21 +791,64 @@ private:
                     motion_skill_->Perform(MOTION_SLOW_TURN_RIGHT);
                 }
                 break;
+            }
             case EventType::TOUCH_DOUBLE_TAP:
                 event_name = "TOUCH_DOUBLE_TAP";
-                ESP_LOGI(TAG, "👆👆 Touch DOUBLE TAP on RIGHT side! (duration: %d ms)", 
-                        event.data.touch_data.y);
+                ESP_LOGI(TAG, "👆👆 Touch DOUBLE TAP! (duration: %lu ms)", 
+                        (unsigned long)event.data.touch_data.duration_ms);
                 vibration_skill_->Play(VIBRATION_PURR_PATTERN);
                 motion_skill_->Perform(MOTION_HAPPY_WIGGLE);
                 break;
             case EventType::TOUCH_LONG_PRESS:
                 event_name = "TOUCH_LONG_PRESS";
-                ESP_LOGI(TAG, "👇 Touch LONG PRESS on %s side! (duration: %d ms)", 
-                        event.data.touch_data.x < 0 ? "LEFT" : "RIGHT",
-                        event.data.touch_data.y);
+                {
+                    const char* press_side = "UNKNOWN";
+                    switch (event.data.touch_data.position) {
+                        case TouchPosition::LEFT: press_side = "LEFT"; break;
+                        case TouchPosition::RIGHT: press_side = "RIGHT"; break;
+                        case TouchPosition::BOTH: press_side = "BOTH"; break;
+                        case TouchPosition::ANY: press_side = "ANY"; break;
+                    }
+                    ESP_LOGI(TAG, "👇 Touch LONG PRESS on %s side! (duration: %lu ms)", 
+                            press_side,
+                            (unsigned long)event.data.touch_data.duration_ms);
+                }
                 vibration_skill_->Play(VIBRATION_HEARTBEAT_STRONG);
                 if (motion_skill_) motion_skill_->Perform(MOTION_NUZZLE_FORWARD);
                 break;
+            
+            // 其他触摸事件
+            case EventType::TOUCH_CRADLED:
+                event_name = "TOUCH_CRADLED";
+                ESP_LOGI(TAG, "🤗 Device is being cradled!");
+                vibration_skill_->Play(VIBRATION_PURR_PATTERN);
+                break;
+            case EventType::TOUCH_TICKLED:
+                event_name = "TOUCH_TICKLED";
+                ESP_LOGI(TAG, "😄 Device is being tickled!");
+                vibration_skill_->Play(VIBRATION_SHORT_BUZZ);
+                break;
+            case EventType::TOUCH_HOLD:
+            case EventType::TOUCH_RELEASE:
+                // 暂时不处理
+                return;
+                
+            // 音频事件（预留）
+            case EventType::AUDIO_WAKE_WORD:
+            case EventType::AUDIO_SPEAKING:
+            case EventType::AUDIO_LISTENING:
+                // 暂时不处理
+                return;
+                
+            // 系统事件（预留）
+            case EventType::SYSTEM_BOOT:
+            case EventType::SYSTEM_SHUTDOWN:
+            case EventType::SYSTEM_ERROR:
+                // 暂时不处理
+                return;
+                
+            // 默认情况
+            case EventType::MOTION_NONE:
             default: 
                 return;
         }
@@ -856,6 +918,11 @@ public:
     // 获取运动检测器（可选，用于外部访问）
     EventEngine* GetEventEngine() {
         return event_engine_;
+    }
+    
+    // 获取事件上传器（供Application使用）
+    EventUploader* GetEventUploader() { 
+        return event_uploader_; 
     }
     
     // 获取IMU（可选，用于外部访问）

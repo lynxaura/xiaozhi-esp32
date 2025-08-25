@@ -7,7 +7,7 @@
 #include <functional>
 #include <vector>
 #include <algorithm>
-#include "touch_config.h"
+#include "../config/touch_config.h"
 
 // 触摸事件类型
 enum class TouchEventType {
@@ -42,6 +42,7 @@ struct TouchEvent {
 class TouchEngine {
 public:
     using TouchEventCallback = std::function<void(const TouchEvent&)>;
+    using IMUStabilityCallback = std::function<bool()>;
     
     TouchEngine();
     ~TouchEngine();
@@ -54,6 +55,9 @@ public:
     
     // 注册事件回调
     void RegisterCallback(TouchEventCallback callback);
+    
+    // 设置IMU稳定性查询回调
+    void SetIMUStabilityCallback(IMUStabilityCallback callback);
     
     // 启用/禁用触摸检测
     void Enable(bool enable) { enabled_ = enable; }
@@ -119,6 +123,9 @@ private:
     
     // 事件回调
     std::vector<TouchEventCallback> callbacks_;
+    
+    // IMU稳定性查询回调
+    IMUStabilityCallback imu_stability_callback_;
     
     // GPIO初始化
     void InitializeGPIO();

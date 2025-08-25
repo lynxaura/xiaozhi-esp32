@@ -741,6 +741,37 @@ void Application::SendMcpMessage(const std::string& payload) {
     });
 }
 
+void Application::SendEventMessage(const std::string& payload_str) {
+    Schedule([this, payload_str]() {
+        ESP_LOGI(TAG, "=== Sending Event Message ===");
+        ESP_LOGI(TAG, "Payload: %s", payload_str.c_str());
+        
+        if (!protocol_) {
+            ESP_LOGW(TAG, "Protocol not available, message not sent");
+            return;
+        }
+        
+        // 检查连接状态，如果未连接则先建立连接
+        if (!protocol_->IsAudioChannelOpened()) {
+            ESP_LOGI(TAG, "WebSocket not connected, establishing connection for event message...");
+            if (!protocol_->OpenAudioChannel()) {
+                ESP_LOGW(TAG, "Failed to establish connection, event message not sent");
+                return;
+            }
+            ESP_LOGI(TAG, "Connection established successfully");
+        }
+        
+        ESP_LOGI(TAG, "Sending event message to server...");
+        bool success = protocol_->SendEventMessage(payload_str);
+        
+        if (success) {
+            ESP_LOGI(TAG, "✓ Event message sent successfully");
+        } else {
+            ESP_LOGW(TAG, "✗ Failed to send event message");
+        }
+    });
+}
+
 void Application::SetAecMode(AecMode mode) {
     aec_mode_ = mode;
     Schedule([this]() {
