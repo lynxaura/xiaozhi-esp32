@@ -239,6 +239,8 @@ if(CONFIG_BOARD_TYPE_ALICHUANGTEST)
         ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/upload/*.c
         ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/config/*.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/config/*.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/controller/*.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/controller/*.c
     )
     list(APPEND BOARD_SOURCES ${ALICHUANGTEST_EXTRA_SOURCES})
 endif()
