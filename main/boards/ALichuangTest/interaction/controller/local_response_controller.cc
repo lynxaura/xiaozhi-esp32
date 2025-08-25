@@ -105,12 +105,16 @@ void LocalResponseController::RegisterVibrationTools() {
     // 基础振动控制
     mcp_server.AddTool("self.haptic.basic_vibration",
         "控制振动马达产生触觉反馈。可用模式：\n"
-        "short_buzz: 短促确认振动\n"
-        "purr: 咕噜咕噜声振动\n"
-        "heartbeat: 心跳节奏振动\n"
-        "sharp_buzz: 尖锐提醒振动\n"
-        "giggle: 笑声振动\n"
-        "tremble: 颤抖振动\n"
+        "short_buzz: 短促确认振动 - 轻抚头部的清脆反馈\n"
+        "purr_short: 短促的咕噜声 - 轻抚头部的温和反馈\n"
+        "purr_pattern: 持续的咕噜咕噜声 - 按住头部的舒适感\n"
+        "gentle_heartbeat: 温暖平稳的心跳 - 按住头部/被拥抱的安全感\n"
+        "struggle_pattern: 表达挣扎的不规律振动 - 按住头部/被倒置时的不适\n"
+        "sharp_buzz: 尖锐提醒振动 - 轻触身体时的打扰感\n"
+        "tremble_pattern: 表达害怕的颤抖 - 被拿起时不开心的反应\n"
+        "giggle_pattern: 模拟笑到发抖的欢快振动 - 被挠痒痒的快乐\n"
+        "heartbeat_strong: 表达力量和信念的强心跳 - 掌心约定的坚定\n"
+        "erratic_strong: 表达眩晕的混乱强振动 - 被剧烈晃动的dizzy感\n"
         "stop: 停止振动",
         PropertyList({
             Property("pattern", kPropertyTypeString)
@@ -561,18 +565,26 @@ motion_id_t LocalResponseController::GetMotionIdForEmotion(const std::string& em
 }
 
 vibration_id_t LocalResponseController::GetVibrationIdForEmotion(const std::string& emotion) {
-    if (emotion == "happy") {
+    if (emotion == "happy" || emotion == "joy") {
         return VIBRATION_GIGGLE_PATTERN;
-    } else if (emotion == "excited") {
+    } else if (emotion == "excited" || emotion == "excitement") {
         return VIBRATION_ERRATIC_STRONG;
-    } else if (emotion == "comfort") {
-        return VIBRATION_GENTLE_HEARTBEAT;
-    } else if (emotion == "alert") {
+    } else if (emotion == "comfort" || emotion == "content") {
+        return VIBRATION_PURR_PATTERN;
+    } else if (emotion == "alert" || emotion == "surprised") {
         return VIBRATION_SHARP_BUZZ;
-    } else if (emotion == "sad") {
+    } else if (emotion == "sad" || emotion == "sadness") {
         return VIBRATION_GENTLE_HEARTBEAT;
-    } else if (emotion == "scared") {
+    } else if (emotion == "scared" || emotion == "fear") {
         return VIBRATION_TREMBLE_PATTERN;
+    } else if (emotion == "angry" || emotion == "frustrated") {
+        return VIBRATION_STRUGGLE_PATTERN;
+    } else if (emotion == "affection" || emotion == "love") {
+        return VIBRATION_HEARTBEAT_STRONG;
+    } else if (emotion == "playful" || emotion == "tickled") {
+        return VIBRATION_GIGGLE_PATTERN;
+    } else if (emotion == "calm" || emotion == "relaxed") {
+        return VIBRATION_PURR_SHORT;
     } else {
         return VIBRATION_SHORT_BUZZ; // 默认振动
     }
@@ -587,16 +599,24 @@ motion_speed_t LocalResponseController::ParseMotionSpeed(const std::string& spee
 vibration_id_t LocalResponseController::ParseVibrationPattern(const std::string& pattern) {
     if (pattern == "short_buzz") {
         return VIBRATION_SHORT_BUZZ;
-    } else if (pattern == "purr") {
+    } else if (pattern == "purr_short") {
+        return VIBRATION_PURR_SHORT;
+    } else if (pattern == "purr" || pattern == "purr_pattern") {
         return VIBRATION_PURR_PATTERN;
-    } else if (pattern == "heartbeat") {
+    } else if (pattern == "gentle_heartbeat" || pattern == "heartbeat") {
         return VIBRATION_GENTLE_HEARTBEAT;
+    } else if (pattern == "struggle_pattern" || pattern == "struggle") {
+        return VIBRATION_STRUGGLE_PATTERN;
     } else if (pattern == "sharp_buzz") {
         return VIBRATION_SHARP_BUZZ;
-    } else if (pattern == "giggle") {
-        return VIBRATION_GIGGLE_PATTERN;
-    } else if (pattern == "tremble") {
+    } else if (pattern == "tremble_pattern" || pattern == "tremble") {
         return VIBRATION_TREMBLE_PATTERN;
+    } else if (pattern == "giggle_pattern" || pattern == "giggle") {
+        return VIBRATION_GIGGLE_PATTERN;
+    } else if (pattern == "heartbeat_strong" || pattern == "strong_heartbeat") {
+        return VIBRATION_HEARTBEAT_STRONG;
+    } else if (pattern == "erratic_strong" || pattern == "erratic") {
+        return VIBRATION_ERRATIC_STRONG;
     } else {
         return VIBRATION_MAX; // 无效模式标识
     }
