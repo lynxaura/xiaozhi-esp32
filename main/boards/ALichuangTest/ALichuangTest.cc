@@ -734,40 +734,28 @@ private:
                         std::sqrt(data.accel_x * data.accel_x + 
                                 data.accel_y * data.accel_y + 
                                 data.accel_z * data.accel_z));
-                vibration_skill_->Play(VIBRATION_SHARP_BUZZ);
-                motion_skill_->Perform(MOTION_STRUGGLE_TWIST);
                 break;
             case EventType::MOTION_SHAKE_VIOLENTLY:
                 event_name = "SHAKE_VIOLENTLY";
                 ESP_LOGW(TAG, "⚡ VIOLENT SHAKE! Accel: X=%.2f Y=%.2f Z=%.2f g", 
                         data.accel_x, data.accel_y, data.accel_z);
-                vibration_skill_->Play(VIBRATION_ERRATIC_STRONG);
-                motion_skill_->Perform(MOTION_SHAKE_HEAD);
                 break;
             case EventType::MOTION_FLIP: 
                 event_name = "FLIP";
                 ESP_LOGI(TAG, "🔄 Device flipped! (gyro: x=%.1f y=%.1f z=%.1f deg/s)", 
                         data.gyro_x, data.gyro_y, data.gyro_z);
-                vibration_skill_->Play(VIBRATION_GIGGLE_PATTERN);
-                motion_skill_->Perform(MOTION_DODGE_SLOWLY);
                 break;
             case EventType::MOTION_SHAKE: 
                 event_name = "SHAKE";
                 ESP_LOGI(TAG, "🔔 Device shaken!");
-                vibration_skill_->Play(VIBRATION_SHARP_BUZZ);
-                motion_skill_->Perform(MOTION_HAPPY_WIGGLE);
                 break;
             case EventType::MOTION_PICKUP: 
                 event_name = "PICKUP";
                 ESP_LOGI(TAG, "📱 Device picked up!");
-                vibration_skill_->Play(VIBRATION_TREMBLE_PATTERN);
-                motion_skill_->Perform(MOTION_DODGE_SUBTLE);
                 break;
             case EventType::MOTION_UPSIDE_DOWN:
                 event_name = "UPSIDE_DOWN";
                 ESP_LOGI(TAG, "🙃 Device is upside down! (Z-axis: %.2f g)", data.accel_z);
-                vibration_skill_->Play(VIBRATION_STRUGGLE_PATTERN);
-                motion_skill_->Perform(MOTION_STRUGGLE_TWIST);
                 break;
             // 处理触摸事件
             case EventType::TOUCH_TAP: {
@@ -784,20 +772,12 @@ private:
                         side_str,
                         (unsigned long)event.data.touch_data.duration_ms,
                         (unsigned long)event.data.touch_data.tap_count);
-                vibration_skill_->Play(VIBRATION_SHORT_BUZZ);
-                if (event.data.touch_data.position == TouchPosition::LEFT) {
-                    motion_skill_->Perform(MOTION_SLOW_TURN_LEFT);
-                } else if (event.data.touch_data.position == TouchPosition::RIGHT) {
-                    motion_skill_->Perform(MOTION_SLOW_TURN_RIGHT);
-                }
                 break;
             }
             case EventType::TOUCH_DOUBLE_TAP:
                 event_name = "TOUCH_DOUBLE_TAP";
                 ESP_LOGI(TAG, "👆👆 Touch DOUBLE TAP! (duration: %lu ms)", 
                         (unsigned long)event.data.touch_data.duration_ms);
-                vibration_skill_->Play(VIBRATION_PURR_PATTERN);
-                motion_skill_->Perform(MOTION_HAPPY_WIGGLE);
                 break;
             case EventType::TOUCH_LONG_PRESS:
                 event_name = "TOUCH_LONG_PRESS";
@@ -813,20 +793,16 @@ private:
                             press_side,
                             (unsigned long)event.data.touch_data.duration_ms);
                 }
-                vibration_skill_->Play(VIBRATION_HEARTBEAT_STRONG);
-                if (motion_skill_) motion_skill_->Perform(MOTION_NUZZLE_FORWARD);
                 break;
             
             // 其他触摸事件
             case EventType::TOUCH_CRADLED:
                 event_name = "TOUCH_CRADLED";
                 ESP_LOGI(TAG, "🤗 Device is being cradled!");
-                vibration_skill_->Play(VIBRATION_PURR_PATTERN);
                 break;
             case EventType::TOUCH_TICKLED:
                 event_name = "TOUCH_TICKLED";
                 ESP_LOGI(TAG, "😄 Device is being tickled!");
-                vibration_skill_->Play(VIBRATION_SHORT_BUZZ);
                 break;
             case EventType::TOUCH_HOLD:
             case EventType::TOUCH_RELEASE:
