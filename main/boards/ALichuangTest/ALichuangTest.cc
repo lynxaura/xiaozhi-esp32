@@ -785,9 +785,9 @@ private:
                         (unsigned long)event.data.touch_data.duration_ms,
                         (unsigned long)event.data.touch_data.tap_count);
                 vibration_skill_->Play(VIBRATION_SHORT_BUZZ);
-                if (event.data.touch_data.x < 0) {
+                if (event.data.touch_data.position == TouchPosition::LEFT) {
                     motion_skill_->Perform(MOTION_SLOW_TURN_LEFT);
-                } else {
+                } else if (event.data.touch_data.position == TouchPosition::RIGHT) {
                     motion_skill_->Perform(MOTION_SLOW_TURN_RIGHT);
                 }
                 break;

@@ -714,8 +714,8 @@ uint32_t Motion::CalculateRotationTime(float angle_diff, motion_speed_t speed) {
     if (rotation_time < 5) rotation_time = 5;        // 最小5ms，仅防止系统延迟
     if (rotation_time > 5000) rotation_time = 5000;  // 最大5秒
     
-    ESP_LOGI(TAG, "精确转动计算: 角度差=%.1f°, PWM=%d(%.1f%%), 预期速度=%.1f°/s, 时间=%dms", 
-             angle_diff, speed_pwm, speed_ratio*100, degrees_per_second, rotation_time);
+    ESP_LOGI(TAG, "精确转动计算: 角度差=%.1f°, PWM=%d(%.1f%%), 预期速度=%.1f°/s, 时间=%lums", 
+             angle_diff, speed_pwm, speed_ratio*100, degrees_per_second, (unsigned long)rotation_time);
     
     return rotation_time;
 }
