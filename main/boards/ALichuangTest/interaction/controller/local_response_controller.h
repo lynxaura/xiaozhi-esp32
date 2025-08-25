@@ -2,9 +2,9 @@
 #define ALICHUANGTEST_LOCAL_RESPONSE_CONTROLLER_H
 
 #include "mcp_server.h"
-#include "../skills/motion.h"
-#include "../skills/vibration.h"
-#include "event_engine.h"
+#include "../../skills/motion.h"
+#include "../../skills/vibration.h"
+#include "../core/event_engine.h"
 #include <string>
 #include <functional>
 

@@ -10,6 +10,7 @@
 #include "qmi8658.h"
 #include "interaction/core/event_engine.h"
 #include "interaction/upload/event_uploader.h"
+#include "interaction/controller/local_response_controller.h"
 #include "pca9685.h"
 
 #include <esp_log.h>
