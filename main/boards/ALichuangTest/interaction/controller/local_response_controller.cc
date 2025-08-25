@@ -396,7 +396,7 @@ ReturnValue LocalResponseController::ComplexEmotionTool(const PropertyList& prop
         set_current_emotion_func_("sad");
     } else if (emotion == "anger") {
         if (motion_skill_) motion_skill_->Perform(MOTION_SHAKE_HEAD);
-        if (vibration_skill_) vibration_skill_->Play(VIBRATION_SHARP_BUZZ);
+        if (vibration_skill_) vibration_skill_->Play(VIBRATION_STRUGGLE_PATTERN);
         set_current_emotion_func_("angry");
     } else if (emotion == "surprise") {
         if (motion_skill_) motion_skill_->Perform(MOTION_QUICK_TURN_LEFT);
@@ -404,7 +404,7 @@ ReturnValue LocalResponseController::ComplexEmotionTool(const PropertyList& prop
         set_current_emotion_func_("surprised");
     } else if (emotion == "affection") {
         if (motion_skill_) motion_skill_->Perform(MOTION_NUZZLE_FORWARD);
-        if (vibration_skill_) vibration_skill_->Play(VIBRATION_PURR_PATTERN);
+        if (vibration_skill_) vibration_skill_->Play(VIBRATION_HEARTBEAT_STRONG);
         set_current_emotion_func_("happy");
     } else {
         return ReturnValue("Unknown emotion: " + emotion);
@@ -434,7 +434,7 @@ ReturnValue LocalResponseController::InteractiveResponseTool(const PropertyList&
         set_current_emotion_func_("happy");
     } else if (response_type == "comfort") {
         if (motion_skill_) motion_skill_->Perform(MOTION_RELAX_COMPLETELY);
-        if (vibration_skill_) vibration_skill_->Play(VIBRATION_GENTLE_HEARTBEAT);
+        if (vibration_skill_) vibration_skill_->Play(VIBRATION_PURR_PATTERN);
         set_current_emotion_func_("neutral");
     } else {
         return ReturnValue("Unknown response type: " + response_type);
