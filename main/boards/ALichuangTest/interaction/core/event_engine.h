@@ -1,8 +1,8 @@
 #ifndef ALICHUANGTEST_EVENT_ENGINE_H
 #define ALICHUANGTEST_EVENT_ENGINE_H
 
-#include "motion_engine.h"
-#include "touch_engine.h"
+#include "../sensors/motion_engine.h"
+#include "../sensors/touch_engine.h"
 #include <functional>
 #include <memory>
 #include <vector>
@@ -18,14 +18,14 @@ enum class EventType {
     MOTION_PICKUP,         // 设备被拿起
     MOTION_UPSIDE_DOWN,    // 设备被倒置（持续状态）
     
-    // 触摸事件（预留）
-    TOUCH_TAP,
-    TOUCH_DOUBLE_TAP,
-    TOUCH_LONG_PRESS,
-    TOUCH_SWIPE_UP,
-    TOUCH_SWIPE_DOWN,
-    TOUCH_SWIPE_LEFT,
-    TOUCH_SWIPE_RIGHT,
+    // 触摸事件
+    TOUCH_TAP,             // 单击
+    TOUCH_DOUBLE_TAP,      // 双击（预留）
+    TOUCH_LONG_PRESS,      // 长按
+    TOUCH_CRADLED,         // 摇篮模式（双侧持续触摸>2秒且IMU静止）
+    TOUCH_TICKLED,         // 挠痒模式（2秒内多次无规律触摸>4次）
+    TOUCH_HOLD,            // 持续按住（预留）
+    TOUCH_RELEASE,         // 释放（预留）
     
     // 音频事件（预留）
     AUDIO_WAKE_WORD,
@@ -38,22 +38,37 @@ enum class EventType {
     SYSTEM_ERROR
 };
 
+// 触摸事件特定数据
+// 使用 touch_engine.h 中定义的 TouchPosition 枚举
+struct TouchEventData {
+    TouchPosition position;     // 触摸位置
+    uint32_t duration_ms;      // 持续时间（毫秒）
+    uint32_t tap_count;        // 点击次数（用于合并事件）
+};
+
 // 事件数据结构
 struct Event {
     EventType type;
     int64_t timestamp_us;
     union {
-        ImuData imu_data;      // 运动事件的IMU数据
-        struct {                // 触摸事件的坐标数据
-            int x;
-            int y;
-        } touch_data;
-        int audio_level;        // 音频事件的音量级别
-        int error_code;         // 系统事件的错误码
+        ImuData imu_data;           // 运动事件的IMU数据
+        TouchEventData touch_data;  // 触摸事件的专用数据
+        int audio_level;            // 音频事件的音量级别
+        int error_code;             // 系统事件的错误码
     } data;
     
-    Event() : type(EventType::MOTION_NONE), timestamp_us(0) {}
-    Event(EventType t) : type(t), timestamp_us(0) {}
+    Event() : type(EventType::MOTION_NONE), timestamp_us(0) {
+        // 初始化触摸数据为默认值
+        data.touch_data.position = TouchPosition::ANY;
+        data.touch_data.duration_ms = 0;
+        data.touch_data.tap_count = 1;
+    }
+    Event(EventType t) : type(t), timestamp_us(0) {
+        // 初始化触摸数据为默认值
+        data.touch_data.position = TouchPosition::ANY;
+        data.touch_data.duration_ms = 0;
+        data.touch_data.tap_count = 1;
+    }
 };
 
 // 现在可以包含 event_processor.h，因为 Event 和 EventType 已定义
@@ -100,12 +115,18 @@ public:
     bool IsLeftTouched() const;
     bool IsRightTouched() const;
     
+    // 获取IMU稳定状态（供TouchEngine使用）
+    bool IsIMUStable() const;
+    
     // 配置事件处理策略
     void ConfigureEventProcessing(EventType type, const EventProcessingConfig& config);
     void SetDefaultProcessingStrategy(const EventProcessingConfig& config);
     
     // 获取事件统计
     EventProcessor::EventStats GetEventStats(EventType type) const;
+    
+    // 更新运动引擎配置
+    void UpdateMotionEngineConfig(const cJSON* json);
     
 private:
     // 运动引擎（内部创建和管理）

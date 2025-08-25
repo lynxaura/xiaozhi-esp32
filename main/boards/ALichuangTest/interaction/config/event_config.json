@@ -10,6 +10,47 @@
     "touch_threshold_ratio": 1.5
   },
   
+  "motion_detection_parameters": {
+    "comment": "运动检测参数配置 - 所有加速度单位为g，角速度单位为°/s",
+    
+    "free_fall": {
+      "threshold_g": 0.3,
+      "min_duration_ms": 200,
+      "comment": "自由落体：总加速度 < 0.3g 持续 200ms"
+    },
+    
+    "shake": {
+      "normal_threshold_g": 1.5,
+      "violently_threshold_g": 3.0,
+      "comment": "摇晃检测：加速度变化阈值"
+    },
+    
+    "flip": {
+      "threshold_deg_s": 400.0,
+      "comment": "翻转检测：角速度阈值 400°/s"
+    },
+    
+    "pickup": {
+      "threshold_g": 0.15,
+      "stable_threshold_g": 0.05,
+      "stable_count": 5,
+      "min_duration_ms": 300,
+      "comment": "拿起检测：Z轴变化 > 0.15g，稳定后变化 < 0.05g"
+    },
+    
+    "upside_down": {
+      "threshold_g": -0.8,
+      "stable_count": 10,
+      "comment": "倒置检测：Z轴 < -0.8g 持续 10 帧"
+    },
+    
+    "debug": {
+      "interval_ms": 1000,
+      "enabled": false,
+      "comment": "调试输出间隔"
+    }
+  },
+  
   "event_processing_strategies": {
     "comment": "事件处理策略配置 - 支持 IMMEDIATE, DEBOUNCE, THROTTLE, QUEUE, MERGE, COOLDOWN",
     
@@ -79,51 +120,6 @@
       "strategy": "IMMEDIATE",
       "interval_ms": 0,
       "comment": "默认立即处理所有未配置的事件"
-    }
-  },
-  
-  "response_mappings": {
-    "comment": "事件响应映射 - 定义不同事件触发的动作",
-    
-    "single_tap": {
-      "left": {
-        "motion": "happy_wiggle",
-        "sound": "chuckle",
-        "emotion": "happy"
-      },
-      "right": {
-        "motion": "curious_tilt",
-        "sound": "hmm",
-        "emotion": "curious"
-      }
-    },
-    
-    "multi_tap": {
-      "3_taps": {
-        "motion": "excited_bounce",
-        "sound": "laugh",
-        "emotion": "laughing"
-      },
-      "5_taps": {
-        "motion": "tickled_shake",
-        "sound": "giggle",
-        "emotion": "tickled"
-      }
-    },
-    
-    "combined_events": {
-      "tap_while_shaking": {
-        "description": "摇晃时点击",
-        "motion": "dizzy_spin",
-        "sound": "whoa",
-        "emotion": "dizzy"
-      },
-      "tap_while_upside_down": {
-        "description": "倒置时点击",
-        "motion": "confused_wobble",
-        "sound": "huh",
-        "emotion": "confused"
-      }
     }
   }
 }

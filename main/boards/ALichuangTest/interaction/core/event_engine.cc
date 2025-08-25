@@ -1,8 +1,8 @@
 #include "event_engine.h"
-#include "motion_engine.h"
-#include "touch_engine.h"
+#include "../sensors/motion_engine.h"
+#include "../sensors/touch_engine.h"
 #include "event_processor.h"
-#include "event_config_loader.h"
+#include "../config/event_config_loader.h"
 #include <esp_log.h>
 #include <esp_timer.h>
 
@@ -90,6 +90,12 @@ EventProcessor::EventStats EventEngine::GetEventStats(EventType type) const {
     return EventProcessor::EventStats{0, 0, 0, 0, 0};
 }
 
+void EventEngine::UpdateMotionEngineConfig(const cJSON* json) {
+    if (motion_engine_ && json) {
+        motion_engine_->UpdateConfigFromJson(json);
+    }
+}
+
 void EventEngine::InitializeMotionEngine(Qmi8658* imu, bool enable_debug) {
     if (!imu) {
         ESP_LOGW(TAG, "Cannot initialize motion engine without IMU");
@@ -153,7 +159,15 @@ void EventEngine::SetupTouchEngineCallbacks() {
                 this->OnTouchEvent(event);
             }
         );
-        ESP_LOGI(TAG, "Touch engine callback registered");
+        
+        // 设置IMU稳定性查询回调
+        touch_engine_->SetIMUStabilityCallback(
+            [this]() -> bool {
+                return this->IsIMUStable();
+            }
+        );
+        
+        ESP_LOGI(TAG, "Touch engine callback and IMU stability callback registered");
     } else {
         ESP_LOGW(TAG, "Touch engine is null, cannot register callback");
     }
@@ -285,6 +299,13 @@ bool EventEngine::IsRightTouched() const {
     return false;
 }
 
+bool EventEngine::IsIMUStable() const {
+    if (motion_engine_) {
+        return motion_engine_->IsCurrentlyStable();
+    }
+    return false;  // 没有motion_engine时认为不稳定
+}
+
 void EventEngine::OnTouchEvent(const TouchEvent& touch_event) {
     // 将TouchEvent转换为Event
     Event event;
@@ -297,20 +318,29 @@ void EventEngine::OnTouchEvent(const TouchEvent& touch_event) {
         return;
     }
     
-    // 将触摸位置信息存储在touch_data中
-    if (touch_event.position == TouchPosition::LEFT) {
-        event.data.touch_data.x = -1;  // 左侧用负值表示
-        event.data.touch_data.y = static_cast<int>(touch_event.duration_ms);
+    // 使用新的TouchEventData结构
+    if (event.type == EventType::TOUCH_CRADLED || event.type == EventType::TOUCH_TICKLED) {
+        event.data.touch_data.position = TouchPosition::BOTH;
+        event.data.touch_data.duration_ms = touch_event.duration_ms;
     } else {
-        event.data.touch_data.x = 1;   // 右侧用正值表示
-        event.data.touch_data.y = static_cast<int>(touch_event.duration_ms);
+        event.data.touch_data.position = touch_event.position;
+        event.data.touch_data.duration_ms = touch_event.duration_ms;
+    }
+    event.data.touch_data.tap_count = 1;  // 初始点击次数为1
+    
+    const char* position_str = "UNKNOWN";
+    switch (event.data.touch_data.position) {
+        case TouchPosition::LEFT: position_str = "LEFT"; break;
+        case TouchPosition::RIGHT: position_str = "RIGHT"; break;
+        case TouchPosition::BOTH: position_str = "BOTH"; break;
+        case TouchPosition::ANY: position_str = "ANY"; break;
     }
     
-    ESP_LOGI(TAG, "Touch event received: touch_type=%d -> event_type=%d, position=%s, duration=%ldms", 
+    ESP_LOGI(TAG, "Touch event received: touch_type=%d -> event_type=%d, position=%s, duration=%lums", 
             (int)touch_event.type,
             (int)event.type,
-            touch_event.position == TouchPosition::LEFT ? "LEFT" : "RIGHT",
-            touch_event.duration_ms);
+            position_str,
+            (unsigned long)event.data.touch_data.duration_ms);
     
     // 分发事件
     DispatchEvent(event);
@@ -330,14 +360,12 @@ EventType EventEngine::ConvertTouchEventType(TouchEventType touch_type, TouchPos
             return EventType::MOTION_NONE;
             
         case TouchEventType::CRADLED:
-            // TODO: 可以添加特殊的摇篮模式事件类型
-            ESP_LOGI(TAG, "CRADLED event detected but not mapped to specific EventType");
-            return EventType::MOTION_NONE;
+            ESP_LOGI(TAG, "CRADLED event detected, mapping to TOUCH_CRADLED");
+            return EventType::TOUCH_CRADLED;
             
         case TouchEventType::TICKLED:
-            // TODO: 可以添加特殊的挠痒模式事件类型
-            ESP_LOGI(TAG, "TICKLED event detected but not mapped to specific EventType");
-            return EventType::MOTION_NONE;
+            ESP_LOGI(TAG, "TICKLED event detected, mapping to TOUCH_TICKLED");
+            return EventType::TOUCH_TICKLED;
             
         default:
             return EventType::MOTION_NONE;
