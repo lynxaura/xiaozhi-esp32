@@ -1,6 +1,6 @@
 #include "event_engine.h"
 #include "../sensors/motion_engine.h"
-#include "../sensors/touch_engine.h"
+#include "../sensors/multitouch_engine.h"
 #include "event_processor.h"
 #include "../config/event_config_loader.h"
 #include <esp_log.h>
@@ -11,8 +11,8 @@
 EventEngine::EventEngine() 
     : motion_engine_(nullptr)
     , owns_motion_engine_(false)
-    , touch_engine_(nullptr)
-    , owns_touch_engine_(false)
+    , multitouch_engine_(nullptr)
+    , owns_multitouch_engine_(false)
     , event_processor_(nullptr) {
     // 创建事件处理器
     event_processor_ = new EventProcessor();
@@ -24,9 +24,9 @@ EventEngine::~EventEngine() {
         delete motion_engine_;
         motion_engine_ = nullptr;
     }
-    if (owns_touch_engine_ && touch_engine_) {
-        delete touch_engine_;
-        touch_engine_ = nullptr;
+    if (owns_multitouch_engine_ && multitouch_engine_) {
+        delete multitouch_engine_;
+        multitouch_engine_ = nullptr;
     }
     if (event_processor_) {
         delete event_processor_;
@@ -123,21 +123,26 @@ void EventEngine::InitializeMotionEngine(Qmi8658* imu, bool enable_debug) {
     ESP_LOGI(TAG, "Motion engine initialized and registered with event engine");
 }
 
-void EventEngine::InitializeTouchEngine() {
+void EventEngine::InitializeMultitouchEngine(i2c_master_bus_handle_t i2c_bus) {
     // 如果已经存在旧的引擎，先清理
-    if (owns_touch_engine_ && touch_engine_) {
-        delete touch_engine_;
+    if (owns_multitouch_engine_ && multitouch_engine_) {
+        delete multitouch_engine_;
     }
     
-    // 创建新的触摸引擎
-    touch_engine_ = new TouchEngine();
-    touch_engine_->Initialize();
-    owns_touch_engine_ = true;
+    // 创建新的多点触摸引擎
+    if (i2c_bus) {
+        multitouch_engine_ = new MultitouchEngine(i2c_bus);
+    } else {
+        ESP_LOGW(TAG, "No I2C bus provided, using default constructor (may fail)");
+        multitouch_engine_ = new MultitouchEngine();
+    }
+    multitouch_engine_->Initialize();
+    owns_multitouch_engine_ = true;
     
     // 设置回调
-    SetupTouchEngineCallbacks();
+    SetupMultitouchEngineCallbacks();
     
-    ESP_LOGI(TAG, "Touch engine initialized and registered with event engine - GPIO10 (LEFT), GPIO11 (RIGHT)");
+    ESP_LOGI(TAG, "Multitouch engine initialized and registered with event engine - MPR121 @ 0x5A, IRQ: GPIO10");
 }
 
 void EventEngine::SetupMotionEngineCallbacks() {
@@ -150,26 +155,26 @@ void EventEngine::SetupMotionEngineCallbacks() {
     }
 }
 
-void EventEngine::SetupTouchEngineCallbacks() {
-    if (touch_engine_) {
-        ESP_LOGI(TAG, "Registering touch engine callback");
-        touch_engine_->RegisterCallback(
+void EventEngine::SetupMultitouchEngineCallbacks() {
+    if (multitouch_engine_) {
+        ESP_LOGI(TAG, "Registering multitouch engine callback");
+        multitouch_engine_->RegisterCallback(
             [this](const TouchEvent& event) {
-                ESP_LOGI(TAG, "Lambda callback invoked for touch event");
+                ESP_LOGI(TAG, "Lambda callback invoked for multitouch event");
                 this->OnTouchEvent(event);
             }
         );
         
         // 设置IMU稳定性查询回调
-        touch_engine_->SetIMUStabilityCallback(
+        multitouch_engine_->SetIMUStabilityCallback(
             [this]() -> bool {
                 return this->IsIMUStable();
             }
         );
         
-        ESP_LOGI(TAG, "Touch engine callback and IMU stability callback registered");
+        ESP_LOGI(TAG, "Multitouch engine callback and IMU stability callback registered");
     } else {
-        ESP_LOGW(TAG, "Touch engine is null, cannot register callback");
+        ESP_LOGW(TAG, "Multitouch engine is null, cannot register callback");
     }
 }
 
@@ -187,8 +192,8 @@ void EventEngine::Process() {
         motion_engine_->Process();
     }
     
-    // 注意：TouchEngine有自己的任务，不需要在这里调用Process
-    // TouchEngine的事件会通过回调异步到达
+    // 注意：MultitouchEngine有自己的任务，不需要在这里调用Process
+    // MultitouchEngine的事件会通过回调异步到达
 }
 
 void EventEngine::TriggerEvent(const Event& event) {
@@ -286,15 +291,15 @@ bool EventEngine::IsUpsideDown() const {
 }
 
 bool EventEngine::IsLeftTouched() const {
-    if (touch_engine_) {
-        return touch_engine_->IsLeftTouched();
+    if (multitouch_engine_) {
+        return multitouch_engine_->IsLeftTouched();
     }
     return false;
 }
 
 bool EventEngine::IsRightTouched() const {
-    if (touch_engine_) {
-        return touch_engine_->IsRightTouched();
+    if (multitouch_engine_) {
+        return multitouch_engine_->IsRightTouched();
     }
     return false;
 }

@@ -685,8 +685,8 @@ private:
             event_engine_->InitializeMotionEngine(imu_, true);  // 启用调试输出
         }
         
-        // 初始化触摸引擎
-        event_engine_->InitializeTouchEngine();
+        // 初始化多点触摸引擎
+        event_engine_->InitializeMultitouchEngine(i2c_bus_);
         
         // 创建事件上传器
         event_uploader_ = new EventUploader();
