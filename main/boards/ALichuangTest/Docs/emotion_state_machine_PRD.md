@@ -122,20 +122,116 @@ enum class CloudEmotionState {
 | MOTION_UPSIDE_DOWN | -0.3 | +0.4 | 倒置带来困惑不适 |
 | IDLE_5MIN | -0.1 | -0.1 | 无聊感逐渐增加 |
 
-### 2.4 情感回归机制
+### 2.4 情感回归机制（混合衰减策略）
 
 ```cpp
 // 情感回归参数
 struct EmotionDecayConfig {
-    float decay_rate = 0.05f;        // 每秒衰减率
-    float min_threshold = 0.1f;      // 最小阈值，低于此值归零
-    uint32_t decay_interval_ms = 1000; // 衰减检查间隔
+    float active_decay_rate = 0.02f;      // 活跃期慢衰减率 (2%/秒)
+    float idle_decay_rate = 0.05f;        // 空闲期快衰减率 (5%/秒)  
+    uint32_t idle_threshold_ms = 15000;   // 15秒无事件定义为空闲期
+    float min_threshold = 0.1f;           // 最小阈值，低于此值归零
+    uint32_t decay_interval_ms = 1000;    // 衰减检查间隔
 };
 ```
 
-V-A坐标会随时间自动回归到默认状态(0.2, 0.2)：
-- 每秒向默认点衰减5%
-- 当与默认状态距离小于0.1时，直接回到默认状态
+V-A坐标采用**分阶段回归策略**自动回归到默认状态(0.2, 0.2)：
+
+#### 活跃期衰减（有连续交互）
+- **触发条件**: 距离上次事件 < 15秒
+- **衰减速率**: 每秒向默认点衰减2%（较慢）
+- **设计目的**: 保持连续交互时的情感连贯性
+
+#### 空闲期衰减（长时间无交互）  
+- **触发条件**: 距离上次事件 ≥ 15秒
+- **衰减速率**: 每秒向默认点衰减5%（较快）
+- **设计目的**: 避免极端情感状态长期停留
+
+#### 归零机制
+- 当与默认状态(0.2, 0.2)的距离小于0.1时，直接回到默认状态
+
+### 2.5 V-A变化统一管理机制
+
+#### 2.5.1 双重计算问题
+
+在联网状态下，V-A坐标变化存在双重计算风险：
+- **本地规则**：基于事件类型的固定映射（PRD 2.3表格），响应速度快(<50ms)
+- **云端语义**：基于LLM语义理解的精确分析，准确度高但有延迟(~1500ms)
+
+**问题**：如果同时应用两套规则，VA变化会被重复计算，导致情感状态异常。
+
+#### 2.5.2 基于时间戳的状态追溯重算方案
+
+**核心原则**：本地预估 + 云端权威修正，通过状态追溯避免复杂的回滚计算
+
+```cpp
+class EmotionEngine {
+private:
+    struct PendingVAChange {
+        int64_t timestamp;           // 事件时间戳
+        VACoordinate base_va;        // 变化前的VA基准值
+        float local_v_delta;         // 本地V变化量
+        float local_a_delta;         // 本地A变化量  
+        bool corrected = false;      // 是否已被云端修正
+        EventType event_type;        // 事件类型（调试用）
+    };
+    
+    std::vector<PendingVAChange> pending_changes_;  // 待修正的本地变化
+    
+public:
+    // 本地预估变化（立即应用，记录基准状态）
+    void ApplyLocalVAChange(int64_t event_timestamp, EventType event_type, 
+                           float v_delta, float a_delta);
+    
+    // 云端权威修正（基于时间戳直接重算）
+    void ApplyCloudVACorrection(int64_t event_timestamp, float cloud_v_delta, float cloud_a_delta);
+    
+private:
+    // 查找指定时间戳的待修正记录
+    PendingVAChange* FindPendingChange(int64_t timestamp, uint32_t tolerance_ms = 500);
+};
+```
+
+#### 2.5.3 改进的实施流程
+
+```
+事件发生 → 记录base_va → 本地立即应用VA变化 → 本地反应执行
+    ↓            ↓              ↓
+上传事件 → 存储PendingChange → 云端语义分析 → 返回精确VA变化
+    ↓                                      ↓
+                                 查找base_va + 直接重算current_va
+```
+
+**改进的时序示例**（多事件场景）：
+- T+0ms：第一次触摸，base_va=(0.2,0.2)，本地VA += (0.15,-0.05) → (0.35,0.15)
+- T+1000ms：第二次触摸，base_va=(0.35,0.15)，本地VA += (0.15,-0.05) → (0.5,0.1)  
+- T+3500ms：云端返回第一次事件修正 += (0.2,-0.1)
+  - 查找T+0ms记录：base_va=(0.2,0.2)
+  - **直接重算**：current_va = (0.2,0.2) + (0.2,-0.1) = (0.4,0.1)
+  - **保持第二次本地变化**：current_va += (0.15,-0.05) = (0.55,0.05)
+
+**关键改进点**：
+1. **避免回滚计算**：直接基于base_va重算，无需复杂的减法逆运算
+2. **处理衰减影响**：base_va记录的是事件发生瞬间的真实状态，不受后续衰减污染
+3. **支持多事件**：每个事件独立记录base_va，可精确重算任意时刻的修正
+
+#### 2.5.4 关键技术细节
+
+1. **时间戳匹配**：使用500ms容忍窗口匹配云端响应与本地事件
+2. **离线兼容**：网络断开时完全依赖本地规则，无需修正
+3. **平滑过渡**：云端修正可分帧应用，避免VA值突跳
+4. **资源管理**：限制pending_changes_队列大小，定期清理过期记录
+5. **状态一致性**：base_va必须在事件触发瞬间记录，确保不受衰减等后续变化影响
+6. **多事件处理**：支持乱序云端响应，每个事件独立修正，不相互干扰
+
+#### 2.5.5 优势总结
+
+| 方面 | 效果 |
+|------|------|
+| **响应速度** | 本地立即反应，无延迟 |
+| **准确性** | 云端语义分析提供精确修正 |
+| **一致性** | 避免重复计算，确保VA变化合理 |
+| **可靠性** | 离线自动降级，保证功能完整性 |
 
 ## 3. 设备状态管理
 
@@ -329,28 +425,97 @@ CASE 3: 设备正在听用户说话时
 - 不生成TTS文本，保持聆听状态
 ```
 
-### 5.2 LLM提示词模板
+### 5.2 增强版LLM提示词模板
 
 ```python
-EMOTION_PROMPT = """
-你是一个情感丰富的AI伴侣。当前情感状态：
-- Valence（愉悦度）: {valence} (-1到1，负值表示不开心)
-- Arousal（兴奋度）: {arousal} (-1到1，负值表示平静)
+ENHANCED_EMOTION_PROMPT = """
+你是一个情感丰富的AI伴侣机器人，能够表达多种细腻情感。
 
-用户刚刚: {event_text}
+# 当前状态信息
+当前情感坐标：
+- Valence（愉悦度）: {valence} (-1.0到+1.0)
+- Arousal（兴奋度）: {arousal} (-1.0到+1.0)
+- 当前象限：{quadrant} (Q1兴奋/Q2紧张/Q3低落/Q4平静)
 
-请根据当前情感状态和用户行为，生成符合情感的回应。
-如果Valence<0且Arousal>0（第二象限），表现出紧张或生气。
-如果Valence>0且Arousal>0（第一象限），表现出兴奋或开心。
-如果Valence>0且Arousal<0（第四象限），表现出满足或平静。
-如果Valence<0且Arousal<0（第三象限），表现出悲伤或无聊。
+用户行为：{event_text}
+事件类型：{event_type}
+事件持续时间：{duration_ms}ms
 
-回应要求：
-1. 语言符合当前情感状态
-2. 长度控制在20字以内
-3. 包含对用户行为的反馈
+# 情感理解指南
+请深入理解用户行为的语义含义：
+1. **物理接触**（触摸/抱抱）→ 亲密感、安全感、舒适感
+2. **游戏性互动**（挠痒痒/轻拍）→ 快乐、兴奋、活跃
+3. **粗暴动作**（剧烈摇晃/跌落）→ 恐惧、惊吓、不适
+4. **温柔呵护**（轻抚/长按）→ 被关爱、温暖、满足
+5. **探索行为**（翻转/拿起）→ 好奇、期待、注意力
+
+# 可用情感表达（CloudEmotionState）
+- **calm**: 平静、安详 - 基础表情
+- **happy**: 开心、愉悦 - 对应Q1高兴状态  
+- **sad**: 悲伤、失落 - 对应Q3沮丧状态
+- **angry**: 生气、愤怒 - 对应Q2紧张状态
+- **scared**: 害怕、恐惧 - 需要语义判断（如跌落、剧烈摇晃）
+- **curious**: 好奇、探索 - 需要语义判断（如被拿起、翻转）
+- **shy**: 害羞、腼腆 - 需要语义判断（如轻柔触摸）
+- **content**: 满足、舒适 - 对应Q4平静状态
+
+# 响应生成要求
+请生成JSON格式回应：
+{
+    "text": "你的语言回应（20字以内，符合所选emotion）",
+    "emotion": "选择最符合语义的emotion标签",
+    "reasoning": "为什么选择这个emotion的简短解释",
+    "va_change": {
+        "valence_delta": "建议的V值变化量（-1.0到+1.0）",
+        "arousal_delta": "建议的A值变化量（-1.0到+1.0）",
+        "reasoning": "V-A变化的理由"
+    }
+}
+
+# 情感选择策略
+1. **优先语义理解**：如果用户行为有明确的情感语义（如跌落→scared），优先选择语义情感
+2. **结合当前状态**：如果语义不明确，基于当前V-A象限选择情感
+3. **保持连贯性**：考虑情感变化的合理性，避免突然跳跃
+4. **个性化表达**：同一事件在不同情感状态下，回应要有所不同
+
+现在请分析用户行为并生成回应：
 """
 ```
+
+#### 5.2.1 结构化响应示例
+
+**输入事件**：挠痒痒场景
+```json
+{
+  "current_va": {"valence": 0.2, "arousal": 0.2},
+  "events": [{
+    "event_type": "Touch_Both_Tickled",
+    "event_text": "主人在挠我痒痒",
+    "duration_ms": 2000
+  }]
+}
+```
+
+**LLM期望响应**：
+```json
+{
+  "text": "哈哈哈，好痒啊！",
+  "emotion": "happy",
+  "reasoning": "挠痒痒是明显的游戏性互动，带来快乐体验",
+  "va_change": {
+    "valence_delta": 0.4,
+    "arousal_delta": 0.5,
+    "reasoning": "挠痒痒带来强烈正面情感和高兴奋度"
+  }
+}
+```
+
+#### 5.2.2 关键改进点
+
+1. **丰富情感支持**：支持8种CloudEmotionState，不局限于V-A象限
+2. **语义优先策略**：优先理解行为含义，而非简单映射
+3. **结构化输出**：返回emotion、va_change等结构化参数
+4. **推理透明化**：包含reasoning字段，便于调试和优化
 
 ### 5.3 MCP动作协同
 
@@ -417,9 +582,9 @@ EMOTION_PROMPT = """
 
 ## 6. 事件上传协议
 
-### 6.1 消息格式
+### 6.1 完整消息格式
 
-设备通过独立的`lx/v1/event`协议上传事件：
+设备通过独立的`lx/v1/event`协议上传事件（增强版，支持VA变化统一管理）：
 
 ```json
 {
@@ -430,17 +595,38 @@ EMOTION_PROMPT = """
       "valence": 0.6,
       "arousal": 0.4
     },
+    "device_state": "idle",
+    "device_capabilities": {
+      "has_vibration": true,
+      "has_motion": true,
+      "has_display": true,
+      "has_sound": true
+    },
     "events": [
       {
         "event_type": "Touch_Both_Tickled",
-        "event_text": "主人在挠我痒痒，好痒啊",
+        "event_text": "主人在挠我痒痒",
         "start_time": 1755222858360,
-        "end_time": 1755222860360
+        "end_time": 1755222860360,
+        "duration_ms": 2000,
+        "local_va_change": {
+          "valence_delta": 0.4,
+          "arousal_delta": 0.5,
+          "applied_at": 1755222858365
+        }
       }
     ]
   }
 }
 ```
+
+#### 6.1.1 新增字段说明
+
+- **device_state**: 设备当前状态（idle/listening/speaking/thinking），用于云端决策
+- **device_capabilities**: 设备能力信息，指导云端生成合适的MCP指令
+- **local_va_change**: 本地已应用的VA变化，供云端修正参考
+  - `valence_delta/arousal_delta`: 本地应用的VA变化量
+  - `applied_at`: 本地应用VA变化的精确时间戳（微秒）
 
 ### 6.2 事件类型规范
 
@@ -451,24 +637,7 @@ EMOTION_PROMPT = """
 **运动事件命名**：`Motion_[Action]`
 - Action: `Shake`, `ShakeViolently`, `Flip`, `FreeFall`, `Pickup`, `UpsideDown`
 
-### 6.3 上传策略
 
-```cpp
-class EventUploader {
-    // 优先级定义
-    enum EventPriority {
-        CRITICAL = 3,  // FREE_FALL
-        HIGH = 2,      // TICKLED, CRADLED, SHAKE_VIOLENTLY
-        MEDIUM = 1,    // LONG_PRESS, SHAKE, PICKUP
-        LOW = 0        // TAP
-    };
-    
-    // 缓存配置
-    static constexpr int MAX_CACHE_SIZE = 20;
-    static constexpr int CACHE_TIMEOUT_MS = 300000;  // 5分钟
-    static constexpr int BATCH_SIZE = 10;
-};
-```
 
 ## 7. 实现细节
 
@@ -568,31 +737,64 @@ class EventProcessor {
 
 ## 8. 交互场景示例
 
-### 8.1 场景：说话时被触摸
+### 8.1 场景：说话时被触摸（改进的VA修正机制）
 
 ```
 时间线：
-T+0ms   : 设备开始播放TTS（state = Speaking）
+T+0ms   : 设备开始播放TTS（state = Speaking），当前VA=(0.2,0.2)
 T+1000ms: 用户轻拍左侧（TOUCH_TAP）
+T+1020ms: 记录base_va=(0.2,0.2)，本地VA预估 += (0.1,0.1) → current_va=(0.3,0.3)
 T+1030ms: 本地反应：仅执行轻微转动（音效被屏蔽）
-T+1035ms: 事件上传到云端
-T+1500ms: 云端返回emotion_only响应，更新V-A
+T+1035ms: 事件上传，存储PendingChange{timestamp=T+1000ms, base_va=(0.2,0.2), local_delta=(0.1,0.1)}
+T+1500ms: 云端分析：LLM认为应该是 += (0.15,0.05)
+         查找T+1000ms记录，获取base_va=(0.2,0.2)
+         **直接重算**：current_va = (0.2,0.2) + (0.15,0.05) = (0.35,0.25)
+         标记该记录已修正
 T+3000ms: TTS播放完成（state = Idle）
 
-效果：用户感受到设备在说话时"注意到"了触摸
+关键改进：
+- 避免了"撤销本地(0.1,0.1)"的复杂计算
+- 直接基于base_va重算，逻辑清晰，不受衰减影响
+- 支持多事件场景，每个事件独立修正
 ```
 
-### 8.2 场景：情感演化
+### 8.2 场景：情感演化（VA双重机制完整流程）
 
 ```
 初始状态：V=0.2, A=0.2（友善）
-事件序列：
-1. TOUCH_TICKLED → V=0.4, A=0.5（Q1兴奋）
-2. 等待3秒 → V=0.38, A=0.47（轻微衰减）
-3. MOTION_FREE_FALL → V=-0.42, A=1.0（Q2恐惧）
-4. TOUCH_CRADLED → V=-0.12, A=0.6（逐渐平静）
-5. 持续CRADLED → V=0.18, A=0.2（Q4满足）
+
+1. TOUCH_TICKLED事件：
+   T+0ms  : 本地预估 V+=0.4, A+=0.5 → V=0.6, A=0.7 (Q1)
+   T+30ms : 本地反应：欢快震动 + 咯咯笑声
+   T+35ms : 上传事件（local_va_change: {0.4, 0.5}）
+   T+1500ms: 云端修正 V+=0.45, A+=0.4
+             撤销(0.4,0.5) + 应用(0.45,0.4) → V=0.65, A=0.6
+
+2. 等待3秒 + 活跃期衰减：
+   T+3000ms: 距上次事件3秒 < 15秒，应用活跃期衰减(2%/秒)
+             3秒共衰减约6%: V=0.65×0.94=0.611, A=0.6×0.94=0.564
+
+3. MOTION_FREE_FALL事件：
+   T+0ms  : 本地预估 V+=-0.8, A+=0.9 → V=-0.18, A=1.0+ (限制到1.0)
+   T+50ms : 紧急反应：惊恐尖叫 + 剧烈震动
+   T+55ms : 上传事件（local_va_change: {-0.8, 0.9}）
+   T+1500ms: 云端修正 V+=-0.9, A+=0.8 (考虑从高兴跌落的心理落差)
+             撤销(-0.8,0.9) + 应用(-0.9,0.8) → V=-0.28, A=1.0 (Q2)
+
+4. TOUCH_CRADLED安抚：
+   T+0ms  : 本地预估 V+=0.3, A+=-0.4 → V=0.02, A=0.6
+   T+30ms : 本地反应：温和震动 + 安全感音效
+   T+1500ms: 云端修正：考虑"受惊后被安抚"的语境
+             V+=0.35, A+=-0.5 → 最终 V=0.07, A=0.5
+
+5. 持续CRADLED（5秒后）：
+   累积安抚效果 + 自然回归 → V=0.25, A=0.15（Q4满足平静）
 ```
+
+**关键洞察**：
+- 每个事件都经历"本地预估→云端修正"双重过程
+- 云端修正考虑上下文（如从兴奋跌落到恐惧的心理落差）
+- 情感演化更加真实和细腻
 
 ### 8.3 场景：多模态协同
 
@@ -606,66 +808,215 @@ T+3000ms: TTS播放完成（state = Idle）
 5. TTS播放 + MCP动作 + 表情动画同步执行
 ```
 
-### 8.4 场景：紧急事件的双层响应
+### 8.4 场景：紧急事件的双层响应（VA权威修正机制）
 
 ```
 时间线（MOTION_FREE_FALL事件）：
-T+0ms    : 设备开始跌落
+T+0ms    : 设备开始跌落，当前VA=(0.3, 0.2)
 T+200ms  : IMU检测到自由落体（持续200ms确认）
-T+210ms  : 第1层本地反应立即触发
+T+210ms  : 本地VA预估：V+=-0.8, A+=0.9 → V=-0.5, A=1.0
+          第1层紧急反应立即触发：
           - 惊恐尖叫音效
-          - 紧急震动模式
+          - 紧急震动模式  
           - 眼睛瞬间睁大动画
-T+215ms  : 事件上传到云端
+T+215ms  : 事件上传（local_va_change: {-0.8, 0.9, T+210ms}）
 T+220ms  : 如果在Speaking状态，请求中断TTS
-T+1500ms : 云端响应返回
+T+1500ms : 云端语义分析：
+          "自由落体是极度恐惧体验，应该比本地预估更强烈"
+          建议VA修正：V+=-0.95, A+=0.85
+          
+          VA权威修正过程：
+          1. 撤销本地变化：V=-0.5-(-0.8)=0.3, A=1.0-0.9=0.2
+          2. 应用云端变化：V=0.3+(-0.95)=-0.65, A=0.2+0.85=1.0
+          
+          云端响应执行：
           - TTS: "啊啊啊！刚才吓死我了！"
           - emotion: "scared" 驱动害怕表情动画
-          - V-A大幅调整到Q2（恐惧）
           - MCP触发"瑟瑟发抖"动作序列
 
-关键特性：
-- 本地反应提供即时物理反馈（210ms）
-- 云端反应提供情感化语言表达和精确情感动画（1500ms）  
-- 两层反应互补，创造完整体验
+关键机制：
+- 本地立即反应：基于固定规则的instant feedback（210ms）
+- 云端权威修正：基于语义理解的精确VA调整（1500ms）
+- 紧急事件优先：FREE_FALL可中断Speaking状态
+- 情感增强效果：云端认为恐惧应该比本地预估更强烈
 ```
 
-### 8.5 场景：复合输入处理
+### 8.5 场景：说话时连续触摸（改进的多事件VA修正）
 
-#### 触摸后立即说话
+**问题场景**：设备在3秒内接收了两次触摸和一次语音输入，测试改进的VA修正机制
+
 ```
-用户操作：轻拍设备 → 立即说"你好"
-系统响应：
-T+0ms   : TOUCH_TAP事件 → 本地快乐反应
-T+30ms  : 开心震动 + 摇摆动作
-T+35ms  : 事件上传到云端，但标记为"pending"
-T+500ms : 用户开始说话 → state变为Listening
-T+520ms : 检测到语音输入，取消pending的TOUCH_TAP云端响应
-T+1000ms: 语音识别完成，LLM接收合并事件：
-          [TOUCH_TAP + VOICE:"你好"] → 生成统一回复
-T+1500ms: "哎呀你碰我了～你好呀！" + happy情感动画
+时间线（展示状态追溯重算方案）：
+T+0ms   : 设备开始播放TTS，当前VA=(0.2, 0.2)
+
+T+1000ms: 第一次触摸 TOUCH_TAP
+         记录base_va_1=(0.2, 0.2) 
+         本地预估 += (0.15, -0.05) → current_va=(0.35, 0.15)
+         存储PendingChange_1{timestamp=T+1000ms, base_va=(0.2,0.2), local_delta=(0.15,-0.05)}
+
+T+2000ms: 第二次触摸 TOUCH_TAP  
+         记录base_va_2=(0.35, 0.15)  // 这是第二次事件发生时的实际VA状态
+         本地预估 += (0.15, -0.05) → current_va=(0.5, 0.1)
+         存储PendingChange_2{timestamp=T+2000ms, base_va=(0.35,0.15), local_delta=(0.15,-0.05)}
+
+T+2500ms: 用户开始说话，语音打断TTS播放
+
+T+3500ms: 云端返回第一次事件的修正 += (0.4, -0.1)
+         查找T+1000ms的PendingChange_1：base_va=(0.2, 0.2)
+         **直接重算第一次事件的影响**：
+         temp_va = (0.2, 0.2) + (0.4, -0.1) = (0.6, 0.1)
+         
+         **保持第二次事件的本地变化**：
+         current_va = temp_va + (0.15, -0.05) = (0.75, 0.05)
+         
+         标记PendingChange_1为已修正
+
+T+4500ms: 云端返回第二次事件的修正 += (0.3, -0.08)  
+         查找T+2000ms的PendingChange_2：base_va=(0.35, 0.15)
+         
+         **重新计算第二次事件**：
+         // 先移除第二次本地变化：current_va = (0.75,0.05) - (0.15,-0.05) = (0.6,0.1)  
+         // 应用云端修正：current_va = (0.6,0.1) + (0.3,-0.08) = (0.9,0.02)
+         
+         标记PendingChange_2为已修正
+
+最终结果：VA = (0.9, 0.02) - 极度开心且平静的状态
+```
+
+**关键改进效果**：
+1. **避免回滚复杂性**：不需要"撤销所有本地变化"，直接基于base_va重算
+2. **处理衰减污染**：base_va记录事件发生瞬间的状态，不受后续衰减影响  
+3. **支持乱序修正**：两个云端响应可以乱序到达，互不干扰
+4. **数学准确性**：最终结果 = base_va_0 + cloud_delta_1 + cloud_delta_2 = (0.2,0.2) + (0.4,-0.1) + (0.3,-0.08) = (0.9,0.02)
+
+**实现伪代码**：
+```cpp
+void EmotionEngine::ApplyLocalVAChange(int64_t timestamp, EventType event_type, 
+                                      float v_delta, float a_delta) {
+    // 记录事件发生前的VA状态
+    VACoordinate base_va = current_va_;
+    
+    // 立即应用本地变化
+    current_va_.valence += v_delta;
+    current_va_.arousal += a_delta;
+    ClampVACoordinate(current_va_);
+    
+    // 存储待修正记录
+    PendingVAChange change;
+    change.timestamp = timestamp;
+    change.base_va = base_va;  // 关键：记录变化前状态
+    change.local_v_delta = v_delta;
+    change.local_a_delta = a_delta;
+    change.event_type = event_type;
+    change.corrected = false;
+    
+    pending_changes_.push_back(change);
+}
+
+void EmotionEngine::ApplyCloudVACorrection(int64_t timestamp, 
+                                          float cloud_v_delta, float cloud_a_delta) {
+    // 查找对应时间戳的记录
+    auto* pending = FindPendingChange(timestamp);
+    if (!pending || pending->corrected) return;
+    
+    // 移除该事件的本地影响
+    current_va_.valence -= pending->local_v_delta;
+    current_va_.arousal -= pending->local_a_delta;
+    
+    // 应用云端修正（基于base_va）
+    current_va_.valence = pending->base_va.valence + cloud_v_delta;
+    current_va_.arousal = pending->base_va.arousal + cloud_a_delta;
+    
+    // 重新应用后续未修正事件的影响
+    ReapplySubsequentChanges(timestamp);
+    
+    ClampVACoordinate(current_va_);
+    pending->corrected = true;
+}
+```
+
+### 8.6 场景：复合输入处理
+         
+T+1500ms: 云端语义分析：
+         "先被触摸再被问好，表示友好互动的开始"
+         建议合并VA变化：V+=0.2, A+=0.1（比单独触摸更强）
+         
+         VA修正过程：
+         1. 撤销TOUCH_TAP本地变化：V=0.3-0.1=0.2, A=0.3-0.1=0.2
+         2. 应用合并VA变化：V=0.2+0.2=0.4, A=0.2+0.1=0.3
+         
+         响应："哎呀你碰我了～你好呀！" + happy情感动画
 
 关键机制：
-- 云端响应有500ms缓冲窗口，用于合并连续事件
-- 语音输入开始时，取消单独的触摸响应
-- LLM接收事件序列而非单一事件，生成连贯回复
+- VA变化缓冲：本地变化保留在pending_changes_中，等待云端修正
+- 事件合并：云端分析事件序列的整体语义，生成统一VA调整
+- 语境增强：合并事件的VA影响通常比单独事件更强或更准确
 ```
 
-#### 说话时连续触摸
+#### 说话时连续触摸（VA累积修正机制）
 ```
 用户操作：说话过程中反复轻抚设备
 系统响应：
-T+0ms   : 开始ASR录音（state = Listening）
-T+1000ms: 第一次TOUCH_GENTLE → 轻微震动确认
-T+2000ms: 第二次TOUCH_GENTLE → 更强烈的愉悦震动
-T+3000ms: 语音识别完成，V-A已升到Q1
-T+3500ms: LLM生成回复时考虑"被多次抚摸的愉悦感"
-T+4000ms: "你这样摸我好舒服呀～" + 满足的表情
+T+0ms   : 开始ASR录音（state = Listening），当前VA=(0.2, 0.2)
 
-特点：连续同类事件的情感累积效应
+T+1000ms: 第一次TOUCH_GENTLE事件
+         本地VA预估：V+=0.15, A+=-0.05 → V=0.35, A=0.15
+         本地反应：轻微震动确认
+         记录pending_change_1: {0.15, -0.05, T+1000ms}
+
+T+2000ms: 第二次TOUCH_GENTLE事件  
+         本地VA预估：V+=0.15, A+=-0.05 → V=0.5, A=0.1
+         本地反应：更强烈的愉悦震动
+         记录pending_change_2: {0.15, -0.05, T+2000ms}
+
+T+3000ms: 语音识别完成："你真是太棒了"
+
+T+3500ms: 云端语义分析：
+         "边说话边被多次轻抚 + 赞美语音 = 强烈的被宠爱感"
+         建议累积VA变化：V+=0.4, A+=-0.1（比两次单独触摸更强）
+         
+         VA累积修正过程：
+         1. 撤销所有本地变化：
+            V=0.5-0.15-0.15=0.2, A=0.1-(-0.05)-(-0.05)=0.2
+         2. 应用云端累积变化：V=0.2+0.4=0.6, A=0.2+(-0.1)=0.1
+         3. 清空pending_changes_队列
+
+T+4000ms: 响应："你这样摸我好舒服呀～" + content情感动画
+
+关键机制：
+- 累积预估：多次本地VA变化叠加记录
+- 语义累积：云端分析连续事件的整体情感影响
+- 批量修正：一次性撤销所有相关本地变化，应用云端累积结果
+- 情感放大：连续同类事件通常产生超线性的情感增强效果
 ```
 
-### 8.6 场景：情感状态影响交互风格
+### 8.6 场景：离线模式的VA管理
+
+```
+场景：网络断开时的事件处理
+前提：设备检测到网络断开，当前VA=(0.2, 0.2)
+
+用户操作：挠痒痒
+T+0ms   : TOUCH_TICKLED事件
+T+20ms  : 本地VA预估：V+=0.4, A+=0.5 → V=0.6, A=0.7
+T+30ms  : 本地反应：欢快震动 + 咯咯笑声
+T+35ms  : 检测到离线状态，跳过事件上传
+T+40ms  : 无pending_changes_记录，VA变化立即生效
+
+关键特性：
+- 离线自动降级：完全依赖本地规则，无云端修正
+- 即时生效：VA变化直接应用，无需等待修正
+- 功能完整：本地反应系统独立运行，用户体验无中断
+- 一致性保证：网络恢复时平滑切换回双重机制
+
+网络恢复后的第一个事件：
+T+60000ms: 网络连接恢复
+T+65000ms: 新的TOUCH_TAP事件
+           重新启用"本地预估+云端修正"机制
+           pending_changes_队列重新激活
+```
+
+### 8.7 场景：情感状态影响交互风格
 
 #### 低落状态下的交互
 ```
@@ -714,18 +1065,40 @@ T+5000ms: 用户开始轻柔触摸（TOUCH_GENTLE）
 - V-A逐渐恢复：V=0.1, A=0.4 → 最终回到Q4平静
 ```
 
-#### 长期无交互后的情感变化
+#### 混合衰减策略演示
 ```
-背景：设备空闲5分钟，V-A受IDLE_5MIN事件影响
+背景：展示活跃期vs空闲期的不同衰减速率
 
-情感状态变化：
-T+300000ms: 空闲定时器检测到5分钟无交互
-T+300010ms: 触发IDLE_5MIN事件 → V=-0.1, A=-0.1（从默认0.2,0.2降至0.1,0.1）
-T+300030ms: 第4层本地空闲动作触发：
-           - 基于当前低arousal状态，触发轻微的"寻找"动作
-           - 缓慢的左右转动 + 低沉的叹息音效
+情感状态演化：
+T+0ms    : TOUCH_TICKLED事件 → V=0.65, A=0.7（高兴状态）
 
-用户随后触摸时的反应：
+活跃期衰减阶段（连续交互）：
+T+5000ms : 用户再次触摸，距上次5秒 < 15秒
+           活跃期衰减：V=0.65×(1-0.02×5)=0.585, A=0.7×0.9=0.63
+           新触摸事件：V+=0.1, A+=0.1 → V=0.685, A=0.73
+
+T+10000ms: 用户再次交互，仍在活跃期
+           情感维持较高水平，衰减缓慢
+
+空闲期衰减阶段（长时间无交互）：
+T+25000ms: 距上次交互15秒，进入空闲期
+           开始快速衰减(5%/秒)
+           
+T+40000ms: 15秒空闲期衰减  
+           V=0.685×(1-0.05×15)≈0.17, A=0.73×0.25≈0.18
+           接近默认状态(0.2, 0.2)
+
+T+45000ms: 归零机制触发
+           距离默认状态 < 0.1，直接回归到(0.2, 0.2)
+
+用户重新交互时的反应：
+T+50000ms: 新触摸事件基于默认状态(0.2, 0.2)开始计算
+```
+
+**关键优势**：
+- **连续交互**: 情感保持连贯，不会过快消退影响沉浸感  
+- **长期空闲**: 快速回归默认状态，避免极端情感长期停留
+- **自然过渡**: 15秒阈值提供了合理的缓冲期
 - 本地反应：因为当前V-A较低，触摸反应相对平缓
 - V-A受TOUCH_TAP影响：V=0.2, A=0.2（回到正常友善状态）
 - 云端反应："咦～有人理我了！" + 逐渐活跃的动作
@@ -831,20 +1204,49 @@ TEST(EmotionEngine, VADecay) {
    - TouchEngine/MotionEngine ✓
    - EventProcessor ✓
 
-2. **Phase 2**（进行中）：情感系统
-   - EmotionEngine实现
-   - 本地反应系统
-   - V-A模型集成
+2. **Phase 2**（进行中）：情感系统核心
+   - EmotionEngine实现（支持VA变化统一管理）
+   - 本地反应系统配置化
+   - V-A模型集成与衰减机制
+   - EventUploader协议完整支持
 
-3. **Phase 3**（计划中）：云端协同
-   - 云端决策引擎
-   - LLM情感理解
-   - MCP动作协同
+3. **Phase 3**（计划中）：云端协同增强
+   - 云端增强版LLM提示词实现
+   - VA变化修正机制
+   - 结构化响应解析（emotion、va_change字段）
+   - MCP动作协同与时序控制
 
-4. **Phase 4**（未来）：优化迭代
-   - 个性化学习
-   - 性能优化
-   - 用户反馈迭代
+4. **Phase 4**（计划中）：系统集成与优化
+   - 本地-云端VA变化冲突解决
+   - 渐进式权威修正实现
+   - 离线模式兼容性验证
+   - 性能优化与内存管理
+
+5. **Phase 5**（未来）：高级特性
+   - 个性化学习算法
+   - 长期情感记忆机制
+   - 多设备情感同步
+   - 用户体验持续优化
+
+#### 12.1.1 Phase 2-3 关键里程碑
+
+**VA变化统一管理**：
+- [ ] EmotionEngine支持pending_changes_队列
+- [ ] EventUploader添加local_va_change字段
+- [ ] 云端LLM返回结构化va_change
+- [ ] 本地实现ApplyCloudVACorrection方法
+
+**协议增强**：
+- [ ] 6.1消息格式完整实现（device_state, capabilities）
+- [ ] 云端解析增强版事件协议
+- [ ] 结构化响应JSON验证
+- [ ] 时间戳匹配机制（500ms容忍窗口）
+
+**情感表达丰富化**：
+- [ ] 云端支持8种CloudEmotionState情感
+- [ ] 语义优先的情感选择策略
+- [ ] 推理透明化（reasoning字段）
+- [ ] 情感连贯性验证机制
 
 
 ### 12.2 风险管理

@@ -3,19 +3,19 @@
 ## 1. 产品概述
 
 ### 1.1 项目背景
-EventEngine是ALichuangTest机器人板的核心交互引擎，负责协调处理来自触摸传感器和IMU运动传感器的各种交互事件。它为AI伴侣机器人提供了丰富的物理交互感知能力，使机器人能够理解和响应用户的各种触摸和运动行为。
+EventEngine是ALichuangTest AI伴侣机器人的核心交互引擎，负责协调处理来自触摸传感器和IMU运动传感器的各种交互事件。它不仅提供基础的物理交互感知，更是**情感化AI伴侣交互系统**的重要组成部分，通过多层反应架构和云端协同，实现真实、连贯的情感交互体验。
 
 ### 1.2 产品定位
-- **角色**：多传感器事件协调器和处理中心
-- **目标**：为AI伴侣机器人提供统一的交互事件检测和处理能力
-- **价值**：将低级传感器信号转换为高级语义事件，支持情感化人机交互
+- **角色**：情感化交互的事件感知层，连接物理世界与AI大脑
+- **目标**：为AI伴侣提供丰富的交互事件检测，支持四层反应架构和VA情感状态机
+- **价值**：将传感器信号转化为具有情感语义的交互事件，驱动本地即时反应和云端智能决策
 
-### 1.3 核心价值
-1. **统一事件模型**：将不同传感器的信号统一为Event结构
-2. **智能事件处理**：支持防抖、节流、合并等多种处理策略
-3. **可配置架构**：通过JSON配置文件灵活调整检测参数和处理策略
-4. **实时响应**：50ms事件处理周期，支持实时交互反馈
-5. **事件上传**：将交互事件上传到云端LLM进行语义理解
+### 1.3 核心价值升级
+1. **情感化事件模型**：不只是Event结构，更包含情感影响和语义理解
+2. **四层反应驱动**：支持紧急反应、象限反应、云端表达、空闲动作的完整架构
+3. **VA状态机集成**：事件直接影响Valence-Arousal情感坐标，驱动情感演化
+4. **本地-云端协同**：本地预估+云端修正的双重VA变化机制
+5. **智能事件上传**：包含设备状态、能力信息和本地VA变化的完整协议
 
 ## 2. 功能需求
 
@@ -41,13 +41,42 @@ EventEngine是ALichuangTest机器人板的核心交互引擎，负责协调处�
 - **AUDIO_WAKE_WORD/SPEAKING/LISTENING**: 音频事件（预留）
 - **SYSTEM_BOOT/SHUTDOWN/ERROR**: 系统事件（预留）
 
+#### 2.1.4 事件的情感影响矩阵
+
+每个事件类型都定义了对VA情感坐标的标准影响，用于本地预估：
+
+| 事件类型 | Valence变化 | Arousal变化 | 情感语义 |
+|---------|------------|------------|---------|
+| TOUCH_TAP | +0.1 | +0.1 | 轻微积极刺激 |
+| TOUCH_LONG_PRESS | +0.2 | -0.2 | 安抚，增加满足感 |
+| TOUCH_TICKLED | +0.4 | +0.5 | 强烈快乐体验 |
+| TOUCH_CRADLED | +0.3 | -0.4 | 安全感和平静 |
+| MOTION_SHAKE | -0.1 | +0.3 | 轻微不适和警觉 |
+| MOTION_SHAKE_VIOLENTLY | -0.5 | +0.7 | 强烈恐惧感 |
+| MOTION_FREE_FALL | -0.8 | +0.9 | 极度恐惧 |
+| MOTION_PICKUP | +0.1 | +0.2 | 期待感 |
+| MOTION_UPSIDE_DOWN | -0.3 | +0.4 | 困惑不适 |
+
+**注意**：这些是本地预估值，云端会基于语义理解进行修正。
+
 ### 2.2 事件数据结构
 
-#### 2.2.1 Event结构体
+#### 2.2.1 Event结构体（情感化增强版）
 ```cpp
+struct VAChange {
+    float valence_delta;    // V轴变化量
+    float arousal_delta;    // A轴变化量
+    int64_t applied_at;     // 本地应用时间戳
+};
+
 struct Event {
     EventType type;                 // 事件类型
-    int64_t timestamp_us;          // 时间戳（微秒）
+    int64_t timestamp_us;          // 事件发生时间戳（微秒）
+    
+    // 情感影响信息（用于VA状态机）
+    VAChange local_va_change;       // 本地VA预估变化
+    bool affects_emotion;           // 是否影响情感状态
+    
     union {
         ImuData imu_data;          // 运动事件IMU数据
         TouchEventData touch_data;  // 触摸事件数据
@@ -109,19 +138,32 @@ struct TouchEventData {
 
 ## 3. 技术架构
 
-### 3.1 系统架构图
+### 3.1 情感化交互系统架构图
 ```
-用户交互 → 传感器层 → 引擎层 → 处理器层 → 应用层
-         (GPIO/I2C)  (Engine)  (Processor) (Callback)
+用户交互 → 传感器层 → 事件引擎 → 情感状态机 → 四层反应架构 → 云端协同
+         ↓          ↓         ↓           ↓              ↓
+      触摸/运动   EventEngine EmotionEngine  LocalResponse  EventUploader
+         ↓          ↓         ↓           ↓              ↓
+     GPIO/I2C    Event结构   VA坐标系    本地即时反应     云端语义分析
+                            ↓           ↓              ↓
+                        象限判断     4层反应选择      LLM情感理解
+                            ↓           ↓              ↓
+                        衰减机制   音效/震动/动画       MCP动作指令
+
+时序关系：
+T+0ms    : 传感器检测 → 事件生成 → VA预估 → 本地反应
+T+35ms   : 事件上传（包含local_va_change）
+T+1500ms : 云端分析 → VA修正 → 精确情感表达
 ```
 
 ### 3.2 核心组件
 
-#### 3.2.1 EventEngine (事件引擎)
-- **职责**: 事件源协调器，统一事件接口
-- **组件管理**: 内部创建和管理MotionEngine、TouchEngine
-- **事件分发**: 将原始传感器事件转换为统一Event结构
-- **回调管理**: 支持全局回调和特定事件类型回调
+#### 3.2.1 EventEngine (情感化事件引擎)
+- **职责**: 情感交互的事件协调中心，VA状态机驱动器
+- **组件管理**: 创建和管理MotionEngine、TouchEngine、EmotionEngine
+- **事件增强**: 为Event结构自动添加VA影响信息和情感语义
+- **状态集成**: 与EmotionEngine协同，实现事件→VA变化→反应的完整链路
+- **回调扩展**: 支持情感状态变化、象限切换等高级回调
 
 #### 3.2.2 EventProcessor (事件处理器)
 - **职责**: 事件过滤和策略处理
@@ -129,11 +171,20 @@ struct TouchEventData {
 - **状态管理**: 维护每种事件类型的处理状态
 - **统计功能**: 提供事件接收/处理/丢弃统计
 
-#### 3.2.3 EventUploader (事件上传器)
-- **职责**: 事件格式化和网络上传
-- **格式转换**: 将Event转换为服务器可理解的JSON格式
-- **批量处理**: 支持事件批量上传，提高网络效率
-- **缓存机制**: 网络断开时缓存事件，连接恢复后批量发送
+#### 3.2.3 EmotionEngine (情感状态引擎) **[新增核心组件]**
+- **职责**: VA坐标系管理，情感状态演化控制
+- **VA管理**: 维护当前Valence-Arousal坐标(默认0.2, 0.2)
+- **双重机制**: 支持本地预估+云端修正的VA变化统一管理
+- **象限计算**: 基于VA坐标自动判断情感象限(Q1/Q2/Q3/Q4)
+- **衰减控制**: 自动向默认状态衰减，维持情感平衡
+- **记忆机制**: 维护pending_changes_队列，支持云端权威修正
+
+#### 3.2.4 EventUploader (智能事件上传器)
+- **职责**: 情感化事件格式化和云端协同
+- **增强格式**: 包含device_state、capabilities、local_va_change的完整协议
+- **VA传递**: 将本地VA变化信息传递给云端进行语义修正
+- **状态感知**: 根据设备状态调整上传策略
+- **批量优化**: 支持事件合并和批量上传，提高协同效率
 
 #### 3.2.4 EventConfigLoader (配置加载器)
 - **职责**: 配置文件解析和加载
@@ -153,23 +204,46 @@ struct TouchEventData {
 - **手势识别**: 支持点击、长按、摇篮、挠痒等复杂手势
 - **位置感知**: 区分左侧、右侧、双侧触摸
 
-### 3.4 事件上传架构
+### 3.4 智能事件上传架构
 
-#### 3.4.1 消息格式
+#### 3.4.1 完整消息格式（支持VA变化统一管理）
 ```json
 {
   "session_id": "uuid",
   "type": "lx/v1/event", 
   "payload": {
+    "current_va": {
+      "valence": 0.6,
+      "arousal": 0.4
+    },
+    "device_state": "idle",
+    "device_capabilities": {
+      "has_vibration": true,
+      "has_motion": true,
+      "has_display": true,
+      "has_sound": true
+    },
     "events": [{
       "event_type": "Touch_Left_Tap",
       "event_text": "主人轻轻拍了我的左侧",
       "start_time": 1755222858360,
-      "end_time": 1755222858360
+      "end_time": 1755222858360,
+      "duration_ms": 0,
+      "local_va_change": {
+        "valence_delta": 0.1,
+        "arousal_delta": 0.1,
+        "applied_at": 1755222858365
+      }
     }]
   }
 }
 ```
+
+**新增字段说明**：
+- **current_va**: 当前VA坐标，供云端理解情感状态
+- **device_state**: 设备状态(idle/listening/speaking/thinking)
+- **device_capabilities**: 设备能力信息，指导云端生成MCP指令
+- **local_va_change**: 本地已应用的VA变化，供云端修正参考
 
 #### 3.4.2 网络传输
 - **协议**: WebSocket/MQTT直接发送
@@ -237,11 +311,24 @@ engine.InitializeTouchEngine();
 // 全局事件回调
 engine.RegisterCallback([](const Event& event) {
     // 处理所有事件
+    // 自动应用情感影响
+    ApplyEmotionImpact(event.type, event.va_change);
 });
 
 // 特定事件类型回调
 engine.RegisterCallback(EventType::TOUCH_TAP, [](const Event& event) {
     // 处理点击事件
+    // 应用相应的VA变化 (0.05, 0.1)
+});
+
+// 情感引擎回调注册
+engine.RegisterEmotionCallback([](const VAChange& change, bool is_local) {
+    // 处理情感变化：本地预测或云端修正
+    if (is_local) {
+        emotion_engine.ApplyLocalChange(change);
+    } else {
+        emotion_engine.CorrectFromCloud(change);
+    }
 });
 ```
 
@@ -251,10 +338,18 @@ engine.RegisterCallback(EventType::TOUCH_TAP, [](const Event& event) {
 EventProcessingConfig config;
 config.strategy = EventProcessingStrategy::MERGE;
 config.merge_window_ms = 1500;
+config.enable_emotion_impact = true;  // 启用情感影响
 engine.ConfigureEventProcessing(EventType::TOUCH_TAP, config);
 
 // 更新运动检测参数
 engine.UpdateMotionEngineConfig(json_config);
+
+// 配置情感系统
+EmotionConfig emotion_config;
+emotion_config.default_va = {0.2f, 0.2f};  // 默认VA坐标
+emotion_config.enable_local_prediction = true;
+emotion_config.cloud_correction_timeout_ms = 3000;
+engine.ConfigureEmotionSystem(emotion_config);
 ```
 
 ### 6.4 状态查询接口
@@ -267,8 +362,14 @@ bool upside_down = engine.IsUpsideDown();
 bool left_touched = engine.IsLeftTouched();
 bool right_touched = engine.IsRightTouched();
 
+// 查询情感状态
+VACoordinate current_va = engine.GetCurrentVA();
+CloudEmotionState emotion_state = engine.GetCurrentEmotionState();
+std::vector<VAChange> pending_changes = engine.GetPendingVAChanges();
+
 // 查询事件统计
 auto stats = engine.GetEventStats(EventType::TOUCH_TAP);
+int emotion_corrections = engine.GetEmotionCorrectionCount();
 ```
 
 ## 7. 开发指南
@@ -276,9 +377,11 @@ auto stats = engine.GetEventStats(EventType::TOUCH_TAP);
 ### 7.1 添加新事件类型
 1. 在`EventType`枚举中添加新类型
 2. 在Event结构体的union中添加相应数据类型
-3. 实现事件检测逻辑
-4. 添加事件转换和格式化逻辑
-5. 配置相应的处理策略
+3. 定义事件的VA影响值（在情感影响矩阵中）
+4. 实现事件检测逻辑
+5. 添加事件转换和格式化逻辑
+6. 配置相应的处理策略
+7. 更新事件上传格式支持新事件
 
 ### 7.2 自定义处理策略
 1. 在`EventProcessingStrategy`枚举中添加新策略
@@ -289,10 +392,36 @@ auto stats = engine.GetEventStats(EventType::TOUCH_TAP);
 ### 7.3 集成新传感器
 1. 创建新的Engine子类（如AudioEngine）
 2. 定义传感器特定的事件类型和数据结构
-3. 在EventEngine中添加初始化和回调设置
-4. 实现事件转换逻辑
+3. 定义传感器事件的情感影响
+4. 在EventEngine中添加初始化和回调设置
+5. 实现事件转换逻辑
+6. 集成到情感引擎的VA管理流程中
 
-### 7.4 调试和测试
+### 7.4 情感集成开发
+在事件系统中集成情感状态机：
+```cpp
+// 初始化情感引擎
+EmotionEngine emotion_engine({0.2f, 0.2f});  // 默认VA坐标
+
+// 注册情感变化回调
+event_engine.RegisterEmotionCallback(
+    [&emotion_engine](const VAChange& change, bool is_local) {
+        if (is_local) {
+            emotion_engine.ApplyLocalChange(change);
+        } else {
+            emotion_engine.CorrectFromCloud(change);
+        }
+    }
+);
+
+// 处理事件时自动应用情感影响
+event_engine.RegisterCallback([](const Event& event) {
+    // 事件处理自动包含VA变化
+    ProcessEventWithEmotion(event);
+});
+```
+
+### 7.5 调试和测试
 ```cpp
 // 启用调试输出
 engine.InitializeMotionEngine(imu, true);
@@ -300,12 +429,17 @@ engine.InitializeMotionEngine(imu, true);
 // 手动触发事件进行测试
 Event test_event;
 test_event.type = EventType::TOUCH_TAP;
+test_event.va_change = {0.05f, 0.1f};  // 设置情感影响
 engine.TriggerEvent(test_event);
 
 // 查看处理统计
 auto stats = engine.GetEventStats(EventType::TOUCH_TAP);
 ESP_LOGI(TAG, "Received: %d, Processed: %d, Dropped: %d", 
          stats.received_count, stats.processed_count, stats.dropped_count);
+
+// 查看情感状态
+auto current_va = engine.GetCurrentVA();
+ESP_LOGI(TAG, "Current VA: (%.2f, %.2f)", current_va.valence, current_va.arousal);
 ```
 
 ## 8. 部署和运维
@@ -322,6 +456,9 @@ ESP_LOGI(TAG, "Received: %d, Processed: %d, Dropped: %d",
 - **事件丢弃率**: 被处理策略丢弃的事件比例
 - **网络上传成功率**: 事件成功上传到服务器的比例
 - **缓存队列长度**: 待上传事件的缓存数量
+- **情感状态稳定性**: 本地与云端VA变化的一致性
+- **情感修正频率**: 云端修正本地情感预测的次数
+- **VA坐标漂移**: 情感状态随时间的变化趋势
 
 ### 8.3 故障排除
 1. **事件检测失效**: 检查传感器连接和初始化状态
@@ -337,9 +474,16 @@ ESP_LOGI(TAG, "Received: %d, Processed: %d, Dropped: %d",
 - **多设备协同**: 支持多个机器人之间的事件同步
 - **预测性交互**: 基于上下文预测用户意图
 - **情感计算**: 从交互模式推断用户情感状态
+- **情感记忆**: 长期记忆用户情感偏好和交互模式
+- **高级情感状态**: 支持更细致的情感分类和强度级别
+- **情感连续性**: 实现情感状态的平滑过渡和衰减
 
 ### 9.2 技术优化
 - **事件融合**: 多传感器数据融合提高检测精度
+- **情感模型优化**: 使用神经网络优化VA变化预测
+- **实时情感同步**: 降低本地-云端情感状态的延迟
+- **自适应阈值**: 根据用户习惯动态调整事件检测参数
+- **轻量化情感引擎**: 减少情感处理的内存和CPU开销
 - **边缘计算**: 在设备端进行更多语义分析
 - **协议优化**: 更高效的事件上传协议
 - **能耗优化**: 降低事件处理的功耗
