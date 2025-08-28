@@ -19,7 +19,8 @@
       "WebFetch(domain:docs.espressif.com)",
       "Bash(cp:*)",
       "Bash(git rm:*)",
-      "Bash(python scripts/release.py:*)"
+      "Bash(python scripts/release.py:*)",
+      "Bash(mv:*)"
     ],
     "deny": []
   }

@@ -7,7 +7,10 @@
 #include <algorithm>         // for std::min, std::remove_if
 
 EventUploader::EventUploader() 
-    : enabled_(false) {
+    : enabled_(false),
+      current_has_emotion_state_(false),
+      current_valence_(0.0f),
+      current_arousal_(0.0f) {
     
     // 生成设备ID
     device_id_ = GenerateDeviceId();
@@ -26,6 +29,15 @@ std::string EventUploader::GenerateDeviceId() {
     // 简化版：使用固定的设备ID，或者可以从其他地方获取
     // 在实际项目中，这个ID可以从配置文件、NVRAM等获取
     return "alichuang_test_device";
+}
+
+void EventUploader::SetCurrentEmotionState(float valence, float arousal) {
+    std::lock_guard<std::mutex> lock(emotion_mutex_);
+    current_has_emotion_state_ = true;
+    current_valence_ = valence;
+    current_arousal_ = arousal;
+    
+    ESP_LOGD(TAG_EVENT_UPLOADER, "Updated emotion state: V=%.2f, A=%.2f", valence, arousal);
 }
 
 void EventUploader::HandleEvent(const Event& event) {
@@ -227,6 +239,17 @@ EventUploader::CachedEvent EventUploader::ConvertEvent(const Event& event) {
              cached.end_time, cached.start_time);
     
     cached.event_payload = nullptr; // 通常为空
+    
+    // 添加当前情感状态
+    {
+        std::lock_guard<std::mutex> lock(emotion_mutex_);
+        cached.has_emotion_state = current_has_emotion_state_;
+        if (current_has_emotion_state_) {
+            cached.valence = current_valence_;
+            cached.arousal = current_arousal_;
+        }
+    }
+    
     return cached; // 移动语义自动生效
 }
 

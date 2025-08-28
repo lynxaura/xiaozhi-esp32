@@ -3,6 +3,7 @@
 
 #include "../sensors/motion_engine.h"
 #include "../sensors/touch_engine.h"
+#include "emotion_engine.h"
 #include <functional>
 #include <memory>
 #include <vector>
@@ -128,6 +129,10 @@ public:
     // 更新运动引擎配置
     void UpdateMotionEngineConfig(const cJSON* json);
     
+    // 情感引擎集成
+    void InitializeEmotionEngine();
+    void SetEmotionReportCallback(EmotionEngine::EmotionReportCallback callback);
+    
 private:
     // 运动引擎（内部创建和管理）
     MotionEngine* motion_engine_;
@@ -138,6 +143,9 @@ private:
     
     // 事件处理器
     EventProcessor* event_processor_;
+    
+    // 情感引擎集成标记
+    bool emotion_engine_initialized_;
     
     // 初始化子引擎的回调
     void SetupMotionEngineCallbacks();

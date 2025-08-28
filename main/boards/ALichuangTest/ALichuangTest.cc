@@ -10,6 +10,7 @@
 #include "qmi8658.h"
 #include "interaction/core/event_engine.h"
 #include "interaction/upload/event_uploader.h"
+#include "interaction/controller/mcp_response_controller.h"
 #include "interaction/controller/local_response_controller.h"
 #include "pca9685.h"
 
@@ -110,7 +111,8 @@ private:
     Pca9685* pca9685_ = nullptr;           // PCA9685 PWM控制器
     Vibration* vibration_skill_ = nullptr; // 振动技能管理器
     Motion* motion_skill_ = nullptr;       // 直流马达动作控制技能
-    LocalResponseController* local_response_controller_ = nullptr; // MCP本地响应控制器
+    McpResponseController* mcp_response_controller_ = nullptr; // MCP响应控制器
+    LocalResponseController* local_response_controller_ = nullptr; // 本地响应控制器
     TaskHandle_t delay_task_handle = nullptr;
 #if CONFIG_LINGXI_ANIMA_UI
     // 情感相关成员变量
@@ -358,7 +360,6 @@ private:
                     convertedData[i] = ((pixel & 0xFF) << 8) | ((pixel & 0xFF00) >> 8);
                 }
                 display->DrawImageOnCanvas(x, y, imgWidth, imgHeight, (const uint8_t*)convertedData);
-                ESP_LOGI(TAG, "播放情感动画: %s, 图片索引: %d", currentEmotion.c_str(), currentIndex);
                 
                 // 更新上次更新时间
                 lastUpdateTime = currentTime;
@@ -680,6 +681,9 @@ private:
         event_engine_ = new EventEngine();
         event_engine_->Initialize();
         
+        // 初始化情感引擎
+        event_engine_->InitializeEmotionEngine();
+        
         // 初始化运动引擎（如果IMU可用）
         if (imu_) {
             event_engine_->InitializeMotionEngine(imu_, true);  // 启用调试输出
@@ -693,15 +697,32 @@ private:
         event_uploader_->Enable(true);
         ESP_LOGI(TAG, "EventUploader created and enabled");
         
+        // 设置情感状态上报回调
+        event_engine_->SetEmotionReportCallback([this](const Event& event, float valence, float arousal) {
+            ESP_LOGI(TAG, "🎭 Emotion state changed: V=%.2f, A=%.2f for event type=%d", 
+                     valence, arousal, (int)event.type);
+            
+            // 将情感状态设置到事件上传器中，用于云端上报
+            if (event_uploader_) {
+                event_uploader_->SetCurrentEmotionState(valence, arousal);
+            }
+        });
+        
         // 事件处理策略已通过配置文件自动加载
         // 如需覆盖特定策略，可在此处调用：
         // event_engine_->ConfigureEventProcessing(EventType::TOUCH_TAP, custom_config);
         
         // 设置事件回调
         event_engine_->RegisterCallback([this](const Event& event) {
+            // 1. 先执行本地响应（最高优先级，即时反应）
+            if (local_response_controller_) {
+                local_response_controller_->ProcessEvent(event);
+            }
+            
+            // 2. 处理事件日志和情感状态更新
             HandleEvent(event);
             
-            // 添加事件上传处理
+            // 3. 最后上传事件到云端（低优先级）
             if (event_uploader_) {
                 event_uploader_->HandleEvent(event);
             }
@@ -728,8 +749,8 @@ private:
         ESP_LOGI(TAG, "Initializing MCP local response tools...");
         
         try {
-            // 创建LocalResponseController实例
-            local_response_controller_ = new LocalResponseController(
+            // 创建McpResponseController实例
+            mcp_response_controller_ = new McpResponseController(
                 motion_skill_,
                 vibration_skill_,
                 event_engine_,
@@ -739,15 +760,44 @@ private:
             );
             
             // 初始化MCP工具
-            if (local_response_controller_->Initialize()) {
+            if (mcp_response_controller_->Initialize()) {
                 ESP_LOGI(TAG, "✅ MCP local response system initialized successfully");
             } else {
                 ESP_LOGE(TAG, "❌ Failed to initialize MCP local response system");
+                delete mcp_response_controller_;
+                mcp_response_controller_ = nullptr;
+            }
+        } catch (const std::exception& e) {
+            ESP_LOGE(TAG, "Exception during MCP tools initialization: %s", e.what());
+            if (mcp_response_controller_) {
+                delete mcp_response_controller_;
+                mcp_response_controller_ = nullptr;
+            }
+        }
+    }
+    
+    void InitializeLocalResponseSystem() {
+        ESP_LOGI(TAG, "Initializing Local Response System...");
+        
+        try {
+            // 创建本地响应控制器
+            local_response_controller_ = new LocalResponseController(
+                motion_skill_,
+                vibration_skill_, 
+                GetDisplay()
+            );
+            
+            // 初始化本地响应系统
+            if (local_response_controller_->Initialize()) {
+                ESP_LOGI(TAG, "✅ Local Response System initialized successfully");
+                local_response_controller_->ListTemplates();
+            } else {
+                ESP_LOGE(TAG, "❌ Failed to initialize Local Response System");
                 delete local_response_controller_;
                 local_response_controller_ = nullptr;
             }
         } catch (const std::exception& e) {
-            ESP_LOGE(TAG, "Exception during MCP tools initialization: %s", e.what());
+            ESP_LOGE(TAG, "Exception during Local Response System initialization: %s", e.what());
             if (local_response_controller_) {
                 delete local_response_controller_;
                 local_response_controller_ = nullptr;
@@ -892,7 +942,10 @@ public:
         StartVibrationTask();
         // 启动直流马达动作控制任务
         StartMotionTask();
-        
+                
+        // 初始化本地响应系统（在交互系统和技能初始化后）
+        InitializeLocalResponseSystem();
+
         // 所有skills初始化完成后，初始化MCP工具
         InitializeMcpTools();
     }
@@ -950,6 +1003,11 @@ public:
     // 获取直流马达动作控制技能（可选，用于外部访问和测试）
     Motion* GetMotion() {
         return motion_skill_;
+    }
+    
+    // 获取本地响应控制器（用于调试和测试）
+    LocalResponseController* GetLocalResponseController() {
+        return local_response_controller_;
     }
 };
 

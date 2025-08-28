@@ -56,8 +56,8 @@ void TouchEngine::Initialize() {
     // 3. 配置触摸传感器
     InitializeGPIO();
     
-    // 4. 创建触摸处理任务
-    BaseType_t task_result = xTaskCreate(TouchTask, "touch_task", 3072, this, 10, &task_handle_);
+    // 4. 创建触摸处理任务（增加栈大小以支持情感状态回调）
+    BaseType_t task_result = xTaskCreate(TouchTask, "touch_task", 6144, this, 10, &task_handle_);
     if (task_result != pdPASS) {
         ESP_LOGE(TAG, "Failed to create touch task");
         return;

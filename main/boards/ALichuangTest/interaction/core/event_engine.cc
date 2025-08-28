@@ -3,6 +3,7 @@
 #include "../sensors/touch_engine.h"
 #include "event_processor.h"
 #include "../config/event_config_loader.h"
+#include "emotion_engine.h"
 #include <esp_log.h>
 #include <esp_timer.h>
 
@@ -13,7 +14,8 @@ EventEngine::EventEngine()
     , owns_motion_engine_(false)
     , touch_engine_(nullptr)
     , owns_touch_engine_(false)
-    , event_processor_(nullptr) {
+    , event_processor_(nullptr)
+    , emotion_engine_initialized_(false) {
     // 创建事件处理器
     event_processor_ = new EventProcessor();
 }
@@ -173,6 +175,31 @@ void EventEngine::SetupTouchEngineCallbacks() {
     }
 }
 
+void EventEngine::InitializeEmotionEngine() {
+    if (emotion_engine_initialized_) {
+        ESP_LOGW(TAG, "Emotion engine already initialized");
+        return;
+    }
+    
+    // 获取情感引擎单例并初始化
+    EmotionEngine& emotion_engine = EmotionEngine::GetInstance();
+    emotion_engine.Initialize();
+    emotion_engine_initialized_ = true;
+    
+    ESP_LOGI(TAG, "Emotion engine initialized and integrated with event engine");
+}
+
+void EventEngine::SetEmotionReportCallback(EmotionEngine::EmotionReportCallback callback) {
+    if (!emotion_engine_initialized_) {
+        ESP_LOGW(TAG, "Emotion engine not initialized, call InitializeEmotionEngine() first");
+        return;
+    }
+    
+    EmotionEngine& emotion_engine = EmotionEngine::GetInstance();
+    emotion_engine.SetEmotionReportCallback(callback);
+    ESP_LOGI(TAG, "Emotion report callback set");
+}
+
 void EventEngine::RegisterCallback(EventCallback callback) {
     global_callback_ = callback;
 }
@@ -225,6 +252,15 @@ void EventEngine::DispatchEvent(const Event& event) {
         return;
     }
     
+    // 如果情感引擎已初始化，则更新情感状态
+    if (emotion_engine_initialized_) {
+        ESP_LOGD(TAG, "Updating emotion state for event type=%d", (int)processed_event.type);
+        EmotionEngine& emotion_engine = EmotionEngine::GetInstance();
+        emotion_engine.OnEvent(processed_event);
+    } else {
+        ESP_LOGW(TAG, "Emotion engine not initialized, skipping emotion update for event type=%d", (int)processed_event.type);
+    }
+    
     // 调用全局回调
     if (global_callback_) {
         global_callback_(processed_event);
@@ -240,6 +276,13 @@ void EventEngine::DispatchEvent(const Event& event) {
     // 处理队列中的事件
     Event queued_event;
     while (event_processor_->GetNextQueuedEvent(queued_event)) {
+        // 队列中的事件也需要更新情感状态
+        if (emotion_engine_initialized_) {
+            ESP_LOGD(TAG, "Updating emotion state for queued event type=%d", (int)queued_event.type);
+            EmotionEngine& emotion_engine = EmotionEngine::GetInstance();
+            emotion_engine.OnEvent(queued_event);
+        }
+        
         if (global_callback_) {
             global_callback_(queued_event);
         }

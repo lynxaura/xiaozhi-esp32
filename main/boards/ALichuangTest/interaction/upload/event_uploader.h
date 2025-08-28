@@ -33,8 +33,13 @@ public:
         uint32_t duration_ms;        // 事件持续时间（毫秒）
         cjson_uptr event_payload;    // 额外数据（通常为空），智能指针管理
         
+        // 情感状态字段
+        bool has_emotion_state;      // 是否包含情感状态
+        float valence;               // 效价值 [-1.0, +1.0]
+        float arousal;               // 激活度 [-1.0, +1.0]
+        
         // 默认构造函数，unique_ptr自动初始化为nullptr
-        CachedEvent() = default;
+        CachedEvent() : has_emotion_state(false), valence(0.0f), arousal(0.0f) {}
         
         // 支持移动，禁止拷贝（防止double free）
         CachedEvent(CachedEvent&&) = default;
@@ -54,6 +59,9 @@ public:
     
     // 启用/禁用通知
     void Enable(bool enable) { enabled_ = enable; }
+    
+    // 设置当前情感状态
+    void SetCurrentEmotionState(float valence, float arousal);
     
     // 连接状态回调
     void OnConnectionOpened();
@@ -76,6 +84,12 @@ private:
     
     // 事件序列号，用于生成唯一event_id
     std::atomic<uint32_t> event_sequence_{0};
+    
+    // 当前情感状态
+    std::mutex emotion_mutex_;
+    bool current_has_emotion_state_;
+    float current_valence_;
+    float current_arousal_;
     
     // 获取设备ID的方法
     std::string GenerateDeviceId();
@@ -102,6 +116,14 @@ private:
             cJSON_AddStringToObject(event_obj, "event_text", event.event_text.c_str());
             cJSON_AddNumberToObject(event_obj, "start_time", event.start_time);
             cJSON_AddNumberToObject(event_obj, "end_time", event.end_time);
+            
+            // 添加情感状态字段
+            if (event.has_emotion_state) {
+                cJSON* emotion_obj = cJSON_CreateObject();
+                cJSON_AddNumberToObject(emotion_obj, "valence", event.valence);
+                cJSON_AddNumberToObject(emotion_obj, "arousal", event.arousal);
+                cJSON_AddItemToObject(event_obj, "emotion_state", emotion_obj);
+            }
             
             // 只有在event_payload存在时才添加
             if (event.event_payload) {
