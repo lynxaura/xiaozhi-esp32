@@ -278,29 +278,138 @@ void LocalResponseController::AddEmergencyTemplates() {
 }
 
 void LocalResponseController::AddQuadrantTemplates() {
-    // 触摸点击 - 象限相关响应（内存优化版本）
+    // TOUCH_TAP - 触摸点击的象限响应
     {
         ResponseTemplate& tmpl = templates_[template_count_++] = ResponseTemplate("touch_tap_quadrant", EventType::TOUCH_TAP, 2);
         
-        // 基础组件
-        tmpl.AddBaseComponent(ResponseComponent::CreateVibration(VIBRATION_SHORT_BUZZ));
-        
-        // 象限变体
+        // Q1 (积极高激活) - 兴奋状态：俏皮反应
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_SHORT_BUZZ));
         tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateMotion(MOTION_HAPPY_WIGGLE));
         tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion("happy", 400));
         
+        // Q2 (消极高激活) - 恐惧/压力状态：受惊反应
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_SHARP_BUZZ));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateMotion(MOTION_BODY_SHIVER));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion("surprised", 300));
+        
+        // Q3 (消极低激活) - 悲伤/无聊状态：微弱反应
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_PURR_SHORT));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateMotion(MOTION_SLOW_TURN_LEFT));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion("sad", 600));
+        
+        // Q4 (积极低激活) - 满足/平静状态：舒适反应
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_GENTLE_HEARTBEAT));
         tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateMotion(MOTION_NUZZLE_FORWARD));
         tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion("neutral", 500));
-        
-        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateMotion(MOTION_DODGE_SUBTLE));
-        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion("surprised", 300));
-        
-        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateMotion(MOTION_SLOW_TURN_LEFT));
-        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion("sad", 600));
     }
     
-    // 简化版的其他模板（为了节省开发时间，只实现一个关键模板）
-    // 其他模板可以后续按需添加
+    // MOTION_SHAKE - 摇晃的象限响应
+    {
+        ResponseTemplate& tmpl = templates_[template_count_++] = ResponseTemplate("motion_shake_quadrant", EventType::MOTION_SHAKE, 2);
+        
+        // Valence > 0 (积极象限) - 欢快配合
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_GIGGLE_PATTERN));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateMotion(MOTION_EXCITED_JIGGLE));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion("happy", 800));
+        
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_PURR_PATTERN));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateMotion(MOTION_HAPPY_WIGGLE));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion("happy", 600));
+        
+        // Valence < 0 (消极象限) - 不耐烦/抗拒
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_TREMBLE_PATTERN));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateMotion(MOTION_ANNOYED_TWIST_TO_HAPPY));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion("angry", 800));
+        
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_SHORT_BUZZ));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateMotion(MOTION_DODGE_SLOWLY));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion("sad", 600));
+    }
+    
+    // MOTION_PICKUP - 被拿起的象限响应
+    {
+        ResponseTemplate& tmpl = templates_[template_count_++] = ResponseTemplate("motion_pickup_quadrant", EventType::MOTION_PICKUP, 2);
+        
+        // Valence > 0 (积极象限) - 期待反应
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_GIGGLE_PATTERN));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateMotion(MOTION_EXCITED_JIGGLE));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion("happy", 600));
+        
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_PURR_SHORT));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateMotion(MOTION_CURIOUS_PEEK_LEFT));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion("neutral", 500));
+        
+        // Valence < 0 (消极象限) - 警觉/蜷缩
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_TREMBLE_PATTERN));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateMotion(MOTION_TENSE_UP));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion("surprised", 400));
+        
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_SHORT_BUZZ));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateMotion(MOTION_DODGE_OPPOSITE_LEFT));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion("sad", 500));
+    }
+    
+    // TOUCH_CRADLED - 摇篮模式：通常导向Q4平静状态
+    {
+        ResponseTemplate& tmpl = templates_[template_count_++] = ResponseTemplate("touch_cradled_quadrant", EventType::TOUCH_CRADLED, 2);
+        
+        // 所有象限都会逐渐导向平静，但初始反应不同
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_GENTLE_HEARTBEAT));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateMotion(MOTION_RELAX_TO_CENTER));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion("neutral", 2000));
+        
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_GENTLE_HEARTBEAT));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateMotion(MOTION_RELAX_COMPLETELY));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion("happy", 3000));
+        
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_GENTLE_HEARTBEAT));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateMotion(MOTION_RELAX_TO_CENTER));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion("neutral", 2500));
+        
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_GENTLE_HEARTBEAT));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateMotion(MOTION_RELAX_COMPLETELY));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion("neutral", 3000));
+    }
+    
+    // TOUCH_TICKLED - 挠痒模式：通常导向Q1兴奋状态
+    {
+        ResponseTemplate& tmpl = templates_[template_count_++] = ResponseTemplate("touch_tickled_quadrant", EventType::TOUCH_TICKLED, 2);
+        
+        // 基础强烈反应（所有象限都会有强烈反应，但情感表达不同）
+        tmpl.AddBaseComponent(ResponseComponent::CreateVibration(VIBRATION_GIGGLE_PATTERN));
+        tmpl.AddBaseComponent(ResponseComponent::CreateMotion(MOTION_TICKLE_TWIST_DANCE));
+        
+        // 象限特定情感表达
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion("laughing", 1500));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion("happy", 1200));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion("surprised", 1000));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion("neutral", 800));
+    }
+    
+    // TOUCH_LONG_PRESS - 长按的象限响应
+    {
+        ResponseTemplate& tmpl = templates_[template_count_++] = ResponseTemplate("touch_long_press_quadrant", EventType::TOUCH_LONG_PRESS, 2);
+        
+        // Q1 (积极高激活) - 亲密开心
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_PURR_PATTERN));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateMotion(MOTION_HAPPY_WIGGLE));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion("happy", 1000));
+        
+        // Q2 (消极高激活) - 不安挣扎
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_STRUGGLE_PATTERN));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateMotion(MOTION_DODGE_SUBTLE));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion("angry", 800));
+        
+        // Q3 (消极低激活) - 消极忍受
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_SHORT_BUZZ));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateMotion(MOTION_SLOW_TURN_RIGHT));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion("sad", 1200));
+        
+        // Q4 (积极低激活) - 享受抚摸
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateVibration(VIBRATION_GENTLE_HEARTBEAT));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateMotion(MOTION_RELAX_COMPLETELY));
+        tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion("neutral", 1500));
+    }
 }
 
 // 调试接口实现
