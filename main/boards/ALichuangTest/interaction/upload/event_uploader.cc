@@ -391,7 +391,6 @@ void EventUploader::SendSingleEvent(CachedEvent&& event) {
         event_vec.push_back(std::move(event));
         
         std::string payload = BuildEventPayload(event_vec.begin(), event_vec.end());
-        ESP_LOGI(TAG_EVENT_UPLOADER, "Generated JSON: %s", payload.c_str());
         
         // 验证JSON有效性
         cJSON* json = cJSON_Parse(payload.c_str());

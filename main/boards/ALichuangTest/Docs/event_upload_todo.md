@@ -128,7 +128,6 @@ void EventUploader::HandleEvent(const Event& event) {
     test_vec.push_back(std::move(cached));
     
     std::string payload = BuildEventPayload(test_vec.begin(), test_vec.end());
-    ESP_LOGI(TAG, "Generated JSON: %s", payload.c_str());
     
     // 验证JSON有效性
     cJSON* json = cJSON_Parse(payload.c_str());
@@ -153,7 +152,6 @@ void EventUploader::HandleEvent(const Event& event) {
 I EventUploader: === Event Processing Debug ===
 I EventUploader: Raw event type: 21
 I EventUploader: Event converted: Touch_Left_Tap -> 主人轻轻拍了我的左侧  
-I EventUploader: Generated JSON: {"events":[{"event_type":"Touch_Left_Tap",...}]}
 I EventUploader: ✓ JSON valid
 ```
 
