@@ -12,6 +12,11 @@ std::map<std::string, EventResponse> EventConfigLoader::response_map_;
 // 默认配置（嵌入式版本）
 const char* DefaultEventConfig::GetDefaultConfig() {
     return R"({
+        "event_upload_config": {
+            "batch_upload_enabled": true,
+            "batch_window_ms": 500,
+            "max_batch_size": 10
+        },
         "event_processing_strategies": {
             "touch_events": {
                 "TOUCH_TAP": {
@@ -85,6 +90,9 @@ bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engi
         ESP_LOGE(TAG, "Failed to parse JSON config");
         return false;
     }
+    
+    // 解析批量上传配置
+    engine->LoadUploadConfig(root);
     
     // 解析事件处理策略
     cJSON* strategies = cJSON_GetObjectItem(root, "event_processing_strategies");

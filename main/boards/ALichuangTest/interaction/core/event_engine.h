@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <vector>
+#include <cJSON.h>
 
 // 事件类型枚举 - 包含所有可能的事件
 enum class EventType {
@@ -80,10 +81,18 @@ class MotionEngine;
 class TouchEngine;
 class Qmi8658;
 
+// 批量上传配置结构
+struct EventUploadConfig {
+    bool batch_upload_enabled = true;
+    uint32_t batch_window_ms = 400;
+    uint32_t max_batch_size = 10;
+};
+
 // 事件引擎类 - 作为各种事件源的协调器
 class EventEngine {
 public:
     using EventCallback = std::function<void(const Event&)>;
+    using BatchEventCallback = std::function<void(const std::vector<Event>&)>;
     
     EventEngine();
     ~EventEngine();
@@ -100,6 +109,7 @@ public:
     // 注册事件回调
     void RegisterCallback(EventCallback callback);
     void RegisterCallback(EventType type, EventCallback callback);
+    void RegisterBatchCallback(BatchEventCallback callback);
     
     // 处理函数（在主循环中调用）
     void Process();
@@ -129,6 +139,9 @@ public:
     // 更新运动引擎配置
     void UpdateMotionEngineConfig(const cJSON* json);
     
+    // 批量上传配置
+    void LoadUploadConfig(const cJSON* json);
+    
     // 情感引擎集成
     void InitializeEmotionEngine();
     void SetEmotionReportCallback(EmotionEngine::EmotionReportCallback callback);
@@ -146,6 +159,12 @@ private:
     
     // 情感引擎集成标记
     bool emotion_engine_initialized_;
+    
+    // 批量上传相关
+    EventUploadConfig upload_config_;
+    std::vector<Event> pending_events_;
+    int64_t last_event_time_;
+    BatchEventCallback batch_callback_;
     
     // 初始化子引擎的回调
     void SetupMotionEngineCallbacks();
@@ -173,6 +192,11 @@ private:
     // 事件类型转换
     EventType ConvertMotionEventType(MotionEventType motion_type);
     EventType ConvertTouchEventType(TouchEventType touch_type, TouchPosition position);
+    
+    // 批量上传相关方法
+    void AddToPendingBatch(const Event& event);
+    void CheckBatchUploadTimeout();
+    void FlushPendingEvents();
 };
 
 #endif // ALICHUANGTEST_EVENT_ENGINE_H

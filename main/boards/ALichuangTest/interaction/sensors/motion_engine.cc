@@ -179,7 +179,7 @@ float MotionEngine::CalculateAccelDelta(const ImuData& current, const ImuData& l
 }
 
 bool MotionEngine::DetectPickup(const ImuData& data) {
-    // 改进的拿起检测：专门解决触碰桌面时的反冲误触发问题
+    // 拿起检测
     
     int64_t current_time = esp_timer_get_time();
     
@@ -266,7 +266,7 @@ bool MotionEngine::DetectPickup(const ImuData& data) {
         }
         
         // 5. 检测拿起动作 - 要求更明确的条件
-        bool clear_upward_motion = z_diff > config_.pickup_threshold_g * 1.5f; // 提高阈值，要求更明显的向上
+        bool clear_upward_motion = z_diff > config_.pickup_threshold_g;
         bool gradual_upward_motion = (z_diff > config_.pickup_threshold_g) && 
                                     is_relatively_stable && 
                                     !likely_on_surface; // 不在表面上的渐进运动

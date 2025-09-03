@@ -712,7 +712,7 @@ private:
         // 如需覆盖特定策略，可在此处调用：
         // event_engine_->ConfigureEventProcessing(EventType::TOUCH_TAP, custom_config);
         
-        // 设置事件回调
+        // 设置单事件回调（用于本地响应和状态更新）
         event_engine_->RegisterCallback([this](const Event& event) {
             // 1. 先执行本地响应（最高优先级，即时反应）
             if (local_response_controller_) {
@@ -721,10 +721,15 @@ private:
             
             // 2. 处理事件日志和情感状态更新
             HandleEvent(event);
+        });
+        
+        // 设置批量事件回调（用于云端上传）
+        event_engine_->RegisterBatchCallback([this](const std::vector<Event>& events) {
+            ESP_LOGI(TAG, "Batch upload: processing %zu events", events.size());
             
-            // 3. 最后上传事件到云端（低优先级）
+            // 批量上传事件到云端（真正的批量，一个JSON payload）
             if (event_uploader_) {
-                event_uploader_->HandleEvent(event);
+                event_uploader_->HandleBatchEvents(events);
             }
         });
         
