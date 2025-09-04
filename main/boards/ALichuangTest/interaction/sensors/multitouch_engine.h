@@ -1,7 +1,6 @@
 #ifndef ALICHUANGTEST_MULTITOUCH_ENGINE_H
 #define ALICHUANGTEST_MULTITOUCH_ENGINE_H
 
-#include <driver/gpio.h>
 #include <driver/i2c_master.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -75,7 +74,6 @@ public:
 private:
     // MPR121 I2C配置
     static constexpr uint8_t MPR121_I2C_ADDR = 0x5A;
-    static constexpr gpio_num_t GPIO_IRQ = GPIO_NUM_10;  // IRQ引脚
     
     // MPR121寄存器地址
     static constexpr uint8_t MPR121_TOUCHSTATUS_L = 0x00;
@@ -173,8 +171,6 @@ private:
     // I2C初始化
     void InitializeI2C();
     
-    // GPIO初始化（IRQ引脚）
-    void InitializeGPIO();
     
     // MPR121初始化
     bool InitializeMPR121();
@@ -208,9 +204,6 @@ private:
     // 事件分发
     void DispatchEvent(const TouchEvent& event);
     
-    // IRQ处理函数
-    static void IRAM_ATTR IRQHandler(void* arg);
-    void HandleIRQ();
 };
 
 #endif // ALICHUANGTEST_MULTITOUCH_ENGINE_H

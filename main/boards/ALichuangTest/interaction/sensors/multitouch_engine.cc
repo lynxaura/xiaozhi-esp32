@@ -68,10 +68,7 @@ void MultitouchEngine::Initialize() {
     // 2. 初始化I2C
     InitializeI2C();
     
-    // 3. 初始化GPIO（IRQ引脚）
-    InitializeGPIO();
-    
-    // 4. 初始化MPR121芯片
+    // 3. 初始化MPR121芯片
     if (!InitializeMPR121()) {
         ESP_LOGE(TAG, "MPR121 initialization failed!");
         return;
@@ -88,7 +85,7 @@ void MultitouchEngine::Initialize() {
     }
     
     enabled_ = true;
-    ESP_LOGI(TAG, "Multitouch engine initialized - MPR121 @ 0x%02X, IRQ: GPIO%d", MPR121_I2C_ADDR, GPIO_IRQ);
+    ESP_LOGI(TAG, "Multitouch engine initialized - MPR121 @ 0x%02X (polling mode)", MPR121_I2C_ADDR);
 }
 
 void MultitouchEngine::LoadConfiguration(const char* config_path) {
@@ -131,37 +128,6 @@ void MultitouchEngine::InitializeI2C() {
     ESP_LOGI(TAG, "MPR121 I2C device configured at address 0x%02X", MPR121_I2C_ADDR);
 }
 
-void MultitouchEngine::InitializeGPIO() {
-    // 配置IRQ引脚为输入，带上拉电阻
-    gpio_config_t io_conf = {};
-    io_conf.intr_type = GPIO_INTR_NEGEDGE;  // 下降沿触发
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = (1ULL << GPIO_IRQ);
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
-    
-    esp_err_t ret = gpio_config(&io_conf);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to configure IRQ GPIO: %s", esp_err_to_name(ret));
-        return;
-    }
-    
-    // 安装GPIO中断服务
-    ret = gpio_install_isr_service(0);
-    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-        ESP_LOGE(TAG, "Failed to install GPIO ISR service: %s", esp_err_to_name(ret));
-        return;
-    }
-    
-    // 注册IRQ处理函数
-    ret = gpio_isr_handler_add(GPIO_IRQ, IRQHandler, this);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to add IRQ handler: %s", esp_err_to_name(ret));
-        return;
-    }
-    
-    ESP_LOGI(TAG, "IRQ GPIO%d configured with pull-up and interrupt", GPIO_IRQ);
-}
 
 bool MultitouchEngine::InitializeMPR121() {
     ESP_LOGI(TAG, "Initializing MPR121 chip...");
@@ -623,15 +589,3 @@ void MultitouchEngine::DispatchEvent(const TouchEvent& event) {
     ESP_LOGD(TAG, "Event dispatch completed for type=%d", (int)event.type);
 }
 
-void IRAM_ATTR MultitouchEngine::IRQHandler(void* arg) {
-    MultitouchEngine* engine = static_cast<MultitouchEngine*>(arg);
-    if (engine) {
-        engine->HandleIRQ();
-    }
-}
-
-void MultitouchEngine::HandleIRQ() {
-    // IRQ处理 - 在实际实现中，可以在这里设置标志位
-    // 让主处理循环更快地响应触摸事件
-    // 为了简化，目前主要依靠轮询机制
-}
