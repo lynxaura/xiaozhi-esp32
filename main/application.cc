@@ -408,6 +408,9 @@ void Application::Start() {
         if (strcmp(type->valuestring, "tts") == 0) {
             auto state = cJSON_GetObjectItem(root, "state");
             if (strcmp(state->valuestring, "start") == 0) {
+                // Record timestamp when user finishes speaking (TTS start received)
+                tts_start_timestamp_ = esp_timer_get_time();
+                ESP_LOGI(TAG, "🎤 USER_SPEECH_END: %.3f ms", tts_start_timestamp_ / 1000.0);
                 Schedule([this]() {
                     aborted_ = false;
                     if (device_state_ == kDeviceStateIdle || device_state_ == kDeviceStateListening) {
@@ -427,7 +430,14 @@ void Application::Start() {
             } else if (strcmp(state->valuestring, "sentence_start") == 0) {
                 auto text = cJSON_GetObjectItem(root, "text");
                 if (cJSON_IsString(text)) {
+                    // Calculate LLM response time when first text is received
+                    int64_t sentence_start_timestamp = esp_timer_get_time();
+                    double response_time_ms = (sentence_start_timestamp - tts_start_timestamp_) / 1000.0;
+                    
+                    ESP_LOGI(TAG, "🤖 LLM_RESPONSE_START");
+                    ESP_LOGI(TAG, "⏱️  LLM_RESPONSE_TIME: %.3f ms", response_time_ms);
                     ESP_LOGI(TAG, "<< %s", text->valuestring);
+                    
                     Schedule([this, display, message = std::string(text->valuestring)]() {
                         display->SetChatMessage("assistant", message.c_str());
                     });

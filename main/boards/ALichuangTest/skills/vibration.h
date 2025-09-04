@@ -98,18 +98,6 @@ public:
     void Stop();
 
     /**
-     * @brief 根据情绪播放对应的振动
-     * @param emotion 情绪字符串
-     */
-    void PlayForEmotion(const std::string& emotion);
-
-    /**
-     * @brief 启用/禁用基于情绪的自动振动
-     * @param enabled true为启用，false为禁用
-     */
-    void SetEmotionBasedEnabled(bool enabled);
-
-    /**
      * @brief 检查是否已初始化
      * @return true如果已初始化
      */

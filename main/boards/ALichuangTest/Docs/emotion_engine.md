@@ -13,31 +13,15 @@ EmotionEngine 是整个交互系统的状态管理核心，与 EventEngine 紧�
 
 ## 2. 核心设计
 
-### 2.1 情感模型
 采用二维情感空间模型：
-- **Happiness (H)**: 快乐度，范围 [-10.0, +10.0]
-- **Energy (E)**: 能量值，范围 [-10.0, +10.0]
+- **Valence (V)**: 效价，范围 [-1.0, +1.0]
+- **Arousal (A)**: 激活度，范围 [-1.0, +1.0]
 
 四个情感象限定义：
-1. **HAPPY_ENERGETIC** (H>0, E>0): 快乐且充满活力
-2. **HAPPY_CALM** (H>0, E≤0): 快乐但平静
-3. **UNHAPPY_ENERGETIC** (H≤0, E>0): 不快乐但有活力
-4. **UNHAPPY_CALM** (H≤0, E≤0): 不快乐且低能量
-
-### 2.2 情感映射
-将具体情感状态映射到二维空间：
-```
-happy (开心):      H=+5, E=+3
-excited (兴奋):    H=+3, E=+8
-sad (悲伤):        H=-5, E=-3
-angry (愤怒):      H=-4, E=+6
-surprised (惊讶):  H=+1, E=+7
-neutral (中性):    H=+2, E=0
-sleepy (困倦):     H=+1, E=-5
-curious (好奇):    H=+3, E=+4
-frightened (害怕): H=-3, E=+5
-content (满足):    H=+4, E=-2
-```
+1. **POSITIVE_HIGH_AROUSAL** (V>0, A>0): 积极高激活
+2. **POSITIVE_LOW_AROUSAL** (V>0, A≤0): 积极低激活
+3. **NEGATIVE_HIGH_AROUSAL** (V≤0, A>0): 消极高激活
+4. **NEGATIVE_LOW_AROUSAL** (V≤0, A≤0): 消极低激活
 
 ## 3. 技术架构
 
@@ -56,27 +40,25 @@ public:
     void OnEvent(const Event& event);
     
     // 直接设置情感状态（用于云端控制）
-    void SetState(float happiness, float energy);
-    void SetEmotion(const std::string& emotion_name);
+    void SetState(float valence, float arousal);
     
     // 查询接口
     EmotionQuadrant GetQuadrant() const;
-    std::string GetEmotionName() const;
     std::pair<float, float> GetCoordinates() const;
     
     // 配置接口
     void SetDecayEnabled(bool enabled);
     void SetDecayRate(float rate);
-    void SetBaseline(float h, float e);
+    void SetBaseline(float v, float a);
     
 private:
     // 当前情感坐标
-    float current_happiness_;
-    float current_energy_;
+    float current_valence_;
+    float current_arousal_;
     
     // 基线值（衰减目标）
-    float baseline_happiness_ = 2.0f;
-    float baseline_energy_ = 0.0f;
+    float baseline_valence_ = 0.2f;
+    float baseline_arousal_ = 0.2f;
     
     // 时间衰减
     esp_timer_handle_t decay_timer_;
@@ -85,16 +67,13 @@ private:
     
     // 事件影响映射表
     struct EventImpact {
-        float delta_happiness;
-        float delta_energy;
+        float delta_valence;
+        float delta_arousal;
     };
     std::map<EventType, EventImpact> event_impact_map_;
     
-    // 情感名称映射
-    std::map<std::string, std::pair<float, float>> emotion_coordinates_;
-    
     // 内部方法
-    void UpdateState(float delta_h, float delta_e);
+    void UpdateState(float delta_v, float delta_a);
     void ClampValues();
     void ProcessDecay();
     void LoadConfiguration();
@@ -107,24 +86,23 @@ private:
 
 ```cpp
 // 运动事件的情感影响
-event_impact_map_[EventType::MOTION_FREE_FALL] = {-8.0f, +9.0f};    // 恐惧
-event_impact_map_[EventType::MOTION_SHAKE_VIOLENTLY] = {-3.0f, +7.0f}; // 晕眩
-event_impact_map_[EventType::MOTION_FLIP] = {+2.0f, +4.0f};         // 好玩
-event_impact_map_[EventType::MOTION_SHAKE] = {+1.0f, +3.0f};        // 轻微兴奋
-event_impact_map_[EventType::MOTION_PICKUP] = {+0.5f, +2.0f};       // 被关注
-event_impact_map_[EventType::MOTION_UPSIDE_DOWN] = {-2.0f, +3.0f};  // 不适
+event_impact_map_[EventType::MOTION_FREE_FALL] = {-0.8f, +0.9f};    // 恐惧
+event_impact_map_[EventType::MOTION_SHAKE_VIOLENTLY] = {-0.3f, +0.7f}; // 晕眩
+event_impact_map_[EventType::MOTION_FLIP] = {+0.2f, +0.4f};         // 好玩
+event_impact_map_[EventType::MOTION_SHAKE] = {+0.1f, +0.3f};        // 轻微兴奋
+event_impact_map_[EventType::MOTION_PICKUP] = {+0.05f, +0.2f};      // 被关注
+event_impact_map_[EventType::MOTION_UPSIDE_DOWN] = {-0.2f, +0.3f};  // 不适
 
 // 触摸事件的情感影响
-event_impact_map_[EventType::TOUCH_TAP] = {+1.0f, +1.0f};          // 友好互动
-event_impact_map_[EventType::TOUCH_DOUBLE_TAP] = {+2.0f, +2.0f};    // 更多关注
-event_impact_map_[EventType::TOUCH_LONG_PRESS] = {+3.0f, -1.0f};    // 温暖抚摸
-event_impact_map_[EventType::TOUCH_CRADLED] = {+5.0f, -3.0f};      // 被呵护
-event_impact_map_[EventType::TOUCH_TICKLED] = {+4.0f, +6.0f};       // 被逗乐
+event_impact_map_[EventType::TOUCH_TAP] = {+0.1f, +0.1f};          // 友好互动
+event_impact_map_[EventType::TOUCH_LONG_PRESS] = {+0.3f, -0.1f};    // 温暖抚摸
+event_impact_map_[EventType::TOUCH_CRADLED] = {+0.5f, -0.3f};      // 被呵护
+event_impact_map_[EventType::TOUCH_TICKLED] = {+0.4f, +0.6f};       // 被逗乐
 
 // 音频事件的情感影响（预留）
-event_impact_map_[EventType::AUDIO_WAKE_WORD] = {+1.0f, +3.0f};     // 被唤醒
-event_impact_map_[EventType::AUDIO_SPEAKING] = {0.0f, +2.0f};       // 表达中
-event_impact_map_[EventType::AUDIO_LISTENING] = {0.0f, -1.0f};      // 倾听中
+event_impact_map_[EventType::AUDIO_WAKE_WORD] = {+0.1f, +0.3f};     // 被唤醒
+event_impact_map_[EventType::AUDIO_SPEAKING] = {0.0f, +0.2f};       // 表达中
+event_impact_map_[EventType::AUDIO_LISTENING] = {0.0f, -0.1f};      // 倾听中
 ```
 
 ### 3.3 集成方式
@@ -153,14 +131,12 @@ void EventEngine::Initialize() {
 // 在 ALichuangTest::HandleEvent() 中
 void ALichuangTest::HandleEvent(const Event& event) {
     // 获取当前情感状态
-    auto emotion = EmotionEngine::GetInstance().GetEmotionName();
+    auto coordinates = EmotionEngine::GetInstance().GetCoordinates();
+    auto quadrant = EmotionEngine::GetInstance().GetQuadrant();
     
-    // 更新当前显示的情感状态（用于动画选择）
-    SetCurrentEmotion(emotion);
-    
-    // 根据情感播放相应的振动反馈
+    // 根据情感象限播放相应的振动反馈
     if (vibration_skill_) {
-        vibration_skill_->PlayForEmotion(emotion);
+        vibration_skill_->PlayForQuadrant(quadrant);
     }
     
     // 处理具体事件的直接响应（保持现有逻辑）
@@ -180,8 +156,8 @@ void ALichuangTest::HandleEvent(const Event& event) {
 ```json
 {
   "baseline": {
-    "happiness": 2.0,
-    "energy": 0.0,
+    "valence": 0.2,
+    "arousal": 0.2,
     "comment": "情感基线值，系统会向此值衰减"
   },
   
@@ -193,37 +169,17 @@ void ALichuangTest::HandleEvent(const Event& event) {
   },
   
   "event_impacts": {
-    "MOTION_FREE_FALL": {"happiness": -8.0, "energy": 9.0},
-    "MOTION_SHAKE_VIOLENTLY": {"happiness": -3.0, "energy": 7.0},
-    "MOTION_FLIP": {"happiness": 2.0, "energy": 4.0},
-    "MOTION_SHAKE": {"happiness": 1.0, "energy": 3.0},
-    "MOTION_PICKUP": {"happiness": 0.5, "energy": 2.0},
-    "MOTION_UPSIDE_DOWN": {"happiness": -2.0, "energy": 3.0},
+    "MOTION_FREE_FALL": {"valence": -0.8, "arousal": 0.9},
+    "MOTION_SHAKE_VIOLENTLY": {"valence": -0.3, "arousal": 0.7},
+    "MOTION_FLIP": {"valence": 0.2, "arousal": 0.4},
+    "MOTION_SHAKE": {"valence": 0.1, "arousal": 0.3},
+    "MOTION_PICKUP": {"valence": 0.05, "arousal": 0.2},
+    "MOTION_UPSIDE_DOWN": {"valence": -0.2, "arousal": 0.3},
     
-    "TOUCH_TAP": {"happiness": 1.0, "energy": 1.0},
-    "TOUCH_DOUBLE_TAP": {"happiness": 2.0, "energy": 2.0},
-    "TOUCH_LONG_PRESS": {"happiness": 3.0, "energy": -1.0},
-    "TOUCH_CRADLED": {"happiness": 5.0, "energy": -3.0},
-    "TOUCH_TICKLED": {"happiness": 4.0, "energy": 6.0}
-  },
-  
-  "emotion_coordinates": {
-    "happy": {"happiness": 5.0, "energy": 3.0},
-    "excited": {"happiness": 3.0, "energy": 8.0},
-    "sad": {"happiness": -5.0, "energy": -3.0},
-    "angry": {"happiness": -4.0, "energy": 6.0},
-    "surprised": {"happiness": 1.0, "energy": 7.0},
-    "neutral": {"happiness": 2.0, "energy": 0.0},
-    "sleepy": {"happiness": 1.0, "energy": -5.0},
-    "curious": {"happiness": 3.0, "energy": 4.0},
-    "frightened": {"happiness": -3.0, "energy": 5.0},
-    "content": {"happiness": 4.0, "energy": -2.0}
-  },
-  
-  "thresholds": {
-    "quadrant_hysteresis": 0.5,
-    "emotion_distance": 2.0,
-    "comment": "用于防止频繁切换的阈值"
+    "TOUCH_TAP": {"valence": 0.1, "arousal": 0.1},
+    "TOUCH_LONG_PRESS": {"valence": 0.3, "arousal": -0.1},
+    "TOUCH_CRADLED": {"valence": 0.5, "arousal": -0.3},
+    "TOUCH_TICKLED": {"valence": 0.4, "arousal": 0.6}
   }
 }
 ```
@@ -317,7 +273,7 @@ void ALichuangTest::HandleEvent(const Event& event) {
 - 简单直观，易于理解和调试
 - 计算效率高，适合嵌入式系统
 - 足够表达基本情感状态
-- 易于映射到具体行为
+- 易于应用到具体行为
 
 ### 10.2 为什么使用事件驱动
 - 与现有 EventEngine 架构一致

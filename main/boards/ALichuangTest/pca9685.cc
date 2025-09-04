@@ -185,7 +185,6 @@ bool Pca9685::IsDevicePresent() {
     i2c_master_bus_rm_device(dev_handle);
 
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "PCA9685 device detected");
         return true;
     } else {
         ESP_LOGE(TAG, "PCA9685 not detected: %s", esp_err_to_name(ret));

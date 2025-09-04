@@ -7,7 +7,10 @@
 #include <algorithm>         // for std::min, std::remove_if
 
 EventUploader::EventUploader() 
-    : enabled_(false) {
+    : enabled_(false),
+      current_has_emotion_state_(false),
+      current_valence_(0.0f),
+      current_arousal_(0.0f) {
     
     // 生成设备ID
     device_id_ = GenerateDeviceId();
@@ -26,6 +29,15 @@ std::string EventUploader::GenerateDeviceId() {
     // 简化版：使用固定的设备ID，或者可以从其他地方获取
     // 在实际项目中，这个ID可以从配置文件、NVRAM等获取
     return "alichuang_test_device";
+}
+
+void EventUploader::SetCurrentEmotionState(float valence, float arousal) {
+    std::lock_guard<std::mutex> lock(emotion_mutex_);
+    current_has_emotion_state_ = true;
+    current_valence_ = valence;
+    current_arousal_ = arousal;
+    
+    ESP_LOGD(TAG_EVENT_UPLOADER, "Updated emotion state: V=%.2f, A=%.2f", valence, arousal);
 }
 
 void EventUploader::HandleEvent(const Event& event) {
@@ -70,6 +82,37 @@ void EventUploader::HandleEvent(const Event& event) {
     }
 }
 
+void EventUploader::HandleBatchEvents(const std::vector<Event>& events) {
+    if (!enabled_) {
+        ESP_LOGD(TAG_EVENT_UPLOADER, "EventUploader disabled, ignoring batch events");
+        return;
+    }
+    
+    if (events.empty()) {
+        ESP_LOGW(TAG_EVENT_UPLOADER, "Empty events batch, ignoring");
+        return;
+    }
+    
+    ESP_LOGI(TAG_EVENT_UPLOADER, "=== Batch Event Processing Debug ===");
+    ESP_LOGI(TAG_EVENT_UPLOADER, "Processing %zu events in batch", events.size());
+    
+    // 转换所有事件
+    std::vector<CachedEvent> cached_events;
+    cached_events.reserve(events.size());
+    
+    for (const auto& event : events) {
+        auto cached = ConvertEvent(event);
+        ESP_LOGD(TAG_EVENT_UPLOADER, "Event: %s -> %s", 
+                 cached.event_type.c_str(), cached.event_text.c_str());
+        cached_events.push_back(std::move(cached));
+    }
+    
+    // 批量发送或缓存
+    TrySendOrCacheBatch(std::move(cached_events));
+    
+    ESP_LOGI(TAG_EVENT_UPLOADER, "✓ Batch event processing completed");
+}
+
 void EventUploader::TrySendOrCache(CachedEvent&& event) {
     // 这个方法决定是立即发送还是缓存事件
     // 策略：
@@ -84,6 +127,11 @@ void EventUploader::TrySendOrCache(CachedEvent&& event) {
     
     // 注意：如果需要实现失败后缓存的逻辑，可以在这里添加
     // 但根据需求，我们不希望缓存超过5秒的事件
+}
+
+void EventUploader::TrySendOrCacheBatch(std::vector<CachedEvent>&& events) {
+    // 批量发送策略：直接发送，让Application层处理连接逻辑
+    SendBatchEvents(std::move(events));
 }
 
 void EventUploader::OnConnectionOpened() {
@@ -227,6 +275,17 @@ EventUploader::CachedEvent EventUploader::ConvertEvent(const Event& event) {
              cached.end_time, cached.start_time);
     
     cached.event_payload = nullptr; // 通常为空
+    
+    // 添加当前情感状态
+    {
+        std::lock_guard<std::mutex> lock(emotion_mutex_);
+        cached.has_emotion_state = current_has_emotion_state_;
+        if (current_has_emotion_state_) {
+            cached.valence = current_valence_;
+            cached.arousal = current_arousal_;
+        }
+    }
+    
     return cached; // 移动语义自动生效
 }
 
@@ -368,7 +427,6 @@ void EventUploader::SendSingleEvent(CachedEvent&& event) {
         event_vec.push_back(std::move(event));
         
         std::string payload = BuildEventPayload(event_vec.begin(), event_vec.end());
-        ESP_LOGI(TAG_EVENT_UPLOADER, "Generated JSON: %s", payload.c_str());
         
         // 验证JSON有效性
         cJSON* json = cJSON_Parse(payload.c_str());
@@ -388,6 +446,65 @@ void EventUploader::SendSingleEvent(CachedEvent&& event) {
         ESP_LOGE(TAG_EVENT_UPLOADER, "Exception in SendSingleEvent: %s", e.what());
     } catch (...) {
         ESP_LOGE(TAG_EVENT_UPLOADER, "Unknown exception in SendSingleEvent");
+    }
+}
+
+void EventUploader::SendBatchEvents(std::vector<CachedEvent>&& events) {
+    try {
+        if (events.empty()) {
+            ESP_LOGW(TAG_EVENT_UPLOADER, "Empty events batch, nothing to send");
+            return;
+        }
+        
+        // 验证并过滤有效事件
+        std::vector<CachedEvent> valid_events;
+        int64_t current_time_us = esp_timer_get_time();
+        
+        for (auto& event : events) {
+            // 验证事件
+            if (!ValidateEvent(event)) {
+                ESP_LOGW(TAG_EVENT_UPLOADER, "Event validation failed, skipping: %s", 
+                         event.event_type.c_str());
+                continue;
+            }
+            
+            // 检查事件是否过期
+            if (current_time_us - event.end_time > EventNotificationConfig::CACHE_TIMEOUT_MS * 1000) {
+                ESP_LOGW(TAG_EVENT_UPLOADER, "Event is too old (>5s), dropping: %s", 
+                         event.event_type.c_str());
+                continue;
+            }
+            
+            valid_events.push_back(std::move(event));
+        }
+        
+        if (valid_events.empty()) {
+            ESP_LOGW(TAG_EVENT_UPLOADER, "No valid events in batch, nothing to send");
+            return;
+        }
+        
+        // 构建批量事件JSON payload
+        std::string payload = BuildEventPayload(valid_events.begin(), valid_events.end());
+        
+        // 验证JSON有效性
+        cJSON* json = cJSON_Parse(payload.c_str());
+        if (json) {
+            ESP_LOGI(TAG_EVENT_UPLOADER, "✓ Batch JSON valid, sending %zu events to server", 
+                     valid_events.size());
+            cJSON_Delete(json);
+            
+            // 发送到服务器
+            Application::GetInstance().SendEventMessage(payload);
+            
+            ESP_LOGI(TAG_EVENT_UPLOADER, "✓ Batch events sent successfully");
+        } else {
+            ESP_LOGE(TAG_EVENT_UPLOADER, "✗ Batch JSON invalid, not sending");
+        }
+        
+    } catch (const std::exception& e) {
+        ESP_LOGE(TAG_EVENT_UPLOADER, "Exception in SendBatchEvents: %s", e.what());
+    } catch (...) {
+        ESP_LOGE(TAG_EVENT_UPLOADER, "Unknown exception in SendBatchEvents");
     }
 }
 

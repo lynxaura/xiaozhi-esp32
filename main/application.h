@@ -80,6 +80,7 @@ private:
     bool has_server_time_ = false;
     bool aborted_ = false;
     int clock_ticks_ = 0;
+    int64_t tts_start_timestamp_ = 0;
     TaskHandle_t check_new_version_task_handle_ = nullptr;
 
     void OnWakeWordDetected();

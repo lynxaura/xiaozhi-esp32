@@ -3,8 +3,11 @@
 #include "../sensors/multitouch_engine.h"
 #include "event_processor.h"
 #include "../config/event_config_loader.h"
+#include "emotion_engine.h"
 #include <esp_log.h>
 #include <esp_timer.h>
+#include <algorithm>
+#include <vector>
 
 #define TAG "EventEngine"
 
@@ -13,9 +16,20 @@ EventEngine::EventEngine()
     , owns_motion_engine_(false)
     , multitouch_engine_(nullptr)
     , owns_multitouch_engine_(false)
-    , event_processor_(nullptr) {
+    , event_processor_(nullptr)
+    , emotion_engine_initialized_(false)
+    , last_event_time_(0)
+    , batch_callback_(nullptr) {
     // 创建事件处理器
     event_processor_ = new EventProcessor();
+    
+    // 初始化批量上传配置（默认值）
+    upload_config_.batch_upload_enabled = true;
+    upload_config_.batch_window_ms = 500;
+    upload_config_.max_batch_size = 10;
+    
+    // 预留事件列表空间
+    pending_events_.reserve(upload_config_.max_batch_size);
 }
 
 EventEngine::~EventEngine() {
@@ -178,6 +192,31 @@ void EventEngine::SetupMultitouchEngineCallbacks() {
     }
 }
 
+void EventEngine::InitializeEmotionEngine() {
+    if (emotion_engine_initialized_) {
+        ESP_LOGW(TAG, "Emotion engine already initialized");
+        return;
+    }
+    
+    // 获取情感引擎单例并初始化
+    EmotionEngine& emotion_engine = EmotionEngine::GetInstance();
+    emotion_engine.Initialize();
+    emotion_engine_initialized_ = true;
+    
+    ESP_LOGI(TAG, "Emotion engine initialized and integrated with event engine");
+}
+
+void EventEngine::SetEmotionReportCallback(EmotionEngine::EmotionReportCallback callback) {
+    if (!emotion_engine_initialized_) {
+        ESP_LOGW(TAG, "Emotion engine not initialized, call InitializeEmotionEngine() first");
+        return;
+    }
+    
+    EmotionEngine& emotion_engine = EmotionEngine::GetInstance();
+    emotion_engine.SetEmotionReportCallback(callback);
+    ESP_LOGI(TAG, "Emotion report callback set");
+}
+
 void EventEngine::RegisterCallback(EventCallback callback) {
     global_callback_ = callback;
 }
@@ -186,11 +225,18 @@ void EventEngine::RegisterCallback(EventType type, EventCallback callback) {
     type_callbacks_.push_back({type, callback});
 }
 
+void EventEngine::RegisterBatchCallback(BatchEventCallback callback) {
+    batch_callback_ = callback;
+}
+
 void EventEngine::Process() {
     // 处理运动引擎
     if (motion_engine_) {
         motion_engine_->Process();
     }
+    
+    // 检查批量上传超时
+    CheckBatchUploadTimeout();
     
     // 注意：MultitouchEngine有自己的任务，不需要在这里调用Process
     // MultitouchEngine的事件会通过回调异步到达
@@ -230,21 +276,42 @@ void EventEngine::DispatchEvent(const Event& event) {
         return;
     }
     
-    // 调用全局回调
+    // 如果情感引擎已初始化，则更新情感状态
+    if (emotion_engine_initialized_) {
+        ESP_LOGD(TAG, "Updating emotion state for event type=%d", (int)processed_event.type);
+        EmotionEngine& emotion_engine = EmotionEngine::GetInstance();
+        emotion_engine.OnEvent(processed_event);
+    } else {
+        ESP_LOGW(TAG, "Emotion engine not initialized, skipping emotion update for event type=%d", (int)processed_event.type);
+    }
+    
+    // 调用全局回调（单个事件处理，保持兼容性）
     if (global_callback_) {
         global_callback_(processed_event);
     }
     
-    // 调用特定类型的回调
+    // 调用特定类型的回调（单个事件处理，保持兼容性）
     for (const auto& pair : type_callbacks_) {
         if (pair.first == processed_event.type) {
             pair.second(processed_event);
         }
     }
     
+    // 批量上传处理
+    if (upload_config_.batch_upload_enabled && batch_callback_) {
+        AddToPendingBatch(processed_event);
+    }
+    
     // 处理队列中的事件
     Event queued_event;
     while (event_processor_->GetNextQueuedEvent(queued_event)) {
+        // 队列中的事件也需要更新情感状态
+        if (emotion_engine_initialized_) {
+            ESP_LOGD(TAG, "Updating emotion state for queued event type=%d", (int)queued_event.type);
+            EmotionEngine& emotion_engine = EmotionEngine::GetInstance();
+            emotion_engine.OnEvent(queued_event);
+        }
+        
         if (global_callback_) {
             global_callback_(queued_event);
         }
@@ -375,4 +442,96 @@ EventType EventEngine::ConvertTouchEventType(TouchEventType touch_type, TouchPos
         default:
             return EventType::MOTION_NONE;
     }
+}
+
+// 批量上传相关方法实现
+void EventEngine::AddToPendingBatch(const Event& event) {
+    int64_t current_time = esp_timer_get_time();
+    
+    // 添加事件到待上传队列
+    pending_events_.push_back(event);
+    last_event_time_ = current_time;
+    
+    ESP_LOGD(TAG, "Added event type=%d to batch, total events=%zu", 
+             (int)event.type, pending_events_.size());
+    
+    // 检查是否达到最大批量大小，立即上传
+    if (pending_events_.size() >= upload_config_.max_batch_size) {
+        ESP_LOGI(TAG, "Batch size limit reached (%d), flushing immediately", 
+                 upload_config_.max_batch_size);
+        FlushPendingEvents();
+    }
+}
+
+void EventEngine::CheckBatchUploadTimeout() {
+    if (pending_events_.empty()) {
+        return;
+    }
+    
+    int64_t current_time = esp_timer_get_time();
+    int64_t time_since_last_event = current_time - last_event_time_;
+    
+    // 检查是否超过批量窗口时间
+    if (time_since_last_event >= upload_config_.batch_window_ms * 1000) { // 转换为微秒
+        ESP_LOGI(TAG, "Batch window timeout (%.1fms), flushing %zu events",
+                 time_since_last_event / 1000.0f, pending_events_.size());
+        FlushPendingEvents();
+    }
+}
+
+void EventEngine::FlushPendingEvents() {
+    if (pending_events_.empty() || !batch_callback_) {
+        return;
+    }
+    
+    ESP_LOGI(TAG, "Flushing batch with %zu events", pending_events_.size());
+    
+    // 按时间戳排序事件（确保顺序正确）
+    std::sort(pending_events_.begin(), pending_events_.end(), 
+              [](const Event& a, const Event& b) {
+                  return a.timestamp_us < b.timestamp_us;
+              });
+    
+    // 调用批量回调
+    batch_callback_(pending_events_);
+    
+    // 清空待上传队列
+    pending_events_.clear();
+    last_event_time_ = 0;
+}
+
+void EventEngine::LoadUploadConfig(const cJSON* json) {
+    if (!json) return;
+    
+    // 查找事件上传配置节点
+    const cJSON* upload_config = cJSON_GetObjectItem(json, "event_upload_config");
+    if (!upload_config) {
+        ESP_LOGW(TAG, "No event_upload_config found, using defaults");
+        return;
+    }
+    
+    // 加载批量上传启用状态
+    const cJSON* enabled = cJSON_GetObjectItem(upload_config, "batch_upload_enabled");
+    if (enabled && cJSON_IsBool(enabled)) {
+        upload_config_.batch_upload_enabled = cJSON_IsTrue(enabled);
+    }
+    
+    // 加载批量窗口时间
+    const cJSON* window_ms = cJSON_GetObjectItem(upload_config, "batch_window_ms");
+    if (window_ms && cJSON_IsNumber(window_ms)) {
+        upload_config_.batch_window_ms = window_ms->valueint;
+    }
+    
+    // 加载最大批量大小
+    const cJSON* max_size = cJSON_GetObjectItem(upload_config, "max_batch_size");
+    if (max_size && cJSON_IsNumber(max_size)) {
+        upload_config_.max_batch_size = max_size->valueint;
+        // 重新预留事件列表空间
+        pending_events_.reserve(upload_config_.max_batch_size);
+    }
+    
+    ESP_LOGI(TAG, "Upload config loaded: enabled=%d, window=%ums, max_size=%u", 
+             upload_config_.batch_upload_enabled, 
+             upload_config_.batch_window_ms,
+             upload_config_.max_batch_size);
 }
