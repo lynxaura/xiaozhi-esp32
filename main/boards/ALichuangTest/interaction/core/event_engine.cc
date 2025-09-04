@@ -156,7 +156,7 @@ void EventEngine::InitializeMultitouchEngine(i2c_master_bus_handle_t i2c_bus) {
     // 设置回调
     SetupMultitouchEngineCallbacks();
     
-    ESP_LOGI(TAG, "Multitouch engine initialized and registered with event engine - MPR121 @ 0x5A, IRQ: GPIO10");
+    ESP_LOGI(TAG, "Multitouch engine initialized and registered with event engine - MPR121 @ 0x5A (polling mode)");
 }
 
 void EventEngine::SetupMotionEngineCallbacks() {

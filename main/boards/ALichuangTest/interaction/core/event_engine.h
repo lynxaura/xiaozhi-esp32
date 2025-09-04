@@ -42,7 +42,7 @@ enum class EventType {
 };
 
 // 触摸事件特定数据
-// 使用 touch_engine.h 中定义的 TouchPosition 枚举
+// 使用 multitouch_engine.h 中定义的 TouchPosition 枚举
 struct TouchEventData {
     TouchPosition position;     // 触摸位置
     uint32_t duration_ms;      // 持续时间（毫秒）
