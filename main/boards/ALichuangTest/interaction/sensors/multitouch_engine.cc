@@ -1,5 +1,6 @@
 #include "multitouch_engine.h"
 #include "../config/touch_config.h"
+#include "../../i2c_bus_manager.h"
 #include <esp_log.h>
 #include <esp_timer.h>
 
@@ -21,8 +22,8 @@ MultitouchEngine::MultitouchEngine()
     , mpr121_device_(nullptr) {
     
     // 初始化触摸状态
-    left_state_ = {false, false, 0, 0, false};
-    right_state_ = {false, false, 0, 0, false};
+    left_state_ = {false, false, 0, 0, false, false};
+    right_state_ = {false, false, 0, 0, false, false};
 }
 
 MultitouchEngine::MultitouchEngine(i2c_master_bus_handle_t i2c_bus) 
@@ -41,8 +42,8 @@ MultitouchEngine::MultitouchEngine(i2c_master_bus_handle_t i2c_bus)
     , mpr121_device_(nullptr) {
     
     // 初始化触摸状态
-    left_state_ = {false, false, 0, 0, false};
-    right_state_ = {false, false, 0, 0, false};
+    left_state_ = {false, false, 0, 0, false, false};
+    right_state_ = {false, false, 0, 0, false, false};
 }
 
 MultitouchEngine::~MultitouchEngine() {
@@ -214,16 +215,35 @@ bool MultitouchEngine::WriteRegister(uint8_t reg, uint8_t value) {
         return false;
     }
     
-    uint8_t data[2] = {reg, value};
-    esp_err_t ret = i2c_master_transmit(mpr121_device_, data, sizeof(data), pdMS_TO_TICKS(100));
-    
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "I2C write failed: reg=0x%02X, value=0x%02X, error=%s", 
-                reg, value, esp_err_to_name(ret));
+    // 获取I2C总线锁
+    I2cBusManager::Lock lock(I2cBusManager::GetInstance(), 150);
+    if (!lock.IsLocked()) {
+        ESP_LOGE(TAG, "Failed to acquire I2C bus lock for write operation");
         return false;
     }
     
-    return true;
+    uint8_t data[2] = {reg, value};
+    
+    // 添加重试机制
+    const int max_retries = 3;
+    for (int retry = 0; retry < max_retries; retry++) {
+        esp_err_t ret = i2c_master_transmit(mpr121_device_, data, sizeof(data), pdMS_TO_TICKS(200));
+        
+        if (ret == ESP_OK) {
+            return true;
+        }
+        
+        if (retry < max_retries - 1) {
+            ESP_LOGW(TAG, "I2C write retry %d/%d: reg=0x%02X, error=%s", 
+                    retry + 1, max_retries, reg, esp_err_to_name(ret));
+            vTaskDelay(pdMS_TO_TICKS(10));  // 短暂延时后重试
+        } else {
+            ESP_LOGE(TAG, "I2C write failed after %d retries: reg=0x%02X, value=0x%02X, error=%s", 
+                    max_retries, reg, value, esp_err_to_name(ret));
+        }
+    }
+    
+    return false;
 }
 
 bool MultitouchEngine::ReadRegister(uint8_t reg, uint8_t* value) {
@@ -236,15 +256,33 @@ bool MultitouchEngine::ReadRegisters(uint8_t reg, uint8_t* buffer, size_t length
         return false;
     }
     
-    esp_err_t ret = i2c_master_transmit_receive(mpr121_device_, &reg, 1, buffer, length, pdMS_TO_TICKS(100));
-    
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "I2C read failed: reg=0x%02X, length=%zu, error=%s", 
-                reg, length, esp_err_to_name(ret));
+    // 获取I2C总线锁
+    I2cBusManager::Lock lock(I2cBusManager::GetInstance(), 150);
+    if (!lock.IsLocked()) {
+        ESP_LOGE(TAG, "Failed to acquire I2C bus lock for read operation");
         return false;
     }
     
-    return true;
+    // 添加重试机制
+    const int max_retries = 3;
+    for (int retry = 0; retry < max_retries; retry++) {
+        esp_err_t ret = i2c_master_transmit_receive(mpr121_device_, &reg, 1, buffer, length, pdMS_TO_TICKS(200));
+        
+        if (ret == ESP_OK) {
+            return true;
+        }
+        
+        if (retry < max_retries - 1) {
+            ESP_LOGW(TAG, "I2C read retry %d/%d: reg=0x%02X, error=%s", 
+                    retry + 1, max_retries, reg, esp_err_to_name(ret));
+            vTaskDelay(pdMS_TO_TICKS(10));  // 短暂延时后重试
+        } else {
+            ESP_LOGE(TAG, "I2C read failed after %d retries: reg=0x%02X, length=%zu, error=%s", 
+                    max_retries, reg, length, esp_err_to_name(ret));
+        }
+    }
+    
+    return false;
 }
 
 void MultitouchEngine::ReadBaseline() {
@@ -354,8 +392,8 @@ void MultitouchEngine::TouchTask(void* param) {
             // 继续运行，不要让任务退出
         }
         
-        // 20ms轮询间隔，提高响应速度
-        vTaskDelay(pdMS_TO_TICKS(20));
+        // 50ms轮询间隔，降低I2C总线负载
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
@@ -368,8 +406,8 @@ void MultitouchEngine::Process() {
             ESP_LOGE(TAG, "Failed to read MPR121 touch status (count: %d)", read_error_count);
         }
         
-        // 如果连续失败超过20次，触发恢复机制
-        if (read_error_count > 20) {
+        // 如果连续失败超过10次，触发恢复机制
+        if (read_error_count > 10) {
             ESP_LOGE(TAG, "MPR121 persistent failure, triggering recovery...");
             ResetTouchSensor();
             read_error_count = 0;
@@ -413,6 +451,9 @@ void MultitouchEngine::Process() {
     left_touched_ = left_touched;
     right_touched_ = right_touched;
     
+    // 处理待定的长按事件（检查是否应该触发单侧长按或转为拥抱检测）
+    ProcessPendingHoldEvents();
+    
     // 处理特殊事件（cradled, tickled）
     ProcessSpecialEvents();
 }
@@ -442,38 +483,33 @@ void MultitouchEngine::ProcessSingleTouch(bool currently_touched, TouchPosition 
         tickle_detector_.touch_times.push_back(current_time);
         
     } else if (state.is_touched && currently_touched) {
-        // 持续按住状态 - 检查是否应该触发长按事件
+        // 持续按住状态 - 检查是否应该设为长按待定状态
         uint32_t duration_ms = (current_time - state.touch_start_time) / 1000;
         
         // 如果超过长按阈值且还没有触发过事件
-        if (!state.event_triggered && duration_ms >= config_.hold_min_duration_ms) {
-            // 触发长按事件
-            TouchEvent event;
-            event.type = TouchEventType::HOLD;
-            event.position = position;
-            event.timestamp_us = current_time;
-            event.duration_ms = duration_ms;
+        if (!state.event_triggered && !state.hold_event_pending && duration_ms >= config_.hold_min_duration_ms) {
+            // 设为长按待定状态，不立即触发
+            state.hold_event_pending = true;
             
-            ESP_LOGI(TAG, "Creating HOLD event: type=%d, position=%d, duration=%ld ms", 
-                    (int)event.type, (int)event.position, event.duration_ms);
-            
-            DispatchEvent(event);
-            
-            ESP_LOGI(TAG, "HOLD on %s dispatched (duration: %ld ms)", 
+            ESP_LOGI(TAG, "HOLD event pending on %s (duration: %ld ms)", 
                     position == TouchPosition::LEFT ? "LEFT" : "RIGHT", duration_ms);
-            
-            state.event_triggered = true;  // 标记已触发，避免重复触发
         }
         
     } else if (state.is_touched && !currently_touched) {
         // 释放事件
         uint32_t duration_ms = (current_time - state.touch_start_time) / 1000;
         
-        ESP_LOGI(TAG, "Touch RELEASED on %s: duration=%ldms, triggered=%d, TAP_MAX=%ld", 
+        ESP_LOGI(TAG, "Touch RELEASED on %s: duration=%ldms, triggered=%d, pending=%d, TAP_MAX=%ld", 
                 position == TouchPosition::LEFT ? "LEFT" : "RIGHT",
-                duration_ms, state.event_triggered, config_.tap_max_duration_ms);
+                duration_ms, state.event_triggered, state.hold_event_pending, config_.tap_max_duration_ms);
         
-        if (!state.event_triggered && duration_ms < config_.tap_max_duration_ms) {
+        // 如果有待定的长按事件但没有被处理，现在释放了就不处理了
+        if (state.hold_event_pending) {
+            ESP_LOGI(TAG, "Cancelling pending hold event due to release on %s", 
+                    position == TouchPosition::LEFT ? "LEFT" : "RIGHT");
+        }
+        
+        if (!state.event_triggered && !state.hold_event_pending && duration_ms < config_.tap_max_duration_ms) {
             // 触发单击事件（只有在没有触发长按且时间短于TAP_MAX时）
             TouchEvent event;
             event.type = TouchEventType::SINGLE_TAP;
@@ -492,9 +528,71 @@ void MultitouchEngine::ProcessSingleTouch(bool currently_touched, TouchPosition 
         
         state.is_touched = false;
         state.event_triggered = false;
+        state.hold_event_pending = false;
     }
     
     state.was_touched = currently_touched;
+}
+
+void MultitouchEngine::ProcessPendingHoldEvents() {
+    int64_t current_time = esp_timer_get_time();
+    
+    // 检查是否双侧都有待定的长按事件
+    if (left_state_.hold_event_pending && right_state_.hold_event_pending) {
+        // 双侧同时长按，优先处理为拥抱事件的准备
+        ESP_LOGI(TAG, "Both sides have pending hold events - preparing for cradle detection");
+        
+        // 清除单侧长按待定状态，让ProcessSpecialEvents处理拥抱逻辑
+        left_state_.hold_event_pending = false;
+        right_state_.hold_event_pending = false;
+        left_state_.event_triggered = true;  // 标记已处理，避免后续单独触发
+        right_state_.event_triggered = true;
+        
+        return;
+    }
+    
+    // 添加短暂延迟（例如200ms），给另一侧触摸一个机会
+    const uint32_t hold_delay_ms = 200;
+    
+    // 检查左侧待定长按事件
+    if (left_state_.hold_event_pending) {
+        uint32_t duration_ms = (current_time - left_state_.touch_start_time) / 1000;
+        
+        // 如果延迟时间已过且右侧没有触摸，则触发单侧长按
+        if (duration_ms >= config_.hold_min_duration_ms + hold_delay_ms && !right_touched_) {
+            TouchEvent event;
+            event.type = TouchEventType::HOLD;
+            event.position = TouchPosition::LEFT;
+            event.timestamp_us = current_time;
+            event.duration_ms = duration_ms - hold_delay_ms;  // 减去延迟时间
+            
+            ESP_LOGI(TAG, "Creating delayed LEFT HOLD event: duration=%ld ms", event.duration_ms);
+            DispatchEvent(event);
+            
+            left_state_.event_triggered = true;
+            left_state_.hold_event_pending = false;
+        }
+    }
+    
+    // 检查右侧待定长按事件
+    if (right_state_.hold_event_pending) {
+        uint32_t duration_ms = (current_time - right_state_.touch_start_time) / 1000;
+        
+        // 如果延迟时间已过且左侧没有触摸，则触发单侧长按
+        if (duration_ms >= config_.hold_min_duration_ms + hold_delay_ms && !left_touched_) {
+            TouchEvent event;
+            event.type = TouchEventType::HOLD;
+            event.position = TouchPosition::RIGHT;
+            event.timestamp_us = current_time;
+            event.duration_ms = duration_ms - hold_delay_ms;  // 减去延迟时间
+            
+            ESP_LOGI(TAG, "Creating delayed RIGHT HOLD event: duration=%ld ms", event.duration_ms);
+            DispatchEvent(event);
+            
+            right_state_.event_triggered = true;
+            right_state_.hold_event_pending = false;
+        }
+    }
 }
 
 void MultitouchEngine::ProcessSpecialEvents() {

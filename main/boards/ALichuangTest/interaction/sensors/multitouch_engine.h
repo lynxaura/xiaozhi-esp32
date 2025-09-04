@@ -126,6 +126,7 @@ private:
         int64_t touch_start_time;
         int64_t last_change_time;
         bool event_triggered;
+        bool hold_event_pending;  // 长按事件待定（等待检查是否双侧同时长按）
     };
     
     // 挠痒检测状态
@@ -198,6 +199,7 @@ private:
     
     // 处理触摸状态
     void ProcessSingleTouch(bool currently_touched, TouchPosition position, TouchState& state);
+    void ProcessPendingHoldEvents();  // 处理待定的长按事件
     void ProcessSpecialEvents();  // 处理特殊事件（cradled, tickled）
     bool IsIMUStable();  // 检查IMU是否稳定（用于cradled检测）
     

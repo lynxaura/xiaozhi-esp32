@@ -241,6 +241,7 @@ if(CONFIG_BOARD_TYPE_ALICHUANGTEST)
         ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/config/*.c
         ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/controller/*.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/controller/*.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/i2c_bus_manager.cc
     )
     list(APPEND BOARD_SOURCES ${ALICHUANGTEST_EXTRA_SOURCES})
 endif()

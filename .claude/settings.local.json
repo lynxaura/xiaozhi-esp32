@@ -20,7 +20,13 @@
       "Bash(cp:*)",
       "Bash(git rm:*)",
       "Bash(python scripts/release.py:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Read(/E:\\Study\\Cpp_project\\xiaozhi-esp32-projmagic\\main\\boards\\ALichuangTest\\interaction\\sensors/**)",
+      "Read(/E:\\Study\\Cpp_project\\xiaozhi-esp32-projmagic\\main\\boards\\ALichuangTest\\interaction\\sensors/**)",
+      "Read(/E:\\Study\\Cpp_project\\xiaozhi-esp32-projmagic\\main\\boards\\ALichuangTest/**)",
+      "Read(/E:\\Study\\Cpp_project\\xiaozhi-esp32-projmagic\\main\\boards\\ALichuangTest/**)",
+      "Read(/E:\\Study\\Cpp_project\\xiaozhi-esp32-projmagic\\main/**)",
+      "Read(/E:\\Study\\Cpp_project\\xiaozhi-esp32-projmagic\\main\\boards\\ALichuangTest\\interaction\\sensors/**)"
     ],
     "deny": []
   }

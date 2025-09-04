@@ -13,6 +13,7 @@
 #include "interaction/controller/mcp_response_controller.h"
 #include "interaction/controller/local_response_controller.h"
 #include "pca9685.h"
+#include "i2c_bus_manager.h"
 
 #include <esp_log.h>
 #include <esp_lcd_panel_vendor.h>
@@ -428,6 +429,9 @@ private:
             },
         };
         ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_));
+
+        // 设置I2C总线管理器
+        I2cBusManager::GetInstance()->SetBusHandle(i2c_bus_);
 
         // Initialize PCA9557
         pca9557_ = new Pca9557(i2c_bus_, 0x19);
