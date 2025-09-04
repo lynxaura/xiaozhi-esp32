@@ -557,11 +557,18 @@ void AudioService::PlaySound(const std::string_view& sound) {
 
 bool AudioService::IsIdle() {
     std::lock_guard<std::mutex> lock(audio_queue_mutex_);
-    return audio_encode_queue_.empty() && audio_decode_queue_.empty() && audio_playback_queue_.empty() && audio_testing_queue_.empty();
+    bool idle = audio_encode_queue_.empty() && audio_decode_queue_.empty() && audio_playback_queue_.empty() && audio_testing_queue_.empty();
+    if (!idle) {
+        ESP_LOGD(TAG, "[WS_DEBUG] Audio queues not empty - encode:%d, decode:%d, playback:%d, testing:%d",
+        audio_encode_queue_.size(), audio_decode_queue_.size(), audio_playback_queue_.size(), audio_testing_queue_.size());
+        }
+        return idle;
 }
 
 void AudioService::ResetDecoder() {
     std::lock_guard<std::mutex> lock(audio_queue_mutex_);
+    ESP_LOGW(TAG, "[WS_DEBUG] ResetDecoder called - clearing queues (decode:%d, playback:%d)",
+    audio_decode_queue_.size(), audio_playback_queue_.size());
     opus_decoder_->ResetState();
     timestamp_queue_.clear();
     audio_decode_queue_.clear();
