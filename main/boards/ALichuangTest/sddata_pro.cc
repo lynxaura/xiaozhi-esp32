@@ -14,6 +14,8 @@ const char mount_point[] = MOUNT_POINT;
 
 #define TAG "SDCardPro"
 
+static SDdata_Pro* m_sdCardPro = nullptr; 
+
 SDdata_Pro::SDdata_Pro() {
     esp_err_t ret;
 
@@ -110,12 +112,13 @@ void SDdata_Pro::TestFile() {
 }
 
 void SDdata_Pro::ReadImageBin(const char *path, uint8_t *databuf) {
-    
     FILE* f = fopen(path, "r");
     if (f) {
         rewind(f);
         fread(databuf, 1, 153600, f);
         fclose(f);
+    } else {
+        ESP_LOGW(TAG, "path %s err", path);
     }
 }
 
@@ -173,4 +176,76 @@ void SDdata_Pro::SetSurpriseFlash() {
     ReadImageBin(file_5, &m_image[4][0]);
     const char *file_6 = SURPRISE_PATH"6.bin";
     ReadImageBin(file_6, &m_image[5][0]);
+}
+
+int SDdata_Pro::GetVASysConfig(char* databuff) {
+    const char *filePath = VASYS_CFG_PATH"vasys.txt";
+    FILE *f = fopen(filePath, "r");
+    if (f == NULL) {
+        ESP_LOGW(TAG, "file err: %s ,use default", filePath);
+        // InitializeEventImpactMap();
+        return -1;
+    }
+    // 获取文件大小置位到文件起始处
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    ESP_LOGW(TAG, "vasys file size: %ld", file_size);
+    fseek(f, 0, SEEK_SET);
+
+    databuff = (char* )malloc((file_size + 1) * sizeof(char)); //new char[file_size + 1];
+    fread(databuff, 1, file_size, f);
+    databuff[file_size] = '\0';
+    fclose(f); // 关闭文件
+    ESP_LOGI(TAG, "vas json - %c %c %c %c", databuff[0], databuff[1], databuff[2], databuff[3]);
+    return 0;
+}
+
+SDdata_Pro* SDmoduleInit(void) {
+    m_sdCardPro = new SDdata_Pro();
+
+    if (m_sdCardPro == nullptr) {
+        ESP_LOGI(TAG, "SD module init err!");
+        return nullptr;
+    }
+    return m_sdCardPro;
+}
+
+SDdata_Pro* GetSDHandle(void) {
+    return m_sdCardPro;
+}
+
+void TestFileOK(const char *path) {
+    FILE* f = fopen(path, "r");
+    if (f) {
+        rewind(f);
+        fclose(f);
+    } else {
+        ESP_LOGW(TAG, "path %s err", path);
+    }
+}
+
+void SDLoadImageTest(void) {
+    SDdata_Pro* sdcard = GetSDHandle();
+    if (sdcard == nullptr) {
+        ESP_LOGI(TAG, "SD handle test err!");
+        return;
+    }
+    sdcard->SetAngryFlash();
+    sdcard->SetHappyFlash();
+    sdcard->SetLaughFlash();
+    sdcard->SetNeutralFlash();
+    sdcard->SetSadFlash();
+    sdcard->SetSurpriseFlash();
+
+    const char *file_t1 = VASYS_CFG_PATH"vasys.json";
+    TestFileOK(file_t1);
+    const char *file_t2 = VASYS_CFG_PATH"vasys.txt";
+    TestFileOK(file_t2);
+    const char *file_t3 = VASYS_CFG_PATH"vasys_config.json";
+    TestFileOK(file_t3);
+    const char *file_t4 = VASYS_CFG_PATH"vasys_config.txt";
+    TestFileOK(file_t4);
+
+    ESP_LOGW(TAG, "File Test OK");
+    return;
 }

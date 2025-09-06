@@ -764,7 +764,8 @@ private:
     }
     
     void InitialSDCard() {
-        sdhccard = new SDdata_Pro();
+        sdhccard = SDmoduleInit();
+        SDLoadImageTest();
         //sdhccard->TestFile();
     }
 
