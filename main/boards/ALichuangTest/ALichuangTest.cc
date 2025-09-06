@@ -13,6 +13,7 @@
 #include "interaction/controller/mcp_response_controller.h"
 #include "interaction/controller/local_response_controller.h"
 #include "pca9685.h"
+#include "i2c_bus_manager.h"
 
 #include <esp_log.h>
 #include <esp_lcd_panel_vendor.h>
@@ -429,6 +430,9 @@ private:
         };
         ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_));
 
+        // 设置I2C总线管理器
+        I2cBusManager::GetInstance()->SetBusHandle(i2c_bus_);
+
         // Initialize PCA9557
         pca9557_ = new Pca9557(i2c_bus_, 0x19);
     }
@@ -707,8 +711,8 @@ private:
             event_engine_->InitializeMotionEngine(imu_, true);  // 启用调试输出
         }
         
-        // 初始化触摸引擎
-        event_engine_->InitializeTouchEngine();
+        // 初始化多点触摸引擎
+        event_engine_->InitializeMultitouchEngine(i2c_bus_);
         
         // 创建事件上传器
         event_uploader_ = new EventUploader();
@@ -730,7 +734,7 @@ private:
         // 如需覆盖特定策略，可在此处调用：
         // event_engine_->ConfigureEventProcessing(EventType::TOUCH_TAP, custom_config);
         
-        // 设置事件回调
+        // 设置单事件回调（用于本地响应和状态更新）
         event_engine_->RegisterCallback([this](const Event& event) {
             // 1. 先执行本地响应（最高优先级，即时反应）
             if (local_response_controller_) {
@@ -739,10 +743,15 @@ private:
             
             // 2. 处理事件日志和情感状态更新
             HandleEvent(event);
+        });
+        
+        // 设置批量事件回调（用于云端上传）
+        event_engine_->RegisterBatchCallback([this](const std::vector<Event>& events) {
+            ESP_LOGI(TAG, "Batch upload: processing %zu events", events.size());
             
-            // 3. 最后上传事件到云端（低优先级）
+            // 批量上传事件到云端（真正的批量，一个JSON payload）
             if (event_uploader_) {
-                event_uploader_->HandleEvent(event);
+                event_uploader_->HandleBatchEvents(events);
             }
         });
         

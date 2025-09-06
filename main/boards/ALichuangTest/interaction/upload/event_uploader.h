@@ -54,8 +54,14 @@ public:
     // 处理事件（决定立即发送或缓存）
     void HandleEvent(const Event& event);
     
+    // 处理批量事件（将多个事件合并为一个payload发送）
+    void HandleBatchEvents(const std::vector<Event>& events);
+    
     // 尝试发送或缓存事件（新方法）
     void TrySendOrCache(CachedEvent&& event);
+    
+    // 尝试发送或缓存批量事件（新方法）
+    void TrySendOrCacheBatch(std::vector<CachedEvent>&& events);
     
     // 启用/禁用通知
     void Enable(bool enable) { enabled_ = enable; }
@@ -147,6 +153,7 @@ private:
     
     // 私有辅助方法
     void SendSingleEvent(CachedEvent&& event);
+    void SendBatchEvents(std::vector<CachedEvent>&& events);
     bool ValidateEvent(const CachedEvent& event) const;
 };
 

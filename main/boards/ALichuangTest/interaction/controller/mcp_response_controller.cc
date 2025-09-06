@@ -165,13 +165,14 @@ void McpResponseController::RegisterDisplayTools() {
     // 情绪动画控制
     mcp_server.AddTool("self.display.show_emotion",
         "在屏幕上显示情绪动画。支持情绪：\n"
-        "neutral: 中性表情\n"
-        "happy: 开心表情\n" 
-        "angry: 愤怒表情\n"
-        "sad: 悲伤表情\n"
-        "surprised: 惊讶表情\n"
-        "laughing: 大笑表情\n"
-        "thinking: 思考表情",
+        "calm: 平静 - 基础表情\n"
+        "happy: 开心\n" 
+        "sad: 悲伤\n"
+        "angry: 生气\n"
+        "scared: 害怕\n"
+        "curious: 好奇\n"
+        "shy: 害羞\n"
+        "content: 舒服",
         PropertyList({
             Property("emotion", kPropertyTypeString),
             Property("duration", kPropertyTypeInteger, 0, 30000) // 可选，持续时间(ms)

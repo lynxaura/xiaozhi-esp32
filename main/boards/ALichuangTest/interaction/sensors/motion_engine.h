@@ -124,6 +124,10 @@ private:
     float stable_z_reference_;
     int64_t pickup_start_time_;
     
+    // 运动活跃期跟踪 - 用于避免事件冲突
+    int64_t last_significant_motion_time_;
+    int consecutive_stable_readings_;
+    
     // 运动检测配置
     MotionDetectionConfig config_;
     
@@ -132,7 +136,7 @@ private:
     static constexpr int64_t SHAKE_VIOLENTLY_COOLDOWN_US = 400000; // 400ms
     static constexpr int64_t FLIP_COOLDOWN_US = 300000;           // 300ms
     static constexpr int64_t SHAKE_COOLDOWN_US = 200000;          // 200ms
-    static constexpr int64_t PICKUP_COOLDOWN_US = 1000000;        // 1s
+    static constexpr int64_t PICKUP_COOLDOWN_US = 1500000;       // 1.5s - 平衡冷却时间
     static constexpr int64_t UPSIDE_DOWN_COOLDOWN_US = 500000;    // 500ms
     
     // 运动检测方法
@@ -143,7 +147,7 @@ private:
     bool DetectShake(const ImuData& data);
     bool DetectPickup(const ImuData& data);
     bool DetectUpsideDown(const ImuData& data);
-    float CalculateAccelMagnitude(const ImuData& data);
+    float CalculateAccelMagnitude(const ImuData& data) const;
     float CalculateAccelDelta(const ImuData& current, const ImuData& last) const;
     
     // 辅助函数

@@ -51,6 +51,14 @@
     }
   },
   
+  "event_upload_config": {
+    "comment": "事件批量上传配置",
+    "batch_upload_enabled": true,
+    "batch_window_ms": 500,
+    "max_batch_size": 10,
+    "comment_detail": "批量上传: 等待500ms收集多个事件一起上传，最多10个事件为一批"
+  },
+  
   "event_processing_strategies": {
     "comment": "事件处理策略配置 - 支持 IMMEDIATE, DEBOUNCE, THROTTLE, QUEUE, MERGE, COOLDOWN",
     

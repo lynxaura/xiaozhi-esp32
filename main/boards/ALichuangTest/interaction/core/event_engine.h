@@ -2,11 +2,13 @@
 #define ALICHUANGTEST_EVENT_ENGINE_H
 
 #include "../sensors/motion_engine.h"
-#include "../sensors/touch_engine.h"
+#include "../sensors/multitouch_engine.h"
+#include <driver/i2c_master.h>
 #include "emotion_engine.h"
 #include <functional>
 #include <memory>
 #include <vector>
+#include <cJSON.h>
 
 // 事件类型枚举 - 包含所有可能的事件
 enum class EventType {
@@ -40,7 +42,7 @@ enum class EventType {
 };
 
 // 触摸事件特定数据
-// 使用 touch_engine.h 中定义的 TouchPosition 枚举
+// 使用 multitouch_engine.h 中定义的 TouchPosition 枚举
 struct TouchEventData {
     TouchPosition position;     // 触摸位置
     uint32_t duration_ms;      // 持续时间（毫秒）
@@ -75,15 +77,23 @@ struct Event {
 // 现在可以包含 event_processor.h，因为 Event 和 EventType 已定义
 #include "event_processor.h"
 
-// 前向声明
+//前向声明
 class MotionEngine;
-class TouchEngine;
+class MultitouchEngine;
 class Qmi8658;
+
+// 批量上传配置结构
+struct EventUploadConfig {
+    bool batch_upload_enabled = true;
+    uint32_t batch_window_ms = 400;
+    uint32_t max_batch_size = 10;
+};
 
 // 事件引擎类 - 作为各种事件源的协调器
 class EventEngine {
 public:
     using EventCallback = std::function<void(const Event&)>;
+    using BatchEventCallback = std::function<void(const std::vector<Event>&)>;
     
     EventEngine();
     ~EventEngine();
@@ -94,12 +104,13 @@ public:
     // 初始化运动引擎（内部创建）
     void InitializeMotionEngine(Qmi8658* imu, bool enable_debug = false);
     
-    // 初始化触摸引擎（内部创建）
-    void InitializeTouchEngine();
+    // 初始化多点触摸引擎（内部创建）
+    void InitializeMultitouchEngine(i2c_master_bus_handle_t i2c_bus = nullptr);
     
     // 注册事件回调
     void RegisterCallback(EventCallback callback);
     void RegisterCallback(EventType type, EventCallback callback);
+    void RegisterBatchCallback(BatchEventCallback callback);
     
     // 处理函数（在主循环中调用）
     void Process();
@@ -112,11 +123,11 @@ public:
     bool IsPickedUp() const;
     bool IsUpsideDown() const;
     
-    // 获取触摸状态（通过TouchEngine）
+    // 获取触摸状态（通过MultitouchEngine）
     bool IsLeftTouched() const;
     bool IsRightTouched() const;
     
-    // 获取IMU稳定状态（供TouchEngine使用）
+    // 获取IMU稳定状态（供MultitouchEngine使用）
     bool IsIMUStable() const;
     
     // 配置事件处理策略
@@ -129,6 +140,9 @@ public:
     // 更新运动引擎配置
     void UpdateMotionEngineConfig(const cJSON* json);
     
+    // 批量上传配置
+    void LoadUploadConfig(const cJSON* json);
+    
     // 情感引擎集成
     void InitializeEmotionEngine();
     void SetEmotionReportCallback(EmotionEngine::EmotionReportCallback callback);
@@ -137,9 +151,9 @@ private:
     // 运动引擎（内部创建和管理）
     MotionEngine* motion_engine_;
     bool owns_motion_engine_;
-    // 触摸引擎（内部创建和管理）
-    TouchEngine* touch_engine_;
-    bool owns_touch_engine_;
+    // 多点触摸引擎（内部创建和管理）
+    MultitouchEngine* multitouch_engine_;
+    bool owns_multitouch_engine_;
     
     // 事件处理器
     EventProcessor* event_processor_;
@@ -147,9 +161,15 @@ private:
     // 情感引擎集成标记
     bool emotion_engine_initialized_;
     
+    // 批量上传相关
+    EventUploadConfig upload_config_;
+    std::vector<Event> pending_events_;
+    int64_t last_event_time_;
+    BatchEventCallback batch_callback_;
+    
     // 初始化子引擎的回调
     void SetupMotionEngineCallbacks();
-    void SetupTouchEngineCallbacks();
+    void SetupMultitouchEngineCallbacks();
     
     // 配置默认的事件处理策略
     void ConfigureDefaultEventProcessing();
@@ -173,6 +193,11 @@ private:
     // 事件类型转换
     EventType ConvertMotionEventType(MotionEventType motion_type);
     EventType ConvertTouchEventType(TouchEventType touch_type, TouchPosition position);
+    
+    // 批量上传相关方法
+    void AddToPendingBatch(const Event& event);
+    void CheckBatchUploadTimeout();
+    void FlushPendingEvents();
 };
 
 #endif // ALICHUANGTEST_EVENT_ENGINE_H
