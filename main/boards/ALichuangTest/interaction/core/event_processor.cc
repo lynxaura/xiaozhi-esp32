@@ -154,7 +154,7 @@ bool EventProcessor::ProcessThrottle(Event& event, EventState& state) {
 bool EventProcessor::ProcessQueue(Event& event, EventState& state) {
     if (event_queue_.size() < state.config.max_queue_size) {
         event_queue_.push(std::make_unique<Event>(event));
-        ESP_LOGD(TAG, "[QUEUE] enqueued, size=%zu", event_queue_.size());
+        ESP_LOGD(TAG, "[QUEUE] enqueued, size=%u", event_queue_.size());
     } else {
         state.stats.dropped_count++;
         ESP_LOGW(TAG, "[QUEUE] full, dropping event. Total dropped: %lu", (unsigned long)state.stats.dropped_count);
@@ -245,7 +245,7 @@ bool EventProcessor::GetNextQueuedEvent(Event& out) {
     event_queue_.pop();
     
     out = *queued_event;
-    ESP_LOGD(TAG, "[QUEUE] manual pop, size=%zu", event_queue_.size());
+    ESP_LOGD(TAG, "[QUEUE] manual pop, size=%u", event_queue_.size());
     return true;
 }
 

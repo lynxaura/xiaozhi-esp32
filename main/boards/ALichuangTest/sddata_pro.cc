@@ -237,14 +237,10 @@ void SDLoadImageTest(void) {
     sdcard->SetSadFlash();
     sdcard->SetSurpriseFlash();
 
-    const char *file_t1 = VASYS_CFG_PATH"vasys.json";
-    TestFileOK(file_t1);
     const char *file_t2 = VASYS_CFG_PATH"vasys.txt";
     TestFileOK(file_t2);
     const char *file_t3 = VASYS_CFG_PATH"vasys_config.json";
     TestFileOK(file_t3);
-    const char *file_t4 = VASYS_CFG_PATH"vasys_config.txt";
-    TestFileOK(file_t4);
 
     ESP_LOGW(TAG, "File Test OK");
     return;

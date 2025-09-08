@@ -452,7 +452,7 @@ void EventEngine::AddToPendingBatch(const Event& event) {
     pending_events_.push_back(event);
     last_event_time_ = current_time;
     
-    ESP_LOGD(TAG, "Added event type=%d to batch, total events=%zu", 
+    ESP_LOGD(TAG, "Added event type=%d to batch, total events=%u", 
              (int)event.type, pending_events_.size());
     
     // 检查是否达到最大批量大小，立即上传
@@ -473,7 +473,7 @@ void EventEngine::CheckBatchUploadTimeout() {
     
     // 检查是否超过批量窗口时间
     if (time_since_last_event >= upload_config_.batch_window_ms * 1000) { // 转换为微秒
-        ESP_LOGI(TAG, "Batch window timeout (%.1fms), flushing %zu events",
+        ESP_LOGI(TAG, "Batch window timeout (%.1fms), flushing %u events",
                  time_since_last_event / 1000.0f, pending_events_.size());
         FlushPendingEvents();
     }
@@ -484,7 +484,7 @@ void EventEngine::FlushPendingEvents() {
         return;
     }
     
-    ESP_LOGI(TAG, "Flushing batch with %zu events", pending_events_.size());
+    ESP_LOGI(TAG, "Flushing batch with %u events", pending_events_.size());
     
     // 按时间戳排序事件（确保顺序正确）
     std::sort(pending_events_.begin(), pending_events_.end(), 

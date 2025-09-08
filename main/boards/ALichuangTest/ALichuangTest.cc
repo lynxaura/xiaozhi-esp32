@@ -747,7 +747,7 @@ private:
         
         // 设置批量事件回调（用于云端上传）
         event_engine_->RegisterBatchCallback([this](const std::vector<Event>& events) {
-            ESP_LOGI(TAG, "Batch upload: processing %zu events", events.size());
+            ESP_LOGI(TAG, "Batch upload: processing %u events", events.size());
             
             // 批量上传事件到云端（真正的批量，一个JSON payload）
             if (event_uploader_) {

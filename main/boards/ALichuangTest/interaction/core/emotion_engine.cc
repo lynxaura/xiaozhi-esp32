@@ -171,6 +171,7 @@ void EmotionEngine::InitializeEventImpactMapFromSD() {
     if (f == NULL) {
         ESP_LOGW(TAG, "file err: %s ,use default", filePath);
         InitializeEventImpactMap();
+        return;
     }
     // 获取文件大小置位到文件起始处
     fseek(f, 0, SEEK_END);
@@ -218,7 +219,6 @@ void EmotionEngine::InitializeEventImpactMapFromSD() {
 
     cJSON_Delete(root);
     free(json_data);
-    //delete[] json_data;
 }
 
 void EmotionEngine::OnEvent(const Event& event) {

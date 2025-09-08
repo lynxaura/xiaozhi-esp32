@@ -166,6 +166,15 @@ private:
     
     // 初始化状态
     bool initialized_;
+
+    struct ResponseTemplParaDef {
+        vibration_id_t vibration_pattern;
+        motion_id_t motion_id;
+        struct {
+            const char* emotion_name;
+            uint32_t duration_ms;
+        } emotion;
+    };
     
     // 内部方法
     ResponseTemplate* FindTemplate(EventType event_type);
@@ -176,6 +185,10 @@ private:
     void CreateDefaultTemplates();
     void AddEmergencyTemplates();
     void AddQuadrantTemplates();
+    void CreateDefaultTemplatesFromSD();
+    void AddEmergencyTemplatesFromSD(cJSON* root);
+    void AddQuadrantTemplatesFromSD(cJSON* root);
+    void GetTemplatesCfgDataFromSD(cJSON* root, ResponseTemplParaDef* data);
     vibration_id_t ParseVibrationPattern(const std::string& pattern_str);
     motion_id_t ParseMotionAction(const std::string& action_str);
     EmotionQuadrant ParseQuadrant(const std::string& quadrant_str);

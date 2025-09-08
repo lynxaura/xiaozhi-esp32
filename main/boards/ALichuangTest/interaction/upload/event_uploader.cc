@@ -94,7 +94,7 @@ void EventUploader::HandleBatchEvents(const std::vector<Event>& events) {
     }
     
     ESP_LOGI(TAG_EVENT_UPLOADER, "=== Batch Event Processing Debug ===");
-    ESP_LOGI(TAG_EVENT_UPLOADER, "Processing %zu events in batch", events.size());
+    ESP_LOGI(TAG_EVENT_UPLOADER, "Processing %u events in batch", events.size());
     
     // 转换所有事件
     std::vector<CachedEvent> cached_events;

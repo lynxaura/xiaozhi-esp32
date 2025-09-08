@@ -1,8 +1,25 @@
 #include "local_response_controller.h"
 #include <esp_log.h>
 #include <cstring>
+#include "../../sddata_pro.h"
 
 static const char* TAG = "LocalResponse";
+
+std::map<EventType, const char*> va_templates_emergency = {
+    { EventType::MOTION_FREE_FALL, "free_fall_emergency" },
+    { EventType::MOTION_SHAKE_VIOLENTLY, "violent_shake_emergency" },
+    { EventType::MOTION_FLIP, "flip_emergency" },
+    { EventType::MOTION_UPSIDE_DOWN, "upside_down_emergency" }
+};
+
+std::map<EventType, const char*> va_templates_quadrant = {
+    { EventType::TOUCH_TAP, "touch_tap_quadrant" },
+    { EventType::MOTION_SHAKE, "motion_shake_quadrant" },
+    { EventType::MOTION_PICKUP, "motion_pickup_quadrant" },
+    { EventType::TOUCH_CRADLED, "touch_cradled_quadrant" },
+    { EventType::TOUCH_TICKLED, "touch_tickled_quadrant" },
+    { EventType::TOUCH_LONG_PRESS, "touch_long_press_quadrant" }
+};
 
 // ==================== ResponseComponent 实现 ====================
 
@@ -127,7 +144,7 @@ bool LocalResponseController::Initialize() {
     
     initialized_ = true;
     ESP_LOGI(TAG, "✅ Local Response Controller initialized successfully");
-    ESP_LOGI(TAG, "Loaded %zu response templates", template_count_);
+    ESP_LOGI(TAG, "Loaded %u response templates", template_count_);
     
     return true;
 }
@@ -169,7 +186,8 @@ bool LocalResponseController::LoadDefaultConfig() {
     ESP_LOGI(TAG, "Loading default response configuration...");
     
     try {
-        CreateDefaultTemplates();
+        //CreateDefaultTemplates();
+        CreateDefaultTemplatesFromSD();
         return true;
     } catch (const std::exception& e) {
         ESP_LOGE(TAG, "Exception while creating default templates: %s", e.what());
@@ -210,7 +228,7 @@ ExecutionContext LocalResponseController::CreateContext(const Event& event) cons
 void LocalResponseController::ExecuteComponents(ResponseComponent** components,
                                                 size_t count,
                                                 const ExecutionContext& context) {
-    ESP_LOGI(TAG, "Executing %zu response components...", count);
+    ESP_LOGI(TAG, "Executing %u response components...", count);
     uint32_t total_duration = 0;
 
     for (size_t i = 0; i < count; ++i) {
@@ -218,10 +236,10 @@ void LocalResponseController::ExecuteComponents(ResponseComponent** components,
         if (comp && comp->CanExecute(context.device_state)) {
             comp->Execute(context);
             total_duration = std::max(total_duration, comp->GetDurationMs());
-            ESP_LOGD(TAG, "  - %s component executed (duration: %u ms)",
+            ESP_LOGI(TAG, "  - %s component executed (duration: %u ms)",
                      comp->GetTypeName(), comp->GetDurationMs());
         } else {
-            ESP_LOGD(TAG, "  - component skipped (state not allowed)");
+            ESP_LOGI(TAG, "  - component skipped (state not allowed)");
         }
     }
     ESP_LOGI(TAG, "Response execution completed (total duration: ~%u ms)", total_duration);
@@ -235,7 +253,7 @@ void LocalResponseController::CreateDefaultTemplates() {
     AddEmergencyTemplates();
     AddQuadrantTemplates(); // 现在可以安全地包含所有模板
     
-    ESP_LOGI(TAG, "Created %zu default response templates", template_count_);
+    ESP_LOGI(TAG, "Created %u default response templates", template_count_);
 }
 
 void LocalResponseController::AddEmergencyTemplates() {
@@ -412,15 +430,198 @@ void LocalResponseController::AddQuadrantTemplates() {
     }
 }
 
+void LocalResponseController::CreateDefaultTemplatesFromSD() {
+    SDdata_Pro* sdcard = GetSDHandle();
+    if (sdcard == nullptr) {
+        ESP_LOGW(TAG, "SD Card nonexist, use default");
+        CreateDefaultTemplates();
+        return;
+    }
+
+    const char *filePath = VASYS_CFG_PATH"vasys.txt";
+    FILE *f = fopen(filePath, "r");
+    if (f == NULL) {
+        ESP_LOGW(TAG, "file err: %s ,use default", filePath);
+        CreateDefaultTemplates();
+        return;
+    }
+
+    // 获取文件大小置位到文件起始处
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    ESP_LOGW(TAG, "vasys file size: %ld", file_size);
+    fseek(f, 0, SEEK_SET);
+
+    char* json_data = (char* )malloc((file_size + 1) * sizeof(char)); //new char[file_size + 1];
+    fread(json_data, 1, file_size, f);
+    json_data[file_size] = '\0';
+    fclose(f); // 关闭文件
+
+    cJSON* root = cJSON_Parse(json_data);
+    if (!root) {
+        ESP_LOGW(TAG, "vasys json root err");
+        CreateDefaultTemplates();
+        return;
+    }
+
+    cJSON* va_templates = cJSON_GetObjectItem(root, "va_templates");
+    if (!va_templates) {
+        ESP_LOGW(TAG, "json va_templates err");
+        CreateDefaultTemplates();
+        return;
+    }
+
+    template_count_ = 0;
+
+    AddEmergencyTemplatesFromSD(va_templates);
+    AddQuadrantTemplatesFromSD(va_templates);
+
+    cJSON_Delete(root);
+    free(json_data);
+    ESP_LOGI(TAG, "Created %u default response templates", template_count_);
+}
+
+void LocalResponseController::AddEmergencyTemplatesFromSD(cJSON* root) {
+    cJSON* emergency = cJSON_GetObjectItem(root, "Emergency");
+    if (!emergency) {
+        ESP_LOGW(TAG, "va_templates Emergency err");
+        return;
+    }
+
+    for (const auto &pair : va_templates_emergency) {
+        cJSON* eventItem = cJSON_GetObjectItem(emergency, pair.second);
+        if (!eventItem) {
+            ESP_LOGW(TAG, "va_templates_emergency %s nonexist", pair.second);
+            continue;
+        }
+
+        cJSON* eventPriority = cJSON_GetObjectItem(eventItem, "priority");
+        int priority = 1;
+        if (!eventPriority) {
+            ESP_LOGW(TAG, "va_templates_emergency %s Priority nonexist", pair.second);
+        } else {
+            priority = eventPriority->valueint;
+        }
+        ResponseTemplate& tmpl = templates_[template_count_++] = ResponseTemplate(pair.second, pair.first, priority);
+        
+        ResponseTemplParaDef data;
+        GetTemplatesCfgDataFromSD(eventItem, &data);
+        tmpl.AddBaseComponent(ResponseComponent::CreateVibration(data.vibration_pattern));
+        tmpl.AddBaseComponent(ResponseComponent::CreateMotion(data.motion_id));
+        tmpl.AddBaseComponent(ResponseComponent::CreateEmotion(data.emotion.emotion_name, data.emotion.duration_ms));
+        ESP_LOGI(TAG, "emergency tmpl[%d] cfg ok vib:%d mo:%d %s-%dms", (template_count_ - 1),
+                    data.vibration_pattern, data.motion_id, data.emotion.emotion_name, data.emotion.duration_ms);
+    }
+}
+
+void LocalResponseController::AddQuadrantTemplatesFromSD(cJSON* root) {
+    cJSON* quadrant = cJSON_GetObjectItem(root, "Quadrant");
+    if (!quadrant) {
+        ESP_LOGW(TAG, "va_templates quadrant err");
+        return;
+    }
+
+    for (const auto &pair : va_templates_quadrant) {
+        cJSON* eventItem = cJSON_GetObjectItem(quadrant, pair.second);
+        if (!eventItem) {
+            ESP_LOGW(TAG, "va_templates_quadrant %s nonexist", pair.second);
+            continue;
+        }
+
+        cJSON* eventPriority = cJSON_GetObjectItem(eventItem, "priority");
+        int priority = 1;
+        if (!eventPriority) {
+            ESP_LOGW(TAG, "va_templates_quadrant %s Priority nonexist", pair.second);
+        } else {
+            priority = eventPriority->valueint;
+        }
+        ResponseTemplate& tmpl = templates_[template_count_++] = ResponseTemplate(pair.second, pair.first, priority);
+        ResponseTemplParaDef data;
+
+        cJSON* q1 = cJSON_GetObjectItem(eventItem, "Q1");
+        if (q1 != NULL) {
+            GetTemplatesCfgDataFromSD(q1, &data);
+            tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateVibration(data.vibration_pattern));
+            tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateMotion(data.motion_id));
+            tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion(data.emotion.emotion_name, data.emotion.duration_ms));
+            ESP_LOGI(TAG, "tmpl[%d] q1 cfg ok vib:%d mo:%d %s-%dms", (template_count_ - 1),
+                    data.vibration_pattern, data.motion_id, data.emotion.emotion_name, data.emotion.duration_ms);
+        } else {
+            ESP_LOGW(TAG, "tmpl[%d] q1 cfg nonexist", (template_count_ - 1));
+        }
+        
+        cJSON* q2 = cJSON_GetObjectItem(eventItem, "Q2");
+        if (q2 != NULL) {
+            GetTemplatesCfgDataFromSD(q2, &data);
+            tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateVibration(data.vibration_pattern));
+            tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateMotion(data.motion_id));
+            tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_HIGH_AROUSAL, ResponseComponent::CreateEmotion(data.emotion.emotion_name, data.emotion.duration_ms));
+            ESP_LOGI(TAG, "tmpl[%d] q2 cfg ok vib:%d mo:%d %s-%dms", (template_count_ - 1),
+                    data.vibration_pattern, data.motion_id, data.emotion.emotion_name, data.emotion.duration_ms);
+        }
+
+        cJSON* q3 = cJSON_GetObjectItem(eventItem, "Q3");
+        if (q3 != NULL) {
+            GetTemplatesCfgDataFromSD(q3, &data);
+            tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateVibration(data.vibration_pattern));
+            tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateMotion(data.motion_id));
+            tmpl.AddQuadrantComponent(EmotionQuadrant::NEGATIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion(data.emotion.emotion_name, data.emotion.duration_ms));
+            ESP_LOGI(TAG, "tmpl[%d] q3 cfg ok vib:%d mo:%d %s-%dms", (template_count_ - 1),
+                    data.vibration_pattern, data.motion_id, data.emotion.emotion_name, data.emotion.duration_ms);
+        }
+
+        cJSON* q4 = cJSON_GetObjectItem(eventItem, "Q1");
+        if (q4 != NULL) {
+            GetTemplatesCfgDataFromSD(q4, &data);
+            tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateVibration(data.vibration_pattern));
+            tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateMotion(data.motion_id));
+            tmpl.AddQuadrantComponent(EmotionQuadrant::POSITIVE_LOW_AROUSAL, ResponseComponent::CreateEmotion(data.emotion.emotion_name, data.emotion.duration_ms));
+            ESP_LOGI(TAG, "tmpl[%d] q4 cfg ok vib:%d mo:%d %s-%dms", (template_count_ - 1),
+                    data.vibration_pattern, data.motion_id, data.emotion.emotion_name, data.emotion.duration_ms);
+        }
+    }
+}
+
+void LocalResponseController::GetTemplatesCfgDataFromSD(cJSON* root, ResponseTemplParaDef* data) {
+    cJSON* vibration = cJSON_GetObjectItem(root, "vibration");
+    if (vibration != NULL) {
+        data->vibration_pattern = (vibration_id_t)vibration->valueint;
+    } else {
+        ESP_LOGI(TAG, "tmpl-%d no vibration cfg", (template_count_ - 1));
+    }
+
+    cJSON* motion_id = cJSON_GetObjectItem(root, "motion_id");
+    if (motion_id != NULL) {
+        data->motion_id = (motion_id_t)motion_id->valueint;
+    } else {
+        ESP_LOGI(TAG, "tmpl-%d no motion_id cfg", (template_count_ - 1));
+    }
+
+    cJSON* emotion = cJSON_GetObjectItem(root, "emotion");
+    if (emotion != NULL) {
+        data->emotion.emotion_name = emotion->valuestring;
+    } else {
+        ESP_LOGI(TAG, "tmpl-%d no emotion_name cfg", (template_count_ - 1));
+    }
+
+    cJSON* emotion_dur = cJSON_GetObjectItem(root, "emotion_dur");
+    if (emotion_dur != NULL) {
+        data->emotion.duration_ms = emotion_dur->valueint;
+    } else {
+        ESP_LOGI(TAG, "tmpl-%d no emotion_dur cfg", (template_count_ - 1));
+    }
+}
+
+
 // 调试接口实现
 void LocalResponseController::ListTemplates() const {
-    ESP_LOGI(TAG, "=== Response Templates (%zu) ===", template_count_);
+    ESP_LOGI(TAG, "=== Response Templates (%u) ===", template_count_);
     for (size_t i = 0; i < template_count_; ++i) {
         const auto& t = templates_[i];
         size_t qv_cnt = 0;
         for (int q = 0; q < 4; ++q) qv_cnt += t.quadrant_variants[q].count;
 
-        ESP_LOGI(TAG, "- %s (Event: %d, Priority: %d, Base: %zu, Quadrant comps: %zu)",
+        ESP_LOGI(TAG, "- %s (Event: %d, Priority: %d, Base: %u, Quadrant comps: %u)",
                  t.name ? t.name : "(null)",
                  static_cast<int>(t.trigger_event),
                  t.priority,
