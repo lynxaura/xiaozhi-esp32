@@ -166,7 +166,7 @@ void EmotionEngine::InitializeEventImpactMapFromSD() {
         InitializeEventImpactMap();
         return;
     }*/
-   const char *filePath = VASYS_CFG_PATH"vasys.txt";
+   const char *filePath = VASYS_CFG_PATH"vasys_config.json";
     FILE *f = fopen(filePath, "r");
     if (f == NULL) {
         ESP_LOGW(TAG, "file err: %s ,use default", filePath);

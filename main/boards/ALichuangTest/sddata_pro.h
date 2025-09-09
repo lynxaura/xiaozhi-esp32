@@ -15,7 +15,7 @@
 #define LAUGH_PATH    "/sdcard/image/emotions/laugh/"
 #define NEUTRAL_PATH    "/sdcard/image/emotions/neutral/"
 #define SAD_PATH    "/sdcard/image/emotions/sad/"
-#define SURPRISE_PATH    "/sdcard/image/emotions/surpr/"
+#define SURPRISE_PATH    "/sdcard/image/emotions/surprised/"
 
 /* CONFIG PATH */
 #define VASYS_CFG_PATH    "/sdcard/config/"

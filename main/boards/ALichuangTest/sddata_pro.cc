@@ -1,5 +1,6 @@
 #include "sddata_pro.h"
 #include <esp_log.h>
+#include <string.h>
 
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
@@ -112,7 +113,7 @@ void SDdata_Pro::TestFile() {
 }
 
 void SDdata_Pro::ReadImageBin(const char *path, uint8_t *databuf) {
-    FILE* f = fopen(path, "r");
+    FILE* f = fopen(path, "rb");  // 使用二进制模式打开文件
     if (f) {
         rewind(f);
         fread(databuf, 1, 153600, f);
@@ -150,8 +151,6 @@ void SDdata_Pro::SetLaughFlash() {
 void SDdata_Pro::SetNeutralFlash() {
     const char *file_1 = NEUTRAL_PATH"1.bin";
     ReadImageBin(file_1, &m_image[0][0]);
-    ESP_LOGI(TAG, "0x%02x-0x%02x-0x%02x-0x%02x-0x%02x-0x%02x-0x%02x-0x%02x", 
-        m_image[0][0], m_image[0][1], m_image[0][2], m_image[0][3], m_image[0][4], m_image[0][5], m_image[0][6], m_image[0][7]);
 }
 
 void SDdata_Pro::SetSadFlash() {
@@ -179,7 +178,7 @@ void SDdata_Pro::SetSurpriseFlash() {
 }
 
 int SDdata_Pro::GetVASysConfig(char* databuff) {
-    const char *filePath = VASYS_CFG_PATH"vasys.txt";
+    const char *filePath = VASYS_CFG_PATH"vasys_config.json";
     FILE *f = fopen(filePath, "r");
     if (f == NULL) {
         ESP_LOGW(TAG, "file err: %s ,use default", filePath);
@@ -189,14 +188,12 @@ int SDdata_Pro::GetVASysConfig(char* databuff) {
     // 获取文件大小置位到文件起始处
     fseek(f, 0, SEEK_END);
     long file_size = ftell(f);
-    ESP_LOGW(TAG, "vasys file size: %ld", file_size);
     fseek(f, 0, SEEK_SET);
 
     databuff = (char* )malloc((file_size + 1) * sizeof(char)); //new char[file_size + 1];
     fread(databuff, 1, file_size, f);
     databuff[file_size] = '\0';
     fclose(f); // 关闭文件
-    ESP_LOGI(TAG, "vas json - %c %c %c %c", databuff[0], databuff[1], databuff[2], databuff[3]);
     return 0;
 }
 
@@ -224,12 +221,15 @@ void TestFileOK(const char *path) {
     }
 }
 
+
 void SDLoadImageTest(void) {
     SDdata_Pro* sdcard = GetSDHandle();
     if (sdcard == nullptr) {
         ESP_LOGI(TAG, "SD handle test err!");
         return;
     }
+    
+    
     sdcard->SetAngryFlash();
     sdcard->SetHappyFlash();
     sdcard->SetLaughFlash();
@@ -237,10 +237,13 @@ void SDLoadImageTest(void) {
     sdcard->SetSadFlash();
     sdcard->SetSurpriseFlash();
 
+    
     const char *file_t2 = VASYS_CFG_PATH"vasys.txt";
     TestFileOK(file_t2);
+    
     const char *file_t3 = VASYS_CFG_PATH"vasys_config.json";
     TestFileOK(file_t3);
+    
 
     ESP_LOGW(TAG, "File Test OK");
     return;
