@@ -137,6 +137,60 @@
 
 ## 配置文件
 
+### 资源清单 (manifest.json)
+
+```json
+{
+  "version": "1.0.0",
+  "format_version": "1.0",
+  "created": "2024-01-15T10:00:00Z",
+  "description": "小智AI玩具资源包",
+  "compatibility": {
+    "min_firmware_version": "2.1.0",
+    "board_types": ["ALichuangTest"]
+  },
+  "animation_specs": {
+    "format": "RGB565",
+    "resolution": "320x240",
+    "fps": 24,
+    "encoding": "raw_binary"
+  },
+  "audio_specs": {
+    "format": "P3",
+    "sample_rate": 16000,
+    "channels": 1,
+    "encoding": "compressed"
+  },
+  "assets": {
+    "total_events": 47,
+    "total_size_mb": 125.6,
+    "animation_total_frames": 234,
+    "audio_total_files": 25
+  },
+  "layers": {
+    "emergency": {
+      "priority": 1,
+      "interrupts_all": true,
+      "events": ["motion_free_fall", "motion_shake_violently", "motion_flip", "motion_upside_down"]
+    },
+    "interaction": {
+      "priority": 2,
+      "quadrant_based": true,
+      "events": ["motion_shake", "motion_pickup", "touch_tap", "touch_long_press", "touch_cradled", "touch_tickled"]
+    },
+    "state_expression": {
+      "priority": 3,
+      "context_dependent": true,
+      "events": ["speaking", "idle", "listening"]
+    },
+    "system": {
+      "priority": 0,
+      "functional_only": true,
+      "events": ["boot_up", "shut_down", "charging", "low_battery", "connecting", "error", "photo_taken", "body_detached", "body_attached"]
+    }
+  }
+}
+```
 
 ### 响应配置 (response_config.json)
 
@@ -160,7 +214,7 @@
     "emergency/motion_free_fall": {
       "layer": 1,
       "priority": 100,
-      "animation": { "loop": false, "count": 1 },
+      "animation": { "frames": 6, "loop": false, "count": 1 },
       "sound": { "volume": 95, "interrupt": true },
       "vibration": { "pattern": "VIBRATION_ERRATIC_STRONG" },
       "motion": { "action": "MOTION_STRUGGLE_TWIST" }
@@ -168,42 +222,42 @@
     "emergency/motion_shake_violently": {
       "layer": 1,
       "priority": 95,
-      "animation": { "loop": false, "count": 1 },
+      "animation": { "frames": 6, "loop": false, "count": 1 },
       "sound": { "volume": 90, "interrupt": true },
       "vibration": { "pattern": "VIBRATION_STRUGGLE_PATTERN" }
     },
     "interaction/motion_shake_q1": {
       "layer": 2,
       "priority": 50,
-      "animation": { "loop": true, "count": 2 },
+      "animation": { "frames": 4, "loop": true, "count": 2 },
       "sound": { "volume": 70, "interrupt": false },
       "vibration": { "pattern": "VIBRATION_PURR_SHORT" }
     },
     "interaction/touch_tap_q1": {
       "layer": 2,
       "priority": 45,
-      "animation": { "loop": false, "count": 1 },
+      "animation": { "frames": 6, "loop": false, "count": 1 },
       "sound": { "volume": 65, "interrupt": false },
       "vibration": { "pattern": "VIBRATION_SHORT_BUZZ" }
     },
     "state_expression/speaking/talk_happy": {
       "layer": 3,
       "priority": 30,
-      "animation": { "loop": true, "count": -1 },
+      "animation": { "frames": 5, "loop": true, "count": -1 },
       "sound": { "enabled": false },
       "vibration": { "enabled": false }
     },
     "state_expression/idle/idle_q1": {
       "layer": 4,
       "priority": 20,
-      "animation": { "loop": true, "count": -1 },
+      "animation": { "frames": 5, "loop": true, "count": -1 },
       "sound": { "enabled": false },
       "vibration": { "enabled": false }
     },
     "system/boot_up": {
       "layer": 0,
       "priority": 90,
-      "animation": { "loop": false, "count": 1 },
+      "animation": { "frames": 6, "loop": false, "count": 1 },
       "sound": { "volume": 80, "interrupt": false },
       "vibration": { "pattern": "VIBRATION_SHORT_BUZZ" }
     }
@@ -265,6 +319,7 @@ struct ResponseConfig {
     uint8_t priority;
     
     struct {
+        uint8_t frames;  // 动画帧数
         bool loop;
         int8_t count;  // -1 表示无限循环
     } animation;
@@ -403,20 +458,18 @@ private:
     void PlayAnimation(const std::string& category,
                       const std::string& event_name,
                       const ResponseConfig* config) {
-        // 动画播放逻辑由系统自动检测animation目录中的所有帧
-        // 从001.bin开始按顺序播放直到没有更多帧文件
-        int frame = 1;
-        while (true) {
+        // 根据配置的帧数播放动画
+        for (int frame = 1; frame <= config->animation.frames; frame++) {
             auto path = ResourcePathBuilder::GetAnimationPath(category, event_name, frame);
             uint8_t* frame_buffer = heap_caps_malloc(153600, MALLOC_CAP_SPIRAM);
             if (!loader_->LoadFrame(path, frame_buffer)) {
+                ESP_LOGW(TAG, "Failed to load frame %d for %s/%s", frame, category.c_str(), event_name.c_str());
                 heap_caps_free(frame_buffer);
-                break;  // 没有更多帧文件
+                break;
             }
             display_->DrawImageOnCanvas(0, 0, 320, 240, frame_buffer);
             heap_caps_free(frame_buffer);
             vTaskDelay(1000 / 24 / portTICK_PERIOD_MS);  // 固定24fps
-            frame++;
         }
     }
     
