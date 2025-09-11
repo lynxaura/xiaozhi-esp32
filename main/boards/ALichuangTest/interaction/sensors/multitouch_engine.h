@@ -13,8 +13,8 @@
 enum class TouchEventType {
     NONE,
     SINGLE_TAP,     // 单击（左或右，<500ms）
-    HOLD,           // 长按（>500ms）
-    RELEASE,        // 释放（之前有HOLD）
+    LONG_PRESS,     // 长按（>500ms）
+    RELEASE,        // 释放（之前有LONG_PRESS）
     CRADLED,        // 摇篮模式（双侧持续触摸>2秒且IMU静止）
     TICKLED,        // 挠痒模式（2秒内多次无规律触摸>4次）
 };
@@ -32,7 +32,7 @@ struct TouchEvent {
     TouchEventType type;
     TouchPosition position;
     int64_t timestamp_us;
-    uint32_t duration_ms;  // 对于HOLD和RELEASE事件，记录持续时间
+    uint32_t duration_ms;  // 对于LONG_PRESS和RELEASE事件，记录持续时间
     
     TouchEvent() : type(TouchEventType::NONE), position(TouchPosition::LEFT), 
                    timestamp_us(0), duration_ms(0) {}

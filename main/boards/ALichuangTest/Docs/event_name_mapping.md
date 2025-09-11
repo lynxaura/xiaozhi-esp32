@@ -39,7 +39,7 @@
 - `SHAKE_VIOLENTLY` → `MOTION_SHAKE_VIOLENTLY` → `Motion_ShakeViolently`
 - `FLIP` → `MOTION_FLIP` → `Motion_Flip`
 - `SHAKE` → `MOTION_SHAKE` → `Motion_Shake`
-- `PICKUP` → `MOTION_PICKUP` → `Motion_Pickup`
+- `PICKUP` → `MOTION_PICKUP` → `Motion_PickUp`
 - `UPSIDE_DOWN` → `MOTION_UPSIDE_DOWN` → `Motion_UpsideDown`
 
 持续时间（运动）：

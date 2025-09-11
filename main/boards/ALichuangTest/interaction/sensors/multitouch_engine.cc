@@ -491,7 +491,7 @@ void MultitouchEngine::ProcessSingleTouch(bool currently_touched, TouchPosition 
             // 设为长按待定状态，不立即触发
             state.hold_event_pending = true;
             
-            ESP_LOGI(TAG, "HOLD event pending on %s (duration: %ld ms)", 
+            ESP_LOGI(TAG, "LONG_PRESS event pending on %s (duration: %ld ms)", 
                     position == TouchPosition::LEFT ? "LEFT" : "RIGHT", duration_ms);
         }
         
@@ -561,12 +561,12 @@ void MultitouchEngine::ProcessPendingHoldEvents() {
         // 如果延迟时间已过且右侧没有触摸，则触发单侧长按
         if (duration_ms >= config_.hold_min_duration_ms + hold_delay_ms && !right_touched_) {
             TouchEvent event;
-            event.type = TouchEventType::HOLD;
+            event.type = TouchEventType::LONG_PRESS;
             event.position = TouchPosition::LEFT;
             event.timestamp_us = current_time;
             event.duration_ms = duration_ms - hold_delay_ms;  // 减去延迟时间
             
-            ESP_LOGI(TAG, "Creating delayed LEFT HOLD event: duration=%ld ms", event.duration_ms);
+            ESP_LOGI(TAG, "Creating delayed LEFT LONG_PRESS event: duration=%ld ms", event.duration_ms);
             DispatchEvent(event);
             
             left_state_.event_triggered = true;
@@ -581,12 +581,12 @@ void MultitouchEngine::ProcessPendingHoldEvents() {
         // 如果延迟时间已过且左侧没有触摸，则触发单侧长按
         if (duration_ms >= config_.hold_min_duration_ms + hold_delay_ms && !left_touched_) {
             TouchEvent event;
-            event.type = TouchEventType::HOLD;
+            event.type = TouchEventType::LONG_PRESS;
             event.position = TouchPosition::RIGHT;
             event.timestamp_us = current_time;
             event.duration_ms = duration_ms - hold_delay_ms;  // 减去延迟时间
             
-            ESP_LOGI(TAG, "Creating delayed RIGHT HOLD event: duration=%ld ms", event.duration_ms);
+            ESP_LOGI(TAG, "Creating delayed RIGHT LONG_PRESS event: duration=%ld ms", event.duration_ms);
             DispatchEvent(event);
             
             right_state_.event_triggered = true;

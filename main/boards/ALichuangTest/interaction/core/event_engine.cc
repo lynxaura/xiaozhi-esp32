@@ -424,7 +424,7 @@ EventType EventEngine::ConvertTouchEventType(TouchEventType touch_type, TouchPos
         case TouchEventType::SINGLE_TAP:
             return EventType::TOUCH_TAP;  // 左右侧单击都映射为TAP
             
-        case TouchEventType::HOLD:
+        case TouchEventType::LONG_PRESS:
             return EventType::TOUCH_LONG_PRESS;
             
         case TouchEventType::RELEASE:

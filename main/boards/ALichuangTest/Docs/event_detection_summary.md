@@ -7,7 +7,7 @@
 识别事件（`TouchEventType`）：
 
 - `SINGLE_TAP`：单侧单击
-- `HOLD`：单侧长按
+- `LONG_PRESS`：单侧长按
 - `CRADLED`：双侧持续触摸 + IMU 稳定
 - `TICKLED`：短时间多次不规则触摸
 - 注：`RELEASE` 枚举存在，但当前实现不分发该事件（仅日志记录释放信息）。
@@ -16,11 +16,11 @@
 
 - 消抖：触摸状态变化小于 `debounce_time_ms` 忽略（默认 30ms）。
 - 单击 `SINGLE_TAP`：一次按下-释放的总时长 < `tap_max_duration_ms`（默认 500ms），且期间未触发或挂起长按，才分发单击。
-- 长按 `HOLD`：
+- 长按 `LONG_PRESS`：
   - 按下持续 ≥ `hold_min_duration_ms`（默认 600ms）时先标记“长按待定”（不立即分发）。
   - 之后等待额外延迟 200ms：
     - 若此期间另一侧也成为“长按待定”，则取消两侧的单侧长按，转入“摇篮/拥抱”检测（见 `CRADLED`）。
-    - 若另一侧未触摸，超过（`hold_min_duration_ms` + 200ms）后分发单侧 `HOLD`（分发的 `duration_ms` 为原始时长减去 200ms 延迟）。
+    - 若另一侧未触摸，超过（`hold_min_duration_ms` + 200ms）后分发单侧 `LONG_PRESS`（分发的 `duration_ms` 为原始时长减去 200ms 延迟）。
     - 若在分发前释放，取消该侧“长按待定”，不分发长按。
 - 摇篮 `CRADLED`：左右两侧同时保持触摸，持续时间 ≥ `cradled_min_duration_ms`（默认 2000ms），且 IMU 稳定（通过回调 `IsIMUStable()`，由 `MotionEngine::IsStable()` 评估）；满足后只触发一次。任一侧松开即重置摇篮状态。
 - 挠痒 `TICKLED`：在滑动窗口 `tickled_window_ms`（默认 2000ms）内统计“按下”时间点，次数达到 `tickled_min_touches`（默认 4）即分发一次，并清空计数避免重复触发。
@@ -46,7 +46,7 @@
 源事件（TouchEventType） → 统一事件（EventType） → 上传字符串（按位置）：
 
 - `SINGLE_TAP` → `TOUCH_TAP` → `Touch_Left_Tap` / `Touch_Right_Tap` / `Touch_Both_Tap`
-- `HOLD` → `TOUCH_LONG_PRESS` → `Touch_Left_LongPress` / `Touch_Right_LongPress` / `Touch_Both_LongPress`
+- `LONG_PRESS` → `TOUCH_LONG_PRESS` → `Touch_Left_LongPress` / `Touch_Right_LongPress` / `Touch_Both_LongPress`
 - `CRADLED` → `TOUCH_CRADLED` → `Touch_Both_Cradled`
 - `TICKLED` → `TOUCH_TICKLED` → `Touch_Both_Tickled`
 - `RELEASE` →（当前不上传）
@@ -115,7 +115,7 @@
 - `SHAKE_VIOLENTLY` → `MOTION_SHAKE_VIOLENTLY` → `Motion_ShakeViolently`
 - `FLIP` → `MOTION_FLIP` → `Motion_Flip`
 - `SHAKE` → `MOTION_SHAKE` → `Motion_Shake`
-- `PICKUP` → `MOTION_PICKUP` → `Motion_Pickup`
+- `PICKUP` → `MOTION_PICKUP` → `Motion_PickUp`
 - `UPSIDE_DOWN` → `MOTION_UPSIDE_DOWN` → `Motion_UpsideDown`
 
 持续时间规则：运动类事件在上传层视为瞬时（`duration_ms = 0`）。

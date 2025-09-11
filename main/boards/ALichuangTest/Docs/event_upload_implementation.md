@@ -109,8 +109,8 @@ interface Event {
 // 单侧触摸事件
 TouchEventType::SINGLE_TAP + LEFT   → "Touch_Left_Tap"        → "主人轻轻拍了我的左侧"
 TouchEventType::SINGLE_TAP + RIGHT  → "Touch_Right_Tap"       → "主人轻轻拍了我的右侧"
-TouchEventType::HOLD + LEFT         → "Touch_Left_LongPress"  → "主人长时间按住了我的左侧"
-TouchEventType::HOLD + RIGHT        → "Touch_Right_LongPress" → "主人长时间按住了我的右侧"
+TouchEventType::LONG_PRESS + LEFT         → "Touch_Left_LongPress"  → "主人长时间按住了我的左侧"
+TouchEventType::LONG_PRESS + RIGHT        → "Touch_Right_LongPress" → "主人长时间按住了我的右侧"
 
 // 双侧触摸事件（特殊模式）
 TouchEventType::SINGLE_TAP + BOTH   → "Touch_Both_Tap"        → "主人同时拍了我的两侧"
@@ -136,7 +136,7 @@ EventType::MOTION_SHAKE           → "Motion_Shake"           → "主人轻轻
 EventType::MOTION_SHAKE_VIOLENTLY → "Motion_ShakeViolently"  → "主人用力摇晃我" 
 EventType::MOTION_FLIP            → "Motion_Flip"            → "主人把我翻了个身"
 EventType::MOTION_FREE_FALL       → "Motion_FreeFall"        → "糟糕，我掉下去了"
-EventType::MOTION_PICKUP          → "Motion_Pickup"          → "主人把我拿起来了"
+EventType::MOTION_PICKUP          → "Motion_PickUp"          → "主人把我拿起来了"
 EventType::MOTION_UPSIDE_DOWN     → "Motion_UpsideDown"      → "主人把我倒立起来了"
 
 // 运动事件的event_payload为空或包含少量必要信息
@@ -653,7 +653,7 @@ std::string EventUploader::GetEventTypeString(const Event& event) {
         case EventType::MOTION_SHAKE_VIOLENTLY: return "Motion_ShakeViolently";
         case EventType::MOTION_FLIP: return "Motion_Flip";
         case EventType::MOTION_FREE_FALL: return "Motion_FreeFall";
-        case EventType::MOTION_PICKUP: return "Motion_Pickup";
+        case EventType::MOTION_PICKUP: return "Motion_PickUp";
         case EventType::MOTION_UPSIDE_DOWN: return "Motion_UpsideDown";
         case EventType::MOTION_TILT: return "Motion_Tilt";
         
@@ -1377,7 +1377,7 @@ def process_event(event):
 - `Motion_ShakeViolently` - 主人用力摇晃我
 - `Motion_Flip` - 主人把我翻了个身
 - `Motion_FreeFall` - 糟糕，我掉下去了
-- `Motion_Pickup` - 主人把我拿起来了
+- `Motion_PickUp` - 主人把我拿起来了
 - `Motion_UpsideDown` - 主人把我倒立起来了
 
 **服务端处理提示**：

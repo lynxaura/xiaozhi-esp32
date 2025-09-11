@@ -27,7 +27,7 @@ enum class EventType {
     TOUCH_LONG_PRESS,      // 长按
     TOUCH_CRADLED,         // 摇篮模式（双侧持续触摸>2秒且IMU静止）
     TOUCH_TICKLED,         // 挠痒模式（2秒内多次无规律触摸>4次）
-    TOUCH_HOLD,            // 持续按住（预留）
+    TOUCH_HOLD,            // 持续按住（预留，与LONG_PRESS不同）
     TOUCH_RELEASE,         // 释放（预留）
     
     // 音频事件（预留）

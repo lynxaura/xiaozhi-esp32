@@ -327,9 +327,56 @@ std::string EventUploader::GetEventTypeString(const Event& event) {
         case EventType::MOTION_FREE_FALL:
             return "Motion_FreeFall";
         case EventType::MOTION_PICKUP:
-            return "Motion_Pickup";
+            return "Motion_PickUp";
         case EventType::MOTION_UPSIDE_DOWN:
             return "Motion_UpsideDown";
+            
+        // 特殊事件类型
+        case EventType::MOTION_NONE:
+            return "Motion_None";  // 通常不上传，但提供统一格式
+            
+        // 预留的触摸事件类型
+        case EventType::TOUCH_DOUBLE_TAP: {
+            switch (event.data.touch_data.position) {
+                case TouchPosition::LEFT: return "Touch_Left_DoubleTap";
+                case TouchPosition::RIGHT: return "Touch_Right_DoubleTap";
+                case TouchPosition::BOTH: return "Touch_Both_DoubleTap";
+                default: return "Touch_Unknown_DoubleTap";
+            }
+        }
+        
+        case EventType::TOUCH_HOLD: {
+            switch (event.data.touch_data.position) {
+                case TouchPosition::LEFT: return "Touch_Left_Hold";
+                case TouchPosition::RIGHT: return "Touch_Right_Hold";
+                case TouchPosition::BOTH: return "Touch_Both_Hold";
+                default: return "Touch_Unknown_Hold";
+            }
+        }
+        
+        case EventType::TOUCH_RELEASE: {
+            switch (event.data.touch_data.position) {
+                case TouchPosition::LEFT: return "Touch_Left_Release";
+                case TouchPosition::RIGHT: return "Touch_Right_Release";
+                case TouchPosition::BOTH: return "Touch_Both_Release";
+                default: return "Touch_Unknown_Release";
+            }
+        }
+        
+        // 预留的音频和系统事件
+        case EventType::AUDIO_WAKE_WORD:
+            return "Audio_WakeWord";
+        case EventType::AUDIO_SPEAKING:
+            return "Audio_Speaking";
+        case EventType::AUDIO_LISTENING:
+            return "Audio_Listening";
+            
+        case EventType::SYSTEM_BOOT:
+            return "System_Boot";
+        case EventType::SYSTEM_SHUTDOWN:
+            return "System_Shutdown";
+        case EventType::SYSTEM_ERROR:
+            return "System_Error";
             
         default:
             ESP_LOGW(TAG_EVENT_UPLOADER, "Unknown event type: %d", (int)event.type);

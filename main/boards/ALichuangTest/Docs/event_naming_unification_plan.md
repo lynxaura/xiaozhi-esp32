@@ -1,46 +1,31 @@
-# 事件命名统一化执行计划
+# 事件命名统一化策略
 
-## 背景与问题
+本文档提供ALichuangTest板载事件系统的命名统一化策略，解决现有系统中存在的命名不一致问题，建立清晰的命名规范体系。
 
-当前 ALichuangTest 板载交互系统存在事件命名不一致的问题，在不同层次使用了不同的命名规范：
+## 现状分析
 
-### 现状分析
+### 当前命名不一致问题
 
-| 层级 | 文件位置 | 命名示例 | 问题 |
-|------|---------|---------|------|
-| 传感器层 | multitouch_engine.h | `SINGLE_TAP`, `HOLD` | 与最终输出不一致 |
-| 事件引擎层 | event_engine.h | `TOUCH_TAP`, `TOUCH_LONG_PRESS` | 转换逻辑分散 |
-| 情感引擎层 | emotion_engine.cc | `"Touch_Tap"`, `"TOUCH_LONG_PRESS"` | 格式混乱 |
-| 上传层 | event_uploader.cc | `"Touch_Left_Tap"`, `"Motion_FreeFall"` | 命名风格不统一 |
+1. **枚举值命名不统一**
+   - `TouchEventType`: `SINGLE_TAP`, `LONG_PRESS` 
+   - `EventType`: `TOUCH_TAP`, `TOUCH_LONG_PRESS`
+   - 底层与统一层命名不匹配
 
-### 核心问题
-1. **命名格式不一致**：混用了 SCREAMING_SNAKE_CASE、PascalCase、Mixed_Case
-2. **映射逻辑分散**：每个组件都有自己的命名转换逻辑
-3. **维护困难**：添加新事件需要在多处修改
-4. **配置兼容性风险**：SD卡配置依赖硬编码的字符串
+2. **事件映射完整性问题**
+   - **触摸事件映射缺失**：
+     - `TouchEventType` 中没有 `DOUBLE_TAP`，但 `EventType` 中有 `TOUCH_DOUBLE_TAP`
+     - `RELEASE` 事件映射到 `MOTION_NONE`，导致不会上传
+   - **运动事件映射完整**：所有 `MotionEventType` 都有对应的 `EventType` 映射
 
-## 解决方案架构
+3. **上传字符串格式不规范**
+   - 触摸事件：`Touch_Left_Tap` vs `Touch_Both_LongPress`
+   - 运动事件：`Motion_FreeFall` vs `Motion_ShakeViolently` (PascalCase不一致)
 
-### 核心设计：集中式命名管理系统
+4. **配置键名与代码不匹配**
+   - 配置文件使用字符串键，但与枚举值对应关系不明确
+   - 缺乏统一的键名规范
 
-创建 `event_names.h/.cc` 作为单一事实来源（Single Source of Truth），管理所有事件命名映射。
-
-```cpp
-class EventNames {
-public:
-    // 获取各种格式的事件名称
-    static const char* GetInternalName(EventType type);
-    static const char* GetUploadName(EventType type);
-    static std::string BuildTouchEventName(EventType type, TouchPosition pos);
-    
-    // 配置文件兼容性
-    static EventType ParseConfigName(const std::string& name);
-    static bool ValidateConfigFile(const char* json_content);
-    
-    // 显示名称本地化
-    static const char* GetDisplayName(EventType type, const char* lang);
-};
-```
+## 统一命名规范
 
 ### 命名规范标准
 
@@ -50,230 +35,278 @@ public:
 | 配置键名 | 与枚举值一致 | `"TOUCH_TAP"`, `"MOTION_FREE_FALL"` |
 | 上传字符串（触摸） | Touch_[Position]_[Action] | `"Touch_Left_Tap"`, `"Touch_Both_LongPress"` |
 | 上传字符串（运动） | Motion_[Action] | `"Motion_FreeFall"`, `"Motion_ShakeViolently"` |
-| 显示名称 | 本地化友好 | `"左侧轻触"`, `"Left Tap"` |
+| 自然语言描述 | AI友好的中文描述 | `"主人轻轻拍了我的左侧"`, `"主人用力摇晃我"` |
 
-## 实施计划
+### 详细规范说明
 
-### 第一阶段：基础架构（第1-2天）
+#### 1. 枚举值命名 (SCREAMING_SNAKE_CASE)
 
-#### 1. 创建 event_names.h
+**触摸事件枚举**:
 ```cpp
-// interaction/core/event_names.h
-#ifndef EVENT_NAMES_H
-#define EVENT_NAMES_H
-
-#include "event_engine.h"
-#include <string>
-#include <map>
-
-// 触摸位置枚举
-enum class TouchPosition {
-    LEFT,
-    RIGHT,
-    BOTH,
-    ANY
-};
-
-class EventNames {
-public:
-    // 基础命名映射
-    struct EventNameMapping {
-        EventType type;
-        const char* internal_name;      // 内部标准名称
-        const char* upload_base;        // 上传基础名称
-        const char* display_cn;         // 中文显示
-        const char* display_en;         // 英文显示
-    };
-    
-    // 获取事件名称
-    static const char* GetInternalName(EventType type);
-    static const char* GetUploadName(EventType type);
-    
-    // 触摸事件位置处理
-    static std::string BuildTouchEventName(EventType type, TouchPosition pos);
-    static std::string GetDisplayNameWithPosition(EventType type, TouchPosition pos, const char* lang = "cn");
-    
-    // 配置文件兼容性
-    static EventType ParseConfigName(const std::string& config_name);
-    static bool IsValidConfigName(const std::string& name);
-    
-    // 工具函数
-    static bool IsTouchEvent(EventType type);
-    static bool IsMotionEvent(EventType type);
-    
-private:
-    static const EventNameMapping s_mappings[];
-    static std::map<std::string, EventType> s_config_aliases;
-};
-
-#endif // EVENT_NAMES_H
-```
-
-#### 2. 创建 event_names.cc
-实现所有映射逻辑，包括：
-- 基础事件名称映射表
-- 触摸位置组合逻辑
-- 配置名称解析（支持多格式）
-- 显示名称本地化
-
-### 第二阶段：组件更新（第3-5天）
-
-#### 3. 更新 emotion_engine.cc
-- 替换硬编码的事件名称字符串
-- 使用 `EventNames::GetInternalName()` 获取统一名称
-- 确保所有事件使用一致的格式
-
-#### 4. 更新 event_uploader.cc
-- 使用 `EventNames::BuildTouchEventName()` 生成触摸事件名称
-- 使用 `EventNames::GetUploadName()` 获取其他事件名称
-- 统一上传数据格式
-
-#### 5. 更新 event_config_loader.cc
-- 替换 `ParseEventType()` 使用 `EventNames::ParseConfigName()`
-- 添加配置格式验证
-- 支持新旧格式兼容
-
-### 第三阶段：配置兼容性（第6-7天）
-
-#### 6. 配置文件迁移支持
-```cpp
-// 在 event_names.cc 中添加
-class ConfigMigration {
-public:
-    // 检查配置格式版本
-    static int GetConfigVersion(const char* json_content);
-    
-    // 迁移旧格式到新格式
-    static std::string MigrateToLatestFormat(const char* old_json);
-    
-    // 验证配置完整性
-    static bool ValidateConfig(const char* json_content);
+enum class TouchEventType {
+    NONE,
+    SINGLE_TAP,        // 保持现有命名
+    DOUBLE_TAP,        // 预留，与SINGLE_TAP对称
+    LONG_PRESS,        // 改名：HOLD → LONG_PRESS
+    RELEASE,           // 保持现有命名
+    CRADLED,           // 保持现有命名
+    TICKLED,           // 保持现有命名
 };
 ```
 
-#### 7. SD卡配置处理
-- 修改 `EventConfigLoader::LoadFromFile()` 支持自动格式检测
-- 读取时兼容多种格式
-- 写入时使用标准格式
-
-### 第四阶段：测试验证（第8-10天）
-
-#### 8. 单元测试
-创建 `test_event_names.cc`：
-- 测试所有事件类型的命名映射
-- 验证触摸位置组合逻辑
-- 测试配置名称解析
-- 验证新旧格式兼容性
-
-#### 9. 集成测试
-- 测试完整的事件处理流程
-- 验证上传数据格式
-- 测试SD卡配置加载
-- 确保向后兼容性
-
-### 第五阶段：文档完善（第11天）
-
-#### 10. 更新文档
-- 更新 `event_name_mapping.md` 反映新的统一命名
-- 创建迁移指南
-- 更新API文档
-
-## 向后兼容性保证
-
-### 配置文件兼容
+**统一事件枚举** (已规范):
 ```cpp
-// 支持多种命名格式
-static const std::map<std::string, EventType> config_aliases = {
-    // 新格式（标准）
-    {"TOUCH_TAP", EventType::TOUCH_TAP},
-    {"TOUCH_LONG_PRESS", EventType::TOUCH_LONG_PRESS},
-    
-    // 兼容旧格式（如果存在）
-    {"TouchTap", EventType::TOUCH_TAP},
-    {"touch_tap", EventType::TOUCH_TAP},
-    
-    // 其他可能的别名
-    {"TAP", EventType::TOUCH_TAP},
-    {"HOLD", EventType::TOUCH_LONG_PRESS},
+enum class EventType {
+    MOTION_FREE_FALL,      // 保持现有命名
+    MOTION_SHAKE_VIOLENTLY,// 保持现有命名
+    MOTION_SHAKE,          // 保持现有命名
+    TOUCH_TAP,             // 保持现有命名
+    TOUCH_LONG_PRESS,      // 保持现有命名
+    TOUCH_CRADLED,         // 保持现有命名
+    TOUCH_TICKLED,         // 保持现有命名
 };
 ```
 
-### 迁移策略
-1. **阶段1**：支持读取所有格式，写入使用新格式
-2. **阶段2**：提供迁移工具，帮助用户转换配置
-3. **阶段3**：在未来版本中逐步废弃旧格式支持
+#### 2. 上传字符串命名
 
-## 风险评估与缓解
+**触摸事件上传格式**: `Touch_[Position]_[Action]`
+- Position: `Left`, `Right`, `Both` (PascalCase)
+- Action: `Tap`, `LongPress`, `Cradled`, `Tickled` (PascalCase)
 
-### 风险点
-1. **配置兼容性**：SD卡上的现有配置可能无法识别
-   - 缓解：提供完整的向后兼容支持
-   
-2. **第三方集成**：外部系统可能依赖现有命名
-   - 缓解：保持上传格式稳定，仅内部统一
-   
-3. **性能影响**：额外的映射查找可能影响性能
-   - 缓解：使用静态映射表，编译时优化
+示例:
+```
+Touch_Left_Tap
+Touch_Right_LongPress  
+Touch_Both_Cradled
+Touch_Both_Tickled
+```
+
+**运动事件上传格式**: `Motion_[Action]`
+- Action: 使用PascalCase，保持动作语义清晰
+
+示例:
+```
+Motion_FreeFall
+Motion_ShakeViolently
+Motion_Shake
+Motion_Flip
+Motion_PickUp
+Motion_UpsideDown
+```
+
+#### 3. 配置键名命名
+
+配置文件中的键名直接使用枚举值的字符串形式：
+
+```json
+{
+  "event_processing": {
+    "TOUCH_TAP": {
+      "enabled": true,
+      "debounce_ms": 50
+    },
+    "MOTION_FREE_FALL": {
+      "enabled": true,
+      "threshold": 0.3
+    }
+  }
+}
+```
+
+#### 4. 自然语言描述命名 (event_text)
+
+用于 AI/LLM 理解的自然语言描述，通过 `GenerateEventText()` 函数生成：
+
+**触摸事件描述**:
+```cpp
+// 实际实现示例
+case EventType::TOUCH_TAP:
+    switch (position) {
+        case TouchPosition::LEFT: return "主人轻轻拍了我的左侧";
+        case TouchPosition::RIGHT: return "主人轻轻拍了我的右侧";
+        case TouchPosition::BOTH: return "主人同时拍了我的两侧";
+    }
+case EventType::TOUCH_LONG_PRESS:
+    return "主人长时间按住了我的" + position_name;
+case EventType::TOUCH_CRADLED:
+    return "主人温柔地抱着我";
+```
+
+**运动事件描述**:
+```cpp
+case EventType::MOTION_SHAKE: return "主人轻轻摇了摇我";
+case EventType::MOTION_SHAKE_VIOLENTLY: return "主人用力摇晃我";
+case EventType::MOTION_FREE_FALL: return "我在自由下落";
+```
+
+**用途说明**：
+- 上传到云端供 AI 服务理解用户行为
+- 情感引擎根据自然语言生成合适的情感反应
+- 与 `event_type` (机器可读) 形成互补的描述体系
+
+## 事件映射分析
+
+### 触摸事件映射状态
+
+| TouchEventType | EventType | 映射状态 | 上传状态 |
+|----------------|-----------|----------|----------|
+| `SINGLE_TAP` | `TOUCH_TAP` | ✅ 已映射 | ✅ 正常上传 |
+| `LONG_PRESS` | `TOUCH_LONG_PRESS` | ✅ 已映射 | ✅ 正常上传 |
+| `RELEASE` | `MOTION_NONE` | ❌ 映射错误 | ❌ 不会上传 |
+| `CRADLED` | `TOUCH_CRADLED` | ✅ 已映射 | ✅ 正常上传 |
+| `TICKLED` | `TOUCH_TICKLED` | ✅ 已映射 | ✅ 正常上传 |
+| **不存在** | `TOUCH_DOUBLE_TAP` | ❌ 孤立事件 | ❌ 永远不会触发 |
+
+### 运动事件映射状态
+
+| MotionEventType | EventType | 映射状态 | 上传状态 |
+|-----------------|-----------|----------|----------|
+| `NONE` | `MOTION_NONE` | ✅ 已映射 | ❌ 不上传 |
+| `FREE_FALL` | `MOTION_FREE_FALL` | ✅ 已映射 | ✅ 正常上传 |
+| `SHAKE_VIOLENTLY` | `MOTION_SHAKE_VIOLENTLY` | ✅ 已映射 | ✅ 正常上传 |
+| `FLIP` | `MOTION_FLIP` | ✅ 已映射 | ✅ 正常上传 |
+| `SHAKE` | `MOTION_SHAKE` | ✅ 已映射 | ✅ 正常上传 |
+| `PICKUP` | `MOTION_PICKUP` | ✅ 已映射 | ✅ 正常上传 |
+| `UPSIDE_DOWN` | `MOTION_UPSIDE_DOWN` | ✅ 已映射 | ✅ 正常上传 |
+
+### 关键发现
+1. **运动事件映射完美**：所有底层事件都有对应的统一事件，映射关系清晰
+2. **触摸事件存在问题**：
+   - `TOUCH_DOUBLE_TAP` 是孤立事件，没有来源
+   - `RELEASE` 事件被错误映射，不会上传
+   - 这表明触摸事件系统的设计不如运动事件系统完整
+
+## 实施策略
+
+### 分层改进方案
+
+采用**分层命名规范**而非集中式命名管理系统，避免增加系统复杂度：
+
+#### 1. 底层传感器层
+- 保持现有的 `TouchEventType` 和 `MotionEventType` 枚举
+- 仅在必要时进行最小化调整（如 `LONG_PRESS` 命名统一）
+
+#### 2. 统一事件层  
+- `EventType` 枚举已基本规范，保持现状
+- 确保转换函数 `ConvertTouchEventType` 和 `ConvertMotionEventType` 的映射正确
+
+#### 3. 上传层
+- 严格按照上传字符串格式规范实现 `GetEventTypeString`
+- 确保所有触摸事件包含位置信息
+- 统一运动事件的PascalCase格式
+
+#### 4. 配置层
+- 配置键名直接使用 `EventType` 枚举的字符串表示
+- 建立配置键名与枚举值的一一对应关系
+
+### 兼容性考虑
+
+#### 向后兼容
+- 现有的上传字符串格式已经相对规范，主要做微调
+- 配置文件格式保持稳定，仅标准化键名
+
+#### 渐进式改进
+1. **阶段1**: 文档化现有命名规范
+2. **阶段2**: 修复明显的不一致问题
+3. **阶段3**: 建立验证机制防止命名漂移
+
+## 验证机制
+
+### 编译时检查
+```cpp
+// 确保所有 EventType 都有对应的上传字符串
+static_assert(GetEventTypeString(EventType::TOUCH_TAP) != "");
+static_assert(GetEventTypeString(EventType::MOTION_SHAKE) != "");
+```
+
+### 单元测试
+```cpp
+// 验证命名格式一致性
+TEST(EventNaming, TouchEventFormat) {
+    Event event;
+    event.type = EventType::TOUCH_TAP;
+    event.data.touch_data.position = TouchPosition::LEFT;
+    
+    std::string name = GetEventTypeString(event);
+    EXPECT_EQ(name, "Touch_Left_Tap");
+    EXPECT_THAT(name, MatchesRegex("^Touch_(Left|Right|Both)_[A-Z][a-zA-Z]*$"));
+}
+
+TEST(EventNaming, MotionEventFormat) {
+    Event event;
+    event.type = EventType::MOTION_FREE_FALL;
+    
+    std::string name = GetEventTypeString(event);
+    EXPECT_EQ(name, "Motion_FreeFall");
+    EXPECT_THAT(name, MatchesRegex("^Motion_[A-Z][a-zA-Z]*$"));
+}
+```
+
+### 运行时验证
+```cpp
+void ValidateEventNaming() {
+    // 验证所有枚举值都有对应的命名
+    for (int i = 0; i < static_cast<int>(EventType::MAX_EVENT_TYPE); i++) {
+        EventType type = static_cast<EventType>(i);
+        std::string name = GetEventTypeString(Event{type});
+        ESP_LOGW_IF(name.empty(), "EventType %d missing upload name", i);
+    }
+}
+```
 
 ## 实施检查清单
 
-- [ ] 创建 event_names.h/.cc 文件
-- [ ] 实现基础映射功能
-- [ ] 添加触摸位置处理逻辑
-- [ ] 实现配置兼容性层
-- [ ] 更新 emotion_engine.cc
-- [ ] 更新 event_uploader.cc  
-- [ ] 更新 event_config_loader.cc
-- [ ] 添加单元测试
-- [ ] 执行集成测试
-- [ ] 更新相关文档
-- [ ] 代码审查
-- [ ] 性能测试
-- [ ] 向后兼容性验证
+### 代码更新
+- [ ] **映射完整性修复**：
+  - [ ] 决定是否在 `TouchEventType` 中添加 `DOUBLE_TAP` 支持
+  - [ ] 或者从 `EventType` 中移除孤立的 `TOUCH_DOUBLE_TAP`
+  - [ ] 决定是否启用 `RELEASE` 事件的上传（当前映射到 `MOTION_NONE`）
+- [ ] **命名一致性**：
+  - [x] 确认 `TouchEventType::HOLD` 已重命名为 `LONG_PRESS`
+  - [ ] 检查 `GetEventTypeString` 函数的输出格式一致性
+  - [ ] 验证所有触摸事件都正确包含位置信息
+  - [ ] 统一运动事件上传字符串的PascalCase格式
 
-## 成功标准
+### 配置更新
+- [ ] 标准化配置文件中的事件键名
+- [ ] 确保配置键名与 `EventType` 枚举一一对应
+- [ ] 更新示例配置文件
 
-1. **一致性**：所有组件使用统一的命名系统
-2. **兼容性**：现有配置文件继续正常工作
-3. **可维护性**：新事件添加只需在一处修改
-4. **性能**：无明显性能下降（<1ms延迟增加）
-5. **测试覆盖**：>90%的代码覆盖率
+### 测试验证
+- [ ] 添加命名格式一致性测试
+- [ ] 实施编译时命名完整性检查
+- [ ] 建立运行时命名验证机制
 
-## 时间线
+### 文档维护
+- [ ] 更新事件映射文档
+- [ ] 建立命名规范参考文档
+- [ ] 创建新事件添加指南
 
-| 阶段 | 任务 | 预计时间 | 依赖 |
-|------|------|---------|------|
-| 1 | 基础架构搭建 | 2天 | 无 |
-| 2 | 组件更新 | 3天 | 阶段1 |
-| 3 | 配置兼容性 | 2天 | 阶段2 |
-| 4 | 测试验证 | 3天 | 阶段3 |
-| 5 | 文档完善 | 1天 | 阶段4 |
+## 长期维护策略
 
-总计：11个工作日
+### 防止命名漂移
+1. **代码审查检查项**：新增事件时必须遵循命名规范
+2. **自动化测试**：CI/CD 中包含命名一致性测试
+3. **文档同步**：事件变更时同步更新映射文档
 
-## 附录：命名示例对照表
+### 扩展性考虑
+1. **新事件类型**：预留 `AUDIO_*` 和 `SYSTEM_*` 事件的命名空间
+2. **多语言支持**：建立本地化显示名称的扩展机制
+3. **版本兼容**：为未来的命名格式变更预留兼容性处理
 
-### 触摸事件
+## 参考实施
 
-| EventType | 内部名称 | 上传名称（左） | 上传名称（右） | 上传名称（双侧） |
-|-----------|---------|--------------|--------------|----------------|
-| TOUCH_TAP | TOUCH_TAP | Touch_Left_Tap | Touch_Right_Tap | Touch_Both_Tap |
-| TOUCH_LONG_PRESS | TOUCH_LONG_PRESS | Touch_Left_LongPress | Touch_Right_LongPress | Touch_Both_LongPress |
-| TOUCH_DOUBLE_TAP | TOUCH_DOUBLE_TAP | Touch_Left_DoubleTap | Touch_Right_DoubleTap | Touch_Both_DoubleTap |
-| TOUCH_CRADLED | TOUCH_CRADLED | - | - | Touch_Both_Cradled |
-| TOUCH_TICKLED | TOUCH_TICKLED | - | - | Touch_Both_Tickled |
+### 优先级
+1. **高优先级**：修复现有的明显命名不一致
+2. **中优先级**：建立验证机制防止回退
+3. **低优先级**：添加多语言显示名称支持
 
-### 运动事件
+### 预期效果
+- 消除事件命名的歧义和不一致
+- 提高代码的可维护性和可读性
+- 建立清晰的命名规范，便于新功能扩展
+- 减少因命名不规范导致的调试困难
 
-| EventType | 内部名称 | 上传名称 | 中文显示 |
-|-----------|---------|---------|---------|
-| MOTION_FREE_FALL | MOTION_FREE_FALL | Motion_FreeFall | 自由落体 |
-| MOTION_SHAKE | MOTION_SHAKE | Motion_Shake | 摇晃 |
-| MOTION_SHAKE_VIOLENTLY | MOTION_SHAKE_VIOLENTLY | Motion_ShakeViolently | 剧烈摇晃 |
-| MOTION_FLIP | MOTION_FLIP | Motion_Flip | 翻转 |
-| MOTION_PICKUP | MOTION_PICKUP | Motion_Pickup | 拿起 |
-| MOTION_UPSIDE_DOWN | MOTION_UPSIDE_DOWN | Motion_UpsideDown | 倒置 |
+---
 
-## 总结
-
-本计划通过创建集中式的事件命名管理系统，解决了当前存在的命名不一致问题。方案确保了向后兼容性，提供了清晰的迁移路径，并为未来的扩展奠定了良好基础。通过分阶段实施，可以最小化风险，确保系统稳定性。
+*本文档作为ALichuangTest事件系统命名统一化的指导文档，应定期更新以反映系统的演进。*

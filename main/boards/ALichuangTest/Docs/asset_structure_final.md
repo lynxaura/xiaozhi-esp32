@@ -6,7 +6,7 @@
 
 ```
 /sdcard/
-├── response_config.json           # 统一配置文件 (所有事件参数)
+├── response_config.json           # 响应配置文件
 ├── manifest.json                  # 资源清单和版本信息
 │
 ├── emergency/                     # 紧急响应层
@@ -15,33 +15,33 @@
 │   │   │   ├── 001.bin
 │   │   │   ├── 002.bin
 │   │   │   └── ...
-│   │   └── sound.p3
+│   │   └── motion_free_fall.p3
 │   ├── motion_shake_violently/
 │   │   ├── animation/
-│   │   └── sound.p3
+│   │   └── motion_shake_violently.p3
 │   ├── motion_flip/
 │   │   ├── animation/
-│   │   └── sound.p3
+│   │   └── motion_flip.p3
 │   └── motion_upside_down/
 │       ├── animation/
-│       └── sound.p3
+│       └── motion_upside_down.p3
 │
 ├── interaction/                   # 常规交互层
 │   ├── motion_shake_q1/
 │   │   ├── animation/
-│   │   └── sound.p3
+│   │   └── motion_shake_q1.p3
 │   ├── motion_shake_q2/
 │   │   ├── animation/
-│   │   └── sound.p3
+│   │   └── motion_shake_q2.p3
 │   ├── motion_shake_q3/
 │   │   ├── animation/
-│   │   └── sound.p3
+│   │   └── motion_shake_q3.p3
 │   ├── motion_shake_q4/
 │   │   ├── animation/
-│   │   └── sound.p3
+│   │   └── motion_shake_q4.p3
 │   ├── motion_pickup_q1/
 │   │   ├── animation/
-│   │   └── sound.p3
+│   │   └── motion_pickup_q1.p3
 │   ├── motion_pickup_q2/
 │   ├── motion_pickup_q3/
 │   ├── motion_pickup_q4/
@@ -84,16 +84,16 @@
 │   ├── idle/                     # Idle状态
 │   │   ├── idle_q1/
 │   │   │   ├── animation/
-│   │   │   └── sound.p3        # 可选的待机音效
+│   │   │   └── idle_q1.p3        # 可选的待机音效
 │   │   ├── idle_q2/
 │   │   │   ├── animation/
-│   │   │   └── sound.p3
+│   │   │   └── idle_q2.p3
 │   │   ├── idle_q3/
 │   │   │   ├── animation/
-│   │   │   └── sound.p3
+│   │   │   └── idle_q3.p3
 │   │   └── idle_q4/
 │   │       ├── animation/
-│   │       └── sound.p3
+│   │       └── idle_q4.p3
 │   │
 │   └── listening/                # Listening状态
 │       ├── listening_q1/
@@ -108,119 +108,49 @@
 └── system/                       # 系统状态层
     ├── boot_up/
     │   ├── animation/
-    │   └── sound.p3
+    │   └── boot_up.p3
     ├── shut_down/
     │   ├── animation/
-    │   └── sound.p3
+    │   └── shut_down.p3
     ├── charging/
     │   ├── animation/
-    │   └── sound.p3
+    │   └── charging.p3
     ├── low_battery/
     │   ├── animation/
-    │   └── sound.p3
+    │   └── low_battery.p3
     ├── connecting/
     │   ├── animation/
-    │   └── sound.p3
+    │   └── connecting.p3
     ├── error/
     │   ├── animation/
-    │   └── sound.p3
+    │   └── error.p3
     ├── photo_taken/
     │   ├── animation/
-    │   └── sound.p3
+    │   └── photo_taken.p3
     ├── body_detached/
     │   ├── animation/
-    │   └── sound.p3
+    │   └── body_detached.p3
     └── body_attached/
         ├── animation/
-        └── sound.p3
+        └── body_attached.p3
 ```
 
 ## 配置文件
 
-### 事件检测参数 (event_config.json)
-
-```json
-{
-  "touch_detection_parameters": {
-    "tap_max_duration_ms": 500,
-    "hold_min_duration_ms": 600,
-    "cradled_min_duration_ms": 2000,
-    "tickled_window_ms": 2000,
-    "tickled_min_touches": 4,
-    "debounce_time_ms": 30,
-    "touch_threshold_ratio": 1.5
-  },
-  
-  "motion_detection_parameters": {
-    "free_fall": {
-      "threshold_g": 0.3,
-      "min_duration_ms": 200
-    },
-    "shake": {
-      "normal_threshold_g": 1.5,
-      "violently_threshold_g": 3.0
-    },
-    "flip": {
-      "threshold_deg_s": 400.0
-    },
-    "pickup": {
-      "threshold_g": 0.15,
-      "stable_threshold_g": 0.05,
-      "stable_count": 5,
-      "min_duration_ms": 300
-    },
-    "upside_down": {
-      "threshold_g": -0.8,
-      "stable_count": 10
-    }
-  },
-  
-    "touch_events": {
-      "TOUCH_TAP": {
-        "strategy": "MERGE",
-        "merge_window_ms": 1500,
-        "interval_ms": 500
-      },
-      "TOUCH_LONG_PRESS": {
-        "strategy": "COOLDOWN",
-        "interval_ms": 1000
-      }
-    },
-    
-    "motion_events": {
-      "MOTION_SHAKE": {
-        "strategy": "THROTTLE",
-        "interval_ms": 2000
-      },
-      "MOTION_PICKUP": {
-        "strategy": "DEBOUNCE",
-        "interval_ms": 500
-      },
-      "MOTION_FREE_FALL": {
-        "strategy": "IMMEDIATE",
-        "allow_interrupt": true
-      },
-      "MOTION_SHAKE_VIOLENTLY": {
-        "strategy": "IMMEDIATE",
-        "allow_interrupt": true
-      }
-    },
-    
-    "default_strategy": {
-      "strategy": "IMMEDIATE",
-      "interval_ms": 0
-    }
-  },
-  
-  "event_upload_config": {
-    "batch_upload_enabled": true,
-    "batch_window_ms": 500,
-    "max_batch_size": 10
-  }
-}
-```
 
 ### 响应配置 (response_config.json)
+
+可用的振动模式：
+- 轻触反馈类：`VIBRATION_SHORT_BUZZ`、`VIBRATION_PURR_SHORT`
+- 持续交互类：`VIBRATION_PURR_PATTERN`、`VIBRATION_GENTLE_HEARTBEAT`、`VIBRATION_HEARTBEAT_STRONG`
+- 情绪表达类：`VIBRATION_STRUGGLE_PATTERN`、`VIBRATION_TREMBLE_PATTERN`、`VIBRATION_GIGGLE_PATTERN`
+- 警示反应类：`VIBRATION_SHARP_BUZZ`、`VIBRATION_ERRATIC_STRONG`
+
+可用的旋转动作：
+- 情感表达类：`MOTION_HAPPY_WIGGLE`、`MOTION_SHAKE_HEAD`、`MOTION_EXCITED_JIGGLE`
+- 社交互动类：`MOTION_NUZZLE_FORWARD`、`MOTION_CURIOUS_PEEK_LEFT`、`MOTION_CURIOUS_PEEK_RIGHT`、`MOTION_RELAX_COMPLETELY`
+- 防御反应类：`MOTION_DODGE_SUBTLE`、`MOTION_DODGE_SLOWLY`、`MOTION_DODGE_OPPOSITE_LEFT`、`MOTION_DODGE_OPPOSITE_RIGHT`、`MOTION_TENSE_UP`、`MOTION_BODY_SHIVER`
+- 复杂表演类：`MOTION_TICKLE_TWIST_DANCE`、`MOTION_ANNOYED_TWIST_TO_HAPPY`、`MOTION_STRUGGLE_TWIST`、`MOTION_UNWILLING_TURN_BACK`
 
 ```json
 {
@@ -230,66 +160,54 @@
     "emergency/motion_free_fall": {
       "layer": 1,
       "priority": 100,
-      "animation": { "frames": 6, "fps": 24, "loop": false, "count": 1 },
+      "animation": { "loop": false, "count": 1 },
       "sound": { "volume": 95, "interrupt": true },
-      "vibration": { "pattern": 0, "intensity": 90, "duration_ms": 2000 },
-      "motion": { "action": 0, "duration_ms": 1800 }
+      "vibration": { "pattern": "VIBRATION_ERRATIC_STRONG" },
+      "motion": { "action": "MOTION_STRUGGLE_TWIST" }
     },
     "emergency/motion_shake_violently": {
       "layer": 1,
       "priority": 95,
-      "animation": { "frames": 8, "fps": 30, "loop": false, "count": 1 },
+      "animation": { "loop": false, "count": 1 },
       "sound": { "volume": 90, "interrupt": true },
-      "vibration": { "pattern": 1, "intensity": 85, "duration_ms": 2500 }
+      "vibration": { "pattern": "VIBRATION_STRUGGLE_PATTERN" }
     },
     "interaction/motion_shake_q1": {
       "layer": 2,
       "priority": 50,
-      "animation": { "frames": 4, "fps": 15, "loop": true, "count": 2 },
+      "animation": { "loop": true, "count": 2 },
       "sound": { "volume": 70, "interrupt": false },
-      "vibration": { "pattern": 2, "intensity": 60, "duration_ms": 1000 }
+      "vibration": { "pattern": "VIBRATION_PURR_SHORT" }
     },
     "interaction/touch_tap_q1": {
       "layer": 2,
       "priority": 45,
-      "animation": { "frames": 3, "fps": 20, "loop": false, "count": 1 },
+      "animation": { "loop": false, "count": 1 },
       "sound": { "volume": 65, "interrupt": false },
-      "vibration": { "pattern": 3, "intensity": 50, "duration_ms": 300 }
+      "vibration": { "pattern": "VIBRATION_SHORT_BUZZ" }
     },
     "state_expression/speaking/talk_happy": {
       "layer": 3,
       "priority": 30,
-      "animation": { "frames": 5, "fps": 20, "loop": true, "count": -1 },
+      "animation": { "loop": true, "count": -1 },
       "sound": { "enabled": false },
       "vibration": { "enabled": false }
     },
     "state_expression/idle/idle_q1": {
       "layer": 4,
       "priority": 20,
-      "animation": { "frames": 3, "fps": 5, "loop": true, "count": -1 },
+      "animation": { "loop": true, "count": -1 },
       "sound": { "enabled": false },
       "vibration": { "enabled": false }
     },
     "system/boot_up": {
       "layer": 0,
       "priority": 90,
-      "animation": { "frames": 8, "fps": 30, "loop": false, "count": 1 },
+      "animation": { "loop": false, "count": 1 },
       "sound": { "volume": 80, "interrupt": false },
-      "vibration": { "pattern": 4, "intensity": 40, "duration_ms": 500 }
+      "vibration": { "pattern": "VIBRATION_SHORT_BUZZ" }
     }
-  },
-  
-  "vibration_patterns": [
-    { "name": "ERRATIC_STRONG", "keyframes": [[4000,100], [0,50], [3000,200]] },
-    { "name": "DIZZY_WOBBLE", "keyframes": [[2000,100], [1000,100], [2000,100]] },
-    { "name": "HAPPY_PULSE", "keyframes": [[2000,200], [0,100], [2000,200]] },
-    { "name": "QUICK_TAP", "keyframes": [[2000,100]] },
-    { "name": "BOOT_SEQUENCE", "keyframes": [[1000,100], [0,100], [2000,200]] }
-  ],
-  
-  "motion_actions": [
-    { "name": "STRUGGLE_TWIST", "servo_channel": 1, "sequence": [[45,100], [0,100], [-45,100]] }
-  ]
+  }
 }
 ```
 
@@ -313,8 +231,8 @@ public:
     static std::string GetSoundPath(const std::string& category,
                                    const std::string& event_name) {
         char path[256];
-        snprintf(path, sizeof(path), "/sdcard/%s/%s/sound.p3", 
-                category.c_str(), event_name.c_str());
+        snprintf(path, sizeof(path), "/sdcard/%s/%s/%s.p3", 
+                category.c_str(), event_name.c_str(), event_name.c_str());
         return std::string(path);
     }
     
@@ -340,31 +258,6 @@ public:
 
 ### 配置管理器
 ```cpp
-// 检测参数配置
-struct DetectionConfig {
-    struct {
-        uint16_t tap_max_duration_ms;
-        uint16_t hold_min_duration_ms;
-        uint16_t cradled_min_duration_ms;
-        uint16_t tickled_window_ms;
-        uint8_t tickled_min_touches;
-        uint8_t debounce_time_ms;
-        float touch_threshold_ratio;
-    } touch;
-    
-    struct {
-        float free_fall_threshold_g;
-        uint16_t free_fall_duration_ms;
-        float shake_normal_g;
-        float shake_violent_g;
-        float flip_threshold_deg_s;
-        float pickup_threshold_g;
-        float pickup_stable_g;
-        uint8_t pickup_stable_count;
-        float upside_down_threshold_g;
-        uint8_t upside_down_stable_count;
-    } motion;
-};
 
 // 响应配置
 struct ResponseConfig {
@@ -372,8 +265,6 @@ struct ResponseConfig {
     uint8_t priority;
     
     struct {
-        uint8_t frames;
-        uint8_t fps;
         bool loop;
         int8_t count;  // -1 表示无限循环
     } animation;
@@ -386,47 +277,25 @@ struct ResponseConfig {
     
     struct {
         bool enabled = true;
-        uint8_t pattern_id;
-        uint8_t intensity;
-        uint16_t duration_ms;
+        std::string pattern_name;
     } vibration;
     
     struct {
         bool enabled = false;
-        uint8_t action_id;
-        uint16_t duration_ms;
+        std::string action_name;
     } motion;
 };
 
 class ConfigManager {
 private:
-    DetectionConfig detection_config_;
     std::map<std::string, ResponseConfig> response_configs_;
-    std::vector<VibrationPattern> vibration_patterns_;
-    std::vector<MotionAction> motion_actions_;
     
 public:
     void LoadConfigs() {
-        LoadDetectionConfig();
         LoadResponseConfig();
     }
     
 private:
-    void LoadDetectionConfig() {
-        FILE* f = fopen("/sdcard/event_config.json", "r");
-        if (!f) {
-            ESP_LOGE(TAG, "Failed to open event_config.json");
-            return;
-        }
-        
-        // 解析检测参数
-        // cJSON* json = cJSON_Parse(buffer);
-        // ...
-        
-        fclose(f);
-        ESP_LOGI(TAG, "Detection config loaded");
-    }
-    
     void LoadResponseConfig() {
         FILE* f = fopen("/sdcard/response_config.json", "r");
         if (!f) {
@@ -442,10 +311,6 @@ private:
     }
 
 public:
-    const DetectionConfig& GetDetectionConfig() const {
-        return detection_config_;
-    }
-    
     const ResponseConfig* GetResponseConfig(const std::string& event_key) const {
         auto it = response_configs_.find(event_key);
         return (it != response_configs_.end()) ? &it->second : nullptr;
@@ -517,9 +382,7 @@ private:
                         const std::string& event_name,
                         const ResponseConfig* config) {
         // 播放动画
-        if (config->animation.frames > 0) {
-            PlayAnimation(category, event_name, config);
-        }
+        PlayAnimation(category, event_name, config);
         
         // 播放音效
         if (config->sound.enabled) {
@@ -540,14 +403,20 @@ private:
     void PlayAnimation(const std::string& category,
                       const std::string& event_name,
                       const ResponseConfig* config) {
-        for (int i = 1; i <= config->animation.frames; i++) {
-            auto path = ResourcePathBuilder::GetAnimationPath(category, event_name, i);
+        // 动画播放逻辑由系统自动检测animation目录中的所有帧
+        // 从001.bin开始按顺序播放直到没有更多帧文件
+        int frame = 1;
+        while (true) {
+            auto path = ResourcePathBuilder::GetAnimationPath(category, event_name, frame);
             uint8_t* frame_buffer = heap_caps_malloc(153600, MALLOC_CAP_SPIRAM);
-            if (loader_->LoadFrame(path, frame_buffer)) {
-                display_->DrawImageOnCanvas(0, 0, 320, 240, frame_buffer);
+            if (!loader_->LoadFrame(path, frame_buffer)) {
+                heap_caps_free(frame_buffer);
+                break;  // 没有更多帧文件
             }
+            display_->DrawImageOnCanvas(0, 0, 320, 240, frame_buffer);
             heap_caps_free(frame_buffer);
-            vTaskDelay(1000 / config->animation.fps / portTICK_PERIOD_MS);
+            vTaskDelay(1000 / 24 / portTICK_PERIOD_MS);  // 固定24fps
+            frame++;
         }
     }
     
@@ -559,13 +428,12 @@ private:
     }
     
     void PlayVibration(const ResponseConfig* config) {
-        vibration_->PlayPatternById(config->vibration.pattern_id,
-                                   config->vibration.intensity);
+        vibration_->PlayPatternByName(config->vibration.pattern_name);
     }
     
     void PlayMotion(const ResponseConfig* config) {
         // 执行伺服动作
-        motion_->ExecuteActionById(config->motion.action_id);
+        motion_->ExecuteActionByName(config->motion.action_name);
     }
 };
 ```
@@ -587,7 +455,7 @@ ResourceLoader loader;
 ResponseExecutor executor(&config_mgr, &loader);
 
 // 启动时加载配置
-config_mgr.LoadConfigs();  // 加载两个配置文件
+config_mgr.LoadConfigs();  // 加载响应配置文件
 
 // 紧急事件
 executor.ExecuteEvent(MOTION_FREE_FALL);
