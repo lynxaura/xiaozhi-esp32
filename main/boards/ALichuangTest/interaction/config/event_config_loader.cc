@@ -51,8 +51,7 @@ bool EventConfigLoader::LoadFromFile(const std::string& filepath, EventEngine* e
     // 尝试从文件系统读取配置
     FILE* file = fopen(filepath.c_str(), "r");
     if (!file) {
-        ESP_LOGW(TAG, "Config file not found: %s, using default config", filepath.c_str());
-        return LoadFromEmbedded(engine);
+        return false;  // 返回false让调用者决定是否加载默认配置
     }
     
     // 获取文件大小
@@ -71,17 +70,20 @@ bool EventConfigLoader::LoadFromFile(const std::string& filepath, EventEngine* e
     delete[] json_data;
     
     if (!result) {
-        ESP_LOGW(TAG, "Failed to parse config file, using default config");
-        return LoadFromEmbedded(engine);
+        return false;  // 返回false让调用者决定是否加载默认配置
     }
     
-    ESP_LOGI(TAG, "Loaded event config from file: %s", filepath.c_str());
+    ESP_LOGI(TAG, "Event config loaded from SD card");
     return true;
 }
 
 bool EventConfigLoader::LoadFromEmbedded(EventEngine* engine) {
     const char* default_config = DefaultEventConfig::GetDefaultConfig();
-    return ParseJsonConfig(default_config, engine);
+    bool result = ParseJsonConfig(default_config, engine);
+    if (result) {
+        ESP_LOGI(TAG, "Event config loaded from embedded defaults");
+    }
+    return result;
 }
 
 bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engine) {
@@ -113,8 +115,6 @@ bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engi
             }
             
             engine->SetDefaultProcessingStrategy(config);
-            ESP_LOGI(TAG, "Set default strategy: %d with interval %ldms", 
-                    (int)config.strategy, config.interval_ms);
         }
         
         // 解析触摸事件策略
@@ -155,8 +155,6 @@ bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engi
                 }
                 
                 engine->ConfigureEventProcessing(event_type, config);
-                ESP_LOGI(TAG, "Configured %s with strategy %d", 
-                        event->string, (int)config.strategy);
             }
         }
         
@@ -188,8 +186,6 @@ bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engi
                 }
                 
                 engine->ConfigureEventProcessing(event_type, config);
-                ESP_LOGI(TAG, "Configured %s with strategy %d", 
-                        event->string, (int)config.strategy);
             }
         }
     }
@@ -198,7 +194,12 @@ bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engi
     cJSON* motion_params = cJSON_GetObjectItem(root, "motion_detection_parameters");
     if (motion_params) {
         engine->UpdateMotionEngineConfig(root);
-        ESP_LOGI(TAG, "Applied motion detection parameters to motion engine");
+    }
+    
+    // 解析触摸检测参数并应用到 multitouch_engine
+    cJSON* touch_params = cJSON_GetObjectItem(root, "touch_detection_parameters");
+    if (touch_params) {
+        engine->UpdateMultitouchEngineConfig(root);
     }
     
     // 解析响应映射
@@ -255,7 +256,6 @@ bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engi
     }
     
     cJSON_Delete(root);
-    ESP_LOGI(TAG, "Event config loaded successfully");
     return true;
 }
 

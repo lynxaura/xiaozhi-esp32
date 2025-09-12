@@ -140,6 +140,9 @@ public:
     // 更新运动引擎配置
     void UpdateMotionEngineConfig(const cJSON* json);
     
+    // 更新触摸引擎配置
+    void UpdateMultitouchEngineConfig(const cJSON* json);
+    
     // 批量上传配置
     void LoadUploadConfig(const cJSON* json);
     

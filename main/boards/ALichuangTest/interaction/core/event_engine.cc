@@ -4,6 +4,7 @@
 #include "event_processor.h"
 #include "../config/event_config_loader.h"
 #include "emotion_engine.h"
+#include "../../sddata_pro.h"
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <algorithm>
@@ -55,13 +56,20 @@ void EventEngine::Initialize() {
 }
 
 void EventEngine::LoadEventConfiguration() {
-    // 首先尝试从文件系统加载配置
-    const char* config_path = "/spiffs/event_config.json";
+    // 检查SD卡是否已初始化
+    SDdata_Pro* sd_handle = GetSDHandle();
+    if (!sd_handle) {
+        EventConfigLoader::LoadFromEmbedded(this);
+        return;
+    }
+    
+    // SD卡已初始化，尝试从SD卡加载配置
+    const char* config_path = "/sdcard/event_config.json";
+    
     bool loaded = EventConfigLoader::LoadFromFile(config_path, this);
     
     if (!loaded) {
         // 如果文件不存在或加载失败，使用嵌入的默认配置
-        ESP_LOGI(TAG, "Loading embedded default event configuration");
         EventConfigLoader::LoadFromEmbedded(this);
     }
 }
@@ -107,6 +115,12 @@ EventProcessor::EventStats EventEngine::GetEventStats(EventType type) const {
 void EventEngine::UpdateMotionEngineConfig(const cJSON* json) {
     if (motion_engine_ && json) {
         motion_engine_->UpdateConfigFromJson(json);
+    }
+}
+
+void EventEngine::UpdateMultitouchEngineConfig(const cJSON* json) {
+    if (multitouch_engine_ && json) {
+        multitouch_engine_->UpdateConfigFromJson(json);
     }
 }
 

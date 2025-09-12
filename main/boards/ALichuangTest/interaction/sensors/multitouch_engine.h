@@ -9,6 +9,9 @@
 #include <algorithm>
 #include "../config/touch_config.h"
 
+// 前向声明
+typedef struct cJSON cJSON;
+
 // 触摸事件类型 - 与touch_engine保持一致
 enum class TouchEventType {
     NONE,
@@ -51,8 +54,11 @@ public:
     // 初始化引擎
     void Initialize();
     
-    // 加载配置
-    void LoadConfiguration(const char* config_path = nullptr);
+    // 从JSON配置更新参数（由EventEngine调用）
+    void UpdateConfigFromJson(const cJSON* json);
+    
+    // 设置触摸检测配置
+    void SetConfig(const TouchDetectionConfig& config) { config_ = config; }
     
     // 注册事件回调
     void RegisterCallback(TouchEventCallback callback);

@@ -614,16 +614,4 @@ void MotionEngine::UpdateConfigFromJson(const cJSON* json) {
             debug_output_ = config_.debug_enabled;
         }
     }
-    
-    ESP_LOGI(TAG, "Motion config updated from JSON:");
-    ESP_LOGI(TAG, "  Free fall: threshold=%.2fg, duration=%lldms", 
-             config_.free_fall_threshold_g, config_.free_fall_min_duration_ms);
-    ESP_LOGI(TAG, "  Shake: normal=%.2fg, violently=%.2fg", 
-             config_.shake_normal_threshold_g, config_.shake_violently_threshold_g);
-    ESP_LOGI(TAG, "  Flip: threshold=%.1f°/s", config_.flip_threshold_deg_s);
-    ESP_LOGI(TAG, "  Pickup: threshold=%.2fg, stable=%.2fg, count=%d", 
-             config_.pickup_threshold_g, config_.pickup_stable_threshold_g, 
-             config_.pickup_stable_count);
-    ESP_LOGI(TAG, "  Upside down: threshold=%.2fg, count=%d", 
-             config_.upside_down_threshold_g, config_.upside_down_stable_count);
 }

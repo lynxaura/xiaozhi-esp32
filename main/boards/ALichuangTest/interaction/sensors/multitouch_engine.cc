@@ -3,6 +3,7 @@
 #include "../../i2c_bus_manager.h"
 #include <esp_log.h>
 #include <esp_timer.h>
+#include <cJSON.h>
 
 #define TAG "MultitouchEngine"
 
@@ -63,8 +64,8 @@ MultitouchEngine::~MultitouchEngine() {
 void MultitouchEngine::Initialize() {
     ESP_LOGI(TAG, "Initializing MPR121 multitouch engine");
     
-    // 1. 加载配置（使用默认路径）
-    LoadConfiguration();
+    // 1. 使用默认配置（配置将由EventEngine统一管理和更新）
+    config_ = TouchDetectionConfig();  // 使用硬编码默认值
     
     // 2. 初始化I2C
     InitializeI2C();
@@ -89,22 +90,54 @@ void MultitouchEngine::Initialize() {
     ESP_LOGI(TAG, "Multitouch engine initialized - MPR121 @ 0x%02X (polling mode)", MPR121_I2C_ADDR);
 }
 
-void MultitouchEngine::LoadConfiguration(const char* config_path) {
-    // 如果没有指定路径，使用默认路径
-    const char* path = config_path ? config_path : "/spiffs/event_config.json";
+void MultitouchEngine::UpdateConfigFromJson(const cJSON* json) {
+    if (!json) return;
     
-    // 尝试从文件加载配置
-    if (!TouchConfigLoader::LoadFromFile(path, config_)) {
-        // 如果失败，使用默认配置
-        config_ = TouchConfigLoader::LoadDefaults();
+    // 查找 touch_detection_parameters 节点
+    const cJSON* touch_params = cJSON_GetObjectItem(json, "touch_detection_parameters");
+    if (!touch_params) {
+        ESP_LOGW(TAG, "No touch_detection_parameters found in JSON config");
+        return;
     }
     
-    ESP_LOGI(TAG, "Touch detection configuration loaded:");
-    ESP_LOGI(TAG, "  tap_max: %ldms, hold_min: %ldms, debounce: %ldms",
-            config_.tap_max_duration_ms, 
-            config_.hold_min_duration_ms,
-            config_.debounce_time_ms);
-    ESP_LOGI(TAG, "  threshold_ratio: %.1f", config_.touch_threshold_ratio);
+    // 解析参数并更新配置
+    const cJSON* item = nullptr;
+    
+    item = cJSON_GetObjectItem(touch_params, "tap_max_duration_ms");
+    if (item && cJSON_IsNumber(item)) {
+        config_.tap_max_duration_ms = item->valueint;
+    }
+    
+    item = cJSON_GetObjectItem(touch_params, "hold_min_duration_ms");
+    if (item && cJSON_IsNumber(item)) {
+        config_.hold_min_duration_ms = item->valueint;
+    }
+    
+    item = cJSON_GetObjectItem(touch_params, "cradled_min_duration_ms");
+    if (item && cJSON_IsNumber(item)) {
+        config_.cradled_min_duration_ms = item->valueint;
+    }
+    
+    item = cJSON_GetObjectItem(touch_params, "tickled_window_ms");
+    if (item && cJSON_IsNumber(item)) {
+        config_.tickled_window_ms = item->valueint;
+    }
+    
+    item = cJSON_GetObjectItem(touch_params, "tickled_min_touches");
+    if (item && cJSON_IsNumber(item)) {
+        config_.tickled_min_touches = item->valueint;
+    }
+    
+    item = cJSON_GetObjectItem(touch_params, "debounce_time_ms");
+    if (item && cJSON_IsNumber(item)) {
+        config_.debounce_time_ms = item->valueint;
+    }
+    
+    item = cJSON_GetObjectItem(touch_params, "touch_threshold_ratio");
+    if (item && cJSON_IsNumber(item)) {
+        config_.touch_threshold_ratio = item->valuedouble;
+    }
+    
 }
 
 void MultitouchEngine::InitializeI2C() {

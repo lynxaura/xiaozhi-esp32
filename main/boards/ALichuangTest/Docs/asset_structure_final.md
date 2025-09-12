@@ -6,6 +6,7 @@
 
 ```
 /sdcard/
+├── event_config.json              # 事件检测和处理配置文件
 ├── response_config.json           # 响应配置文件
 ├── manifest.json                  # 资源清单和版本信息
 │
