@@ -93,51 +93,67 @@ void MultitouchEngine::Initialize() {
 void MultitouchEngine::UpdateConfigFromJson(const cJSON* json) {
     if (!json) return;
     
-    // 查找 touch_detection_parameters 节点
-    const cJSON* touch_params = cJSON_GetObjectItem(json, "touch_detection_parameters");
-    if (!touch_params) {
-        ESP_LOGW(TAG, "No touch_detection_parameters found in JSON config");
-        return;
+    // 新结构：从 events 节点读取各个触摸事件的检测参数
+    const cJSON* events = cJSON_GetObjectItem(json, "events");
+    if (events) {
+        // TOUCH_TAP 参数
+        const cJSON* tap_event = cJSON_GetObjectItem(events, "TOUCH_TAP");
+        if (tap_event) {
+            const cJSON* detection = cJSON_GetObjectItem(tap_event, "detection");
+            if (detection) {
+                const cJSON* item = cJSON_GetObjectItem(detection, "max_duration_ms");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.tap_max_duration_ms = item->valueint;
+                }
+                item = cJSON_GetObjectItem(detection, "debounce_time_ms");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.debounce_time_ms = item->valueint;
+                }
+            }
+        }
+        
+        // TOUCH_LONG_PRESS 参数
+        const cJSON* long_press_event = cJSON_GetObjectItem(events, "TOUCH_LONG_PRESS");
+        if (long_press_event) {
+            const cJSON* detection = cJSON_GetObjectItem(long_press_event, "detection");
+            if (detection) {
+                const cJSON* item = cJSON_GetObjectItem(detection, "min_duration_ms");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.hold_min_duration_ms = item->valueint;
+                }
+            }
+        }
+        
+        // TOUCH_CRADLED 参数
+        const cJSON* cradled_event = cJSON_GetObjectItem(events, "TOUCH_CRADLED");
+        if (cradled_event) {
+            const cJSON* detection = cJSON_GetObjectItem(cradled_event, "detection");
+            if (detection) {
+                const cJSON* item = cJSON_GetObjectItem(detection, "min_duration_ms");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.cradled_min_duration_ms = item->valueint;
+                }
+            }
+        }
+        
+        // TOUCH_TICKLED 参数
+        const cJSON* tickled_event = cJSON_GetObjectItem(events, "TOUCH_TICKLED");
+        if (tickled_event) {
+            const cJSON* detection = cJSON_GetObjectItem(tickled_event, "detection");
+            if (detection) {
+                const cJSON* item = cJSON_GetObjectItem(detection, "window_ms");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.tickled_window_ms = item->valueint;
+                }
+                item = cJSON_GetObjectItem(detection, "min_touches");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.tickled_min_touches = item->valueint;
+                }
+            }
+        }
     }
     
-    // 解析参数并更新配置
-    const cJSON* item = nullptr;
-    
-    item = cJSON_GetObjectItem(touch_params, "tap_max_duration_ms");
-    if (item && cJSON_IsNumber(item)) {
-        config_.tap_max_duration_ms = item->valueint;
-    }
-    
-    item = cJSON_GetObjectItem(touch_params, "hold_min_duration_ms");
-    if (item && cJSON_IsNumber(item)) {
-        config_.hold_min_duration_ms = item->valueint;
-    }
-    
-    item = cJSON_GetObjectItem(touch_params, "cradled_min_duration_ms");
-    if (item && cJSON_IsNumber(item)) {
-        config_.cradled_min_duration_ms = item->valueint;
-    }
-    
-    item = cJSON_GetObjectItem(touch_params, "tickled_window_ms");
-    if (item && cJSON_IsNumber(item)) {
-        config_.tickled_window_ms = item->valueint;
-    }
-    
-    item = cJSON_GetObjectItem(touch_params, "tickled_min_touches");
-    if (item && cJSON_IsNumber(item)) {
-        config_.tickled_min_touches = item->valueint;
-    }
-    
-    item = cJSON_GetObjectItem(touch_params, "debounce_time_ms");
-    if (item && cJSON_IsNumber(item)) {
-        config_.debounce_time_ms = item->valueint;
-    }
-    
-    item = cJSON_GetObjectItem(touch_params, "touch_threshold_ratio");
-    if (item && cJSON_IsNumber(item)) {
-        config_.touch_threshold_ratio = item->valuedouble;
-    }
-    
+    ESP_LOGI(TAG, "Multitouch engine config updated from JSON");
 }
 
 void MultitouchEngine::InitializeI2C() {

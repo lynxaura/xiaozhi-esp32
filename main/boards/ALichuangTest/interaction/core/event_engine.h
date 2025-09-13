@@ -38,7 +38,10 @@ enum class EventType {
     // 系统事件（预留）
     SYSTEM_BOOT,
     SYSTEM_SHUTDOWN,
-    SYSTEM_ERROR
+    SYSTEM_ERROR,
+
+    // 特殊事件
+    IDLE_3MIN              // 空闲3分钟事件
 };
 
 // 触摸事件特定数据
@@ -145,7 +148,13 @@ public:
     
     // 批量上传配置
     void LoadUploadConfig(const cJSON* json);
-    
+
+    // 空闲检测配置
+    void SetIdleThreshold(int64_t threshold_ms);
+
+    // 重新加载运动引擎配置（用于motion engine晚于配置加载创建的情况）
+    void ReloadMotionConfig();
+
     // 情感引擎集成
     void InitializeEmotionEngine();
     void SetEmotionReportCallback(EmotionEngine::EmotionReportCallback callback);
@@ -169,7 +178,11 @@ private:
     std::vector<Event> pending_events_;
     int64_t last_event_time_;
     BatchEventCallback batch_callback_;
-    
+
+    // 空闲检测相关
+    int64_t idle_threshold_us_;       // 空闲阈值时间（微秒）
+    bool idle_event_triggered_;       // 防止重复触发IDLE事件的标记
+
     // 初始化子引擎的回调
     void SetupMotionEngineCallbacks();
     void SetupMultitouchEngineCallbacks();
@@ -201,6 +214,9 @@ private:
     void AddToPendingBatch(const Event& event);
     void CheckBatchUploadTimeout();
     void FlushPendingEvents();
+
+    // 空闲检测相关方法
+    void CheckIdleTimeout();
 };
 
 #endif // ALICHUANGTEST_EVENT_ENGINE_H

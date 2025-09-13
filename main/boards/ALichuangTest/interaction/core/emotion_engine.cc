@@ -154,71 +154,9 @@ void EmotionEngine::VAImpactCfgByItem(cJSON* root, EventType item) {
 }
 
 void EmotionEngine::InitializeEventImpactMapFromSD() {
-    SDdata_Pro* sdcard = GetSDHandle();
-    if (sdcard == nullptr) {
-        ESP_LOGW(TAG, "SD Card nonexist, use default");
-        
-        return;
-    }
-    /*char* json_data = nullptr;
-    if (sdcard->GetVASysConfig(json_data) == -1) {
-        ESP_LOGW(TAG, "read SD Card err, use default");
-        InitializeEventImpactMap();
-        return;
-    }*/
-   const char *filePath = VASYS_CFG_PATH"vasys_config.json";
-    FILE *f = fopen(filePath, "r");
-    if (f == NULL) {
-        ESP_LOGW(TAG, "file err: %s ,use default", filePath);
-        InitializeEventImpactMap();
-        return;
-    }
-    // 获取文件大小置位到文件起始处
-    fseek(f, 0, SEEK_END);
-    long file_size = ftell(f);
-    ESP_LOGW(TAG, "vasys file size: %ld", file_size);
-    fseek(f, 0, SEEK_SET);
-
-    char* json_data = (char* )malloc((file_size + 1) * sizeof(char)); //new char[file_size + 1];
-    fread(json_data, 1, file_size, f);
-    json_data[file_size] = '\0';
-    fclose(f); // 关闭文件
-    //ESP_LOGI(TAG, "vas json - %c %c %c %c %c %c %c %c", json_data[0], json_data[1], json_data[2], json_data[3],
-    //                                        json_data[4], json_data[5], json_data[6], json_data[7]);
-    
-    cJSON* root = cJSON_Parse(json_data);
-    if (!root) {
-        ESP_LOGW(TAG, "vasys json root err");
-        InitializeEventImpactMap();
-        return;
-    }
-    cJSON* va_event_impacts = cJSON_GetObjectItem(root, "va_event_impacts");
-    if (!va_event_impacts) {
-        ESP_LOGW(TAG, "json va_event_impacts err");
-        InitializeEventImpactMap();
-        return;
-    }
-
-    // 枚举配置，后续逻辑完备可用索引item
-    VAImpactCfgByItem(va_event_impacts, EventType::MOTION_FREE_FALL);
-    VAImpactCfgByItem(va_event_impacts, EventType::MOTION_SHAKE_VIOLENTLY);
-    VAImpactCfgByItem(va_event_impacts, EventType::MOTION_FLIP);
-    VAImpactCfgByItem(va_event_impacts, EventType::MOTION_SHAKE);
-    VAImpactCfgByItem(va_event_impacts, EventType::MOTION_PICKUP);
-    VAImpactCfgByItem(va_event_impacts, EventType::MOTION_UPSIDE_DOWN);
-
-    VAImpactCfgByItem(va_event_impacts, EventType::TOUCH_TAP);
-    VAImpactCfgByItem(va_event_impacts, EventType::TOUCH_LONG_PRESS);
-    VAImpactCfgByItem(va_event_impacts, EventType::TOUCH_CRADLED);
-    VAImpactCfgByItem(va_event_impacts, EventType::TOUCH_TICKLED);
-    
-    // 音频事件的情感影响（预留）
-    event_impact_map_[EventType::AUDIO_WAKE_WORD] = EventImpact(+0.1f, +0.3f);      // 被唤醒
-    event_impact_map_[EventType::AUDIO_SPEAKING] = EventImpact(0.0f, +0.2f);        // 表达中
-    event_impact_map_[EventType::AUDIO_LISTENING] = EventImpact(0.0f, -0.1f);       // 倾听中    
-
-    cJSON_Delete(root);
-    free(json_data);
+    // VA影响值现在通过EventConfigLoader统一从event_config.json加载
+    // 这个函数不再需要，因为所有VA影响值都通过SetEventImpact方法设置
+    ESP_LOGI(TAG, "VA impact values loaded from event_config.json via EventConfigLoader");
 }
 
 void EmotionEngine::OnEvent(const Event& event) {
@@ -313,6 +251,12 @@ void EmotionEngine::SetBaseline(float v, float a) {
 void EmotionEngine::SetEmotionReportCallback(EmotionReportCallback callback) {
     emotion_report_callback_ = callback;
     ESP_LOGI(TAG, "Emotion report callback %s", callback ? "registered" : "cleared");
+}
+
+void EmotionEngine::SetEventImpact(EventType event_type, float valence, float arousal) {
+    event_impact_map_[event_type] = EventImpact(valence, arousal);
+    ESP_LOGD(TAG, "Event impact set: type=%d, V=%.2f, A=%.2f", 
+             (int)event_type, valence, arousal);
 }
 
 void EmotionEngine::ProcessDecay() {

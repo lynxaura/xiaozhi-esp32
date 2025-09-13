@@ -64,6 +64,9 @@ public:
     // 设置情感状态上报回调
     void SetEmotionReportCallback(EmotionReportCallback callback);
     
+    // 设置事件情感影响值（用于从配置文件加载）
+    void SetEventImpact(EventType event_type, float valence, float arousal);
+    
 private:
     EmotionEngine();
     ~EmotionEngine();

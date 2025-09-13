@@ -525,93 +525,114 @@ bool MotionEngine::IsCurrentlyStable() const {
 void MotionEngine::UpdateConfigFromJson(const cJSON* json) {
     if (!json) return;
     
-    // 查找 motion_detection_parameters 节点
-    const cJSON* motion_params = cJSON_GetObjectItem(json, "motion_detection_parameters");
-    if (!motion_params) {
-        ESP_LOGW(TAG, "No motion_detection_parameters found in config");
-        return;
+    // 新结构：从 events 节点读取各个运动事件的检测参数
+    const cJSON* events = cJSON_GetObjectItem(json, "events");
+    if (events) {
+        // 自由落体参数
+        const cJSON* free_fall_event = cJSON_GetObjectItem(events, "MOTION_FREE_FALL");
+        if (free_fall_event) {
+            const cJSON* detection = cJSON_GetObjectItem(free_fall_event, "detection");
+            if (detection) {
+                const cJSON* item = cJSON_GetObjectItem(detection, "threshold_g");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.free_fall_threshold_g = item->valuedouble;
+                }
+                item = cJSON_GetObjectItem(detection, "min_duration_ms");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.free_fall_min_duration_ms = item->valueint;
+                }
+            }
+        }
+        
+        // 剧烈摇晃参数
+        const cJSON* shake_violently_event = cJSON_GetObjectItem(events, "MOTION_SHAKE_VIOLENTLY");
+        if (shake_violently_event) {
+            const cJSON* detection = cJSON_GetObjectItem(shake_violently_event, "detection");
+            if (detection) {
+                const cJSON* item = cJSON_GetObjectItem(detection, "threshold_g");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.shake_violently_threshold_g = item->valuedouble;
+                }
+            }
+        }
+        
+        // 普通摇晃参数
+        const cJSON* shake_event = cJSON_GetObjectItem(events, "MOTION_SHAKE");
+        if (shake_event) {
+            const cJSON* detection = cJSON_GetObjectItem(shake_event, "detection");
+            if (detection) {
+                const cJSON* item = cJSON_GetObjectItem(detection, "normal_threshold_g");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.shake_normal_threshold_g = item->valuedouble;
+                }
+            }
+        }
+        
+        // 翻转参数
+        const cJSON* flip_event = cJSON_GetObjectItem(events, "MOTION_FLIP");
+        if (flip_event) {
+            const cJSON* detection = cJSON_GetObjectItem(flip_event, "detection");
+            if (detection) {
+                const cJSON* item = cJSON_GetObjectItem(detection, "threshold_deg_s");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.flip_threshold_deg_s = item->valuedouble;
+                }
+            }
+        }
+        
+        // 拿起参数
+        const cJSON* pickup_event = cJSON_GetObjectItem(events, "MOTION_PICKUP");
+        if (pickup_event) {
+            const cJSON* detection = cJSON_GetObjectItem(pickup_event, "detection");
+            if (detection) {
+                const cJSON* item = cJSON_GetObjectItem(detection, "threshold_g");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.pickup_threshold_g = item->valuedouble;
+                }
+                item = cJSON_GetObjectItem(detection, "stable_threshold_g");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.pickup_stable_threshold_g = item->valuedouble;
+                }
+                item = cJSON_GetObjectItem(detection, "stable_count");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.pickup_stable_count = item->valueint;
+                }
+                item = cJSON_GetObjectItem(detection, "min_duration_ms");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.pickup_min_duration_ms = item->valueint;
+                }
+            }
+        }
+        
+        // 倒置参数
+        const cJSON* upside_down_event = cJSON_GetObjectItem(events, "MOTION_UPSIDE_DOWN");
+        if (upside_down_event) {
+            const cJSON* detection = cJSON_GetObjectItem(upside_down_event, "detection");
+            if (detection) {
+                const cJSON* item = cJSON_GetObjectItem(detection, "threshold_g");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.upside_down_threshold_g = item->valuedouble;
+                }
+                item = cJSON_GetObjectItem(detection, "stable_count");
+                if (item && cJSON_IsNumber(item)) {
+                    config_.upside_down_stable_count = item->valueint;
+                }
+            }
+        }
     }
     
-    // 自由落体参数
-    const cJSON* free_fall = cJSON_GetObjectItem(motion_params, "free_fall");
-    if (free_fall) {
-        const cJSON* item = cJSON_GetObjectItem(free_fall, "threshold_g");
-        if (item && cJSON_IsNumber(item)) {
-            config_.free_fall_threshold_g = item->valuedouble;
-        }
-        item = cJSON_GetObjectItem(free_fall, "min_duration_ms");
-        if (item && cJSON_IsNumber(item)) {
-            config_.free_fall_min_duration_ms = item->valueint;
-        }
-    }
-    
-    // 摇晃参数
-    const cJSON* shake = cJSON_GetObjectItem(motion_params, "shake");
-    if (shake) {
-        const cJSON* item = cJSON_GetObjectItem(shake, "normal_threshold_g");
-        if (item && cJSON_IsNumber(item)) {
-            config_.shake_normal_threshold_g = item->valuedouble;
-        }
-        item = cJSON_GetObjectItem(shake, "violently_threshold_g");
-        if (item && cJSON_IsNumber(item)) {
-            config_.shake_violently_threshold_g = item->valuedouble;
+    // 调试参数从global_settings读取
+    const cJSON* global_settings = cJSON_GetObjectItem(json, "global_settings");
+    if (global_settings) {
+        const cJSON* debug = cJSON_GetObjectItem(global_settings, "debug");
+        if (debug) {
+            const cJSON* item = cJSON_GetObjectItem(debug, "motion_debug_enabled");
+            if (item && cJSON_IsBool(item)) {
+                config_.debug_enabled = cJSON_IsTrue(item);
+                debug_output_ = config_.debug_enabled;
+            }
         }
     }
     
-    // 翻转参数
-    const cJSON* flip = cJSON_GetObjectItem(motion_params, "flip");
-    if (flip) {
-        const cJSON* item = cJSON_GetObjectItem(flip, "threshold_deg_s");
-        if (item && cJSON_IsNumber(item)) {
-            config_.flip_threshold_deg_s = item->valuedouble;
-        }
-    }
-    
-    // 拿起参数
-    const cJSON* pickup = cJSON_GetObjectItem(motion_params, "pickup");
-    if (pickup) {
-        const cJSON* item = cJSON_GetObjectItem(pickup, "threshold_g");
-        if (item && cJSON_IsNumber(item)) {
-            config_.pickup_threshold_g = item->valuedouble;
-        }
-        item = cJSON_GetObjectItem(pickup, "stable_threshold_g");
-        if (item && cJSON_IsNumber(item)) {
-            config_.pickup_stable_threshold_g = item->valuedouble;
-        }
-        item = cJSON_GetObjectItem(pickup, "stable_count");
-        if (item && cJSON_IsNumber(item)) {
-            config_.pickup_stable_count = item->valueint;
-        }
-        item = cJSON_GetObjectItem(pickup, "min_duration_ms");
-        if (item && cJSON_IsNumber(item)) {
-            config_.pickup_min_duration_ms = item->valueint;
-        }
-    }
-    
-    // 倒置参数
-    const cJSON* upside_down = cJSON_GetObjectItem(motion_params, "upside_down");
-    if (upside_down) {
-        const cJSON* item = cJSON_GetObjectItem(upside_down, "threshold_g");
-        if (item && cJSON_IsNumber(item)) {
-            config_.upside_down_threshold_g = item->valuedouble;
-        }
-        item = cJSON_GetObjectItem(upside_down, "stable_count");
-        if (item && cJSON_IsNumber(item)) {
-            config_.upside_down_stable_count = item->valueint;
-        }
-    }
-    
-    // 调试参数
-    const cJSON* debug = cJSON_GetObjectItem(motion_params, "debug");
-    if (debug) {
-        const cJSON* item = cJSON_GetObjectItem(debug, "interval_ms");
-        if (item && cJSON_IsNumber(item)) {
-            config_.debug_interval_ms = item->valueint;
-        }
-        item = cJSON_GetObjectItem(debug, "enabled");
-        if (item && cJSON_IsBool(item)) {
-            config_.debug_enabled = cJSON_IsTrue(item);
-            debug_output_ = config_.debug_enabled;
-        }
-    }
+    ESP_LOGI(TAG, "Motion engine config updated from JSON");
 }

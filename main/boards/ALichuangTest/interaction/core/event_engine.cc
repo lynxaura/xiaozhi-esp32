@@ -20,7 +20,9 @@ EventEngine::EventEngine()
     , event_processor_(nullptr)
     , emotion_engine_initialized_(false)
     , last_event_time_(0)
-    , batch_callback_(nullptr) {
+    , batch_callback_(nullptr)
+    , idle_threshold_us_(180 * 1000 * 1000)  // 默认3分钟 (180秒 * 1000 * 1000微秒)
+    , idle_event_triggered_(false) {
     // 创建事件处理器
     event_processor_ = new EventProcessor();
     
@@ -251,7 +253,10 @@ void EventEngine::Process() {
     
     // 检查批量上传超时
     CheckBatchUploadTimeout();
-    
+
+    // 检查空闲超时
+    CheckIdleTimeout();
+
     // 注意：MultitouchEngine有自己的任务，不需要在这里调用Process
     // MultitouchEngine的事件会通过回调异步到达
 }
@@ -289,7 +294,13 @@ void EventEngine::DispatchEvent(const Event& event) {
         // 事件被丢弃（防抖、节流、冷却等）
         return;
     }
-    
+
+    // 重置空闲状态（对于非IDLE_3MIN事件）
+    if (processed_event.type != EventType::IDLE_3MIN) {
+        idle_event_triggered_ = false;
+        last_event_time_ = esp_timer_get_time();
+    }
+
     // 如果情感引擎已初始化，则更新情感状态
     if (emotion_engine_initialized_) {
         ESP_LOGD(TAG, "Updating emotion state for event type=%d", (int)processed_event.type);
@@ -544,8 +555,62 @@ void EventEngine::LoadUploadConfig(const cJSON* json) {
         pending_events_.reserve(upload_config_.max_batch_size);
     }
     
-    ESP_LOGI(TAG, "Upload config loaded: enabled=%d, window=%ums, max_size=%u", 
-             upload_config_.batch_upload_enabled, 
+    ESP_LOGI(TAG, "Upload config loaded: enabled=%d, window=%ums, max_size=%u",
+             upload_config_.batch_upload_enabled,
              upload_config_.batch_window_ms,
              upload_config_.max_batch_size);
+}
+
+void EventEngine::CheckIdleTimeout() {
+    // 如果空闲事件已经被触发，不需要重复检查
+    if (idle_event_triggered_) {
+        return;
+    }
+
+    // 如果没有任何事件发生过，使用系统启动时间作为参考
+    int64_t reference_time = last_event_time_;
+    if (reference_time == 0) {
+        // 没有事件发生过，使用系统启动3秒后作为起始时间（给系统初始化留时间）
+        reference_time = 3 * 1000 * 1000; // 3秒的微秒数
+        static bool logged_startup = false;
+        if (!logged_startup) {
+            ESP_LOGI(TAG, "Using system startup time as idle reference (no events occurred yet)");
+            logged_startup = true;
+        }
+    }
+
+    int64_t current_time = esp_timer_get_time();
+    int64_t time_since_last_event = current_time - reference_time;
+
+    // 检查是否超过空闲阈值
+    if (time_since_last_event >= idle_threshold_us_) {
+        ESP_LOGI(TAG, "Idle timeout detected: %lldms since last event",
+                 time_since_last_event / 1000);
+
+        // 标记已触发，防止重复触发
+        idle_event_triggered_ = true;
+
+        // 触发IDLE_3MIN事件
+        TriggerEvent(EventType::IDLE_3MIN);
+    }
+}
+
+void EventEngine::SetIdleThreshold(int64_t threshold_ms) {
+    idle_threshold_us_ = threshold_ms * 1000;  // 转换为微秒
+    ESP_LOGI(TAG, "Idle threshold set to %lldms (%lldus)", threshold_ms, idle_threshold_us_);
+
+    // 重置空闲事件标记，因为阈值改变了
+    idle_event_triggered_ = false;
+}
+
+void EventEngine::ReloadMotionConfig() {
+    if (!motion_engine_) {
+        ESP_LOGW(TAG, "Cannot reload motion config: motion engine not initialized");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Reloading motion engine configuration...");
+
+    // 直接复用现有的配置加载逻辑
+    LoadEventConfiguration();
 }

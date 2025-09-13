@@ -709,6 +709,8 @@ private:
         // 初始化运动引擎（如果IMU可用）
         if (imu_) {
             event_engine_->InitializeMotionEngine(imu_, true);  // 启用调试输出
+            // 重新加载配置，因为motion engine在Initialize()时还不存在
+            event_engine_->ReloadMotionConfig();
         }
         
         // 初始化多点触摸引擎
