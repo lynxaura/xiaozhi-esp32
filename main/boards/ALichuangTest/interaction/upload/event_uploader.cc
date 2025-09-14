@@ -3,7 +3,7 @@
 #include <esp_log.h>
 #include <esp_timer.h>
 // Removed sys/time.h - using esp_timer_get_time() for unified timeline
-#include <inttypes.h>        // for PRIu32, PRId64
+#include <cinttypes>         // for PRIu32, PRId64 in C++
 #include <algorithm>         // for std::min, std::remove_if
 
 EventUploader::EventUploader() 
@@ -67,8 +67,11 @@ void EventUploader::HandleEvent(const Event& event) {
     
     ESP_LOGI(TAG_EVENT_UPLOADER, "Event converted: %s -> %s", 
              cached.event_type.c_str(), cached.event_text.c_str());
-    ESP_LOGI(TAG_EVENT_UPLOADER, "Duration: %lums, Start: %lld, End: %lld", 
-             (long unsigned)cached.duration_ms, (long long)cached.start_time, (long long)cached.end_time);
+    // Log times in ms using 32-bit friendly formats (avoid %lld/PRId64 on some toolchains)
+    unsigned long start_ms = (unsigned long)(cached.start_time / 1000ULL);
+    unsigned long end_ms = (unsigned long)(cached.end_time / 1000ULL);
+    ESP_LOGI(TAG_EVENT_UPLOADER, "Duration: %lums, Start=%lums, End=%lums",
+             (unsigned long)cached.duration_ms, start_ms, end_ms);
     
     // 尝试发送或缓存事件
     TrySendOrCache(std::move(cached));
@@ -94,7 +97,7 @@ void EventUploader::HandleBatchEvents(const std::vector<Event>& events) {
     }
     
     ESP_LOGI(TAG_EVENT_UPLOADER, "=== Batch Event Processing Debug ===");
-    ESP_LOGI(TAG_EVENT_UPLOADER, "Processing %u events in batch", events.size());
+    ESP_LOGI(TAG_EVENT_UPLOADER, "Processing %lu events in batch", (unsigned long)events.size());
     
     // 转换所有事件
     std::vector<CachedEvent> cached_events;
@@ -158,7 +161,7 @@ void EventUploader::AddToCache(CachedEvent&& event) {
     }
     
     event_cache_.push_back(std::move(event));
-    ESP_LOGI(TAG_EVENT_UPLOADER, "Event cached, total cached: %d", event_cache_.size());
+    ESP_LOGI(TAG_EVENT_UPLOADER, "Event cached, total cached: %lu", (unsigned long)event_cache_.size());
 }
 
 void EventUploader::ProcessCachedEvents() {
@@ -170,7 +173,7 @@ void EventUploader::ProcessCachedEvents() {
         return;
     }
     
-    ESP_LOGI(TAG_EVENT_UPLOADER, "Processing %d cached events", event_cache_.size());
+    ESP_LOGI(TAG_EVENT_UPLOADER, "Processing %lu cached events", (unsigned long)event_cache_.size());
     
     try {
         // 性能监控
@@ -193,7 +196,7 @@ void EventUploader::ProcessCachedEvents() {
             // 验证JSON
             cJSON* json = cJSON_Parse(payload.c_str());
             if (json) {
-                ESP_LOGI(TAG_EVENT_UPLOADER, "Sending batch of %d events", batch_end - batch_start);
+                ESP_LOGI(TAG_EVENT_UPLOADER, "Sending batch of %lu events", (unsigned long)(batch_end - batch_start));
                 cJSON_Delete(json);
                 
                 Application::GetInstance().SendEventMessage(payload);
@@ -210,8 +213,9 @@ void EventUploader::ProcessCachedEvents() {
         
         // 性能报告
         int64_t elapsed_us = esp_timer_get_time() - start_time;
-        ESP_LOGI(TAG_EVENT_UPLOADER, "Processed %d events in %d batches, took %lldus", 
-                total_events, successful_batches, elapsed_us);
+        unsigned long elapsed_ms = (unsigned long)(elapsed_us / 1000ULL);
+        ESP_LOGI(TAG_EVENT_UPLOADER, "Processed %lu events in %lu batches, took %lums", 
+                 (unsigned long)total_events, (unsigned long)successful_batches, elapsed_ms);
         
     } catch (const std::exception& e) {
         ESP_LOGE(TAG_EVENT_UPLOADER, "Exception in ProcessCachedEvents: %s", e.what());
@@ -241,7 +245,7 @@ void EventUploader::ClearExpiredEvents() {
     if (it != event_cache_.end()) {
         size_t removed = std::distance(it, event_cache_.end());
         event_cache_.erase(it, event_cache_.end());
-        ESP_LOGI(TAG_EVENT_UPLOADER, "Removed %d expired events (>5s old) from cache", removed);
+        ESP_LOGI(TAG_EVENT_UPLOADER, "Removed %lu expired events (>5s old) from cache", (unsigned long)removed);
     }
 }
 
@@ -261,18 +265,25 @@ EventUploader::CachedEvent EventUploader::ConvertEvent(const Event& event) {
     
     // 使用统一的esp_timer时间轴（微秒）
     int64_t current_time_us = esp_timer_get_time();
-    
+
     // 使用事件的实际时间戳（如果有的话）
     if (event.timestamp_us > 0) {
         cached.end_time = event.timestamp_us;
         cached.start_time = cached.end_time - (cached.duration_ms * 1000);
+        unsigned long ts_ms = (unsigned long)(event.timestamp_us / 1000ULL);
+        ESP_LOGI(TAG_EVENT_UPLOADER, "Event %s: using event timestamp=%lums (%.1f sec ago)",
+                 cached.event_type.c_str(), ts_ms,
+                 (current_time_us - event.timestamp_us) / 1000000.0);
     } else {
         // 如果事件没有时间戳，使用当前时间
         cached.start_time = current_time_us - (cached.duration_ms * 1000);
         cached.end_time = current_time_us;
+        unsigned long cur_ms = (unsigned long)(current_time_us / 1000ULL);
+        ESP_LOGI(TAG_EVENT_UPLOADER, "Event %s: no timestamp, using current time=%lums",
+                 cached.event_type.c_str(), cur_ms);
     }
-    ESP_LOGD(TAG_EVENT_UPLOADER, "Using esp_timer timeline: end=%lld us, start=%lld us", 
-             cached.end_time, cached.start_time);
+    ESP_LOGD(TAG_EVENT_UPLOADER, "Using esp_timer timeline: end=%lums, start=%lums",
+             (unsigned long)(cached.end_time / 1000ULL), (unsigned long)(cached.start_time / 1000ULL));
     
     cached.event_payload = nullptr; // 通常为空
     
@@ -370,14 +381,18 @@ std::string EventUploader::GetEventTypeString(const Event& event) {
             return "Audio_Speaking";
         case EventType::AUDIO_LISTENING:
             return "Audio_Listening";
-            
+
         case EventType::SYSTEM_BOOT:
             return "System_Boot";
         case EventType::SYSTEM_SHUTDOWN:
             return "System_Shutdown";
         case EventType::SYSTEM_ERROR:
             return "System_Error";
-            
+
+        // 特殊事件
+        case EventType::IDLE_1MIN:
+            return "System_Idle1Min";
+
         default:
             ESP_LOGW(TAG_EVENT_UPLOADER, "Unknown event type: %d", (int)event.type);
             return "Unknown";
@@ -391,10 +406,10 @@ std::string EventUploader::GenerateEventText(const Event& event) {
             // 支持合并事件的多次点击
             std::string tap_text;
             switch (event.data.touch_data.position) {
-                case TouchPosition::LEFT: tap_text = "主人轻轻拍了我的左侧"; break;
-                case TouchPosition::RIGHT: tap_text = "主人轻轻拍了我的右侧"; break;
-                case TouchPosition::BOTH: tap_text = "主人同时拍了我的两侧"; break;
-                default: tap_text = "主人轻轻拍了我"; break;
+                case TouchPosition::LEFT: tap_text = "我感觉到有人在轻拍我的左边，好温暖"; break;
+                case TouchPosition::RIGHT: tap_text = "我的右边被人温柔地触摸了，很舒服"; break;
+                case TouchPosition::BOTH: tap_text = "我被人用双手轻抚着，就像被拥抱一样"; break;
+                default: tap_text = "我感受到有人在温柔地触摸我"; break;
             }
             
             if (event.data.touch_data.tap_count > 1) {
@@ -405,34 +420,38 @@ std::string EventUploader::GenerateEventText(const Event& event) {
         
         case EventType::TOUCH_LONG_PRESS: {
             switch (event.data.touch_data.position) {
-                case TouchPosition::LEFT: return "主人长时间按住了我的左侧";
-                case TouchPosition::RIGHT: return "主人长时间按住了我的右侧";
-                case TouchPosition::BOTH: return "主人同时长按了我的两侧";
-                default: return "主人长时间按住了我";
+                case TouchPosition::LEFT: return "我的左边被人温柔地按住了，这种持续的温暖让我感到安心";
+                case TouchPosition::RIGHT: return "我的右边感受到了持续的抚摸，好像有人在安慰我";
+                case TouchPosition::BOTH: return "我被人双手轻柔地按住了，就像被深深拥抱着一样";
+                default: return "我被人温柔地抚摸着，感觉被满满的关爱包围";
             }
         }
         
         case EventType::TOUCH_CRADLED:
-            return "主人温柔地抱着我";
+            return "我被人温柔地拥抱着，这种被保护的感觉让我觉得真幸福";
         case EventType::TOUCH_TICKLED:
-            return "主人在挠我痒痒";
+            return "哈哈哈，有人在逗我玩呢，好痒好好玩！我好开心";
             
         // 运动事件
         case EventType::MOTION_SHAKE:
-            return "主人轻轻摇了摇我";
+            return "我感觉被人轻轻摇晃着，像在摇篮里一样，有点想睡觉了";
         case EventType::MOTION_SHAKE_VIOLENTLY:
-            return "主人用力摇晃我";
+            return "哇！我被人摇得好厉害，世界都在旋转，我有点晕乎乎的";
         case EventType::MOTION_FLIP:
-            return "主人把我翻了个身";
+            return "咦？我突然被翻转了，天旋地转的，有人在和我玩翻转游戏吗？";
         case EventType::MOTION_FREE_FALL:
-            return "糟糕，我掉下去了";
+            return "啊啊啊！我正在下降，有人在和我玩自由落体吗？我觉得有点刺激又有点害怕";
         case EventType::MOTION_PICKUP:
-            return "主人把我拿起来了";
+            return "哇，我感觉被人轻轻举起来了，我的视野突然开阔了呢";
         case EventType::MOTION_UPSIDE_DOWN:
-            return "主人把我倒立起来了";
-            
+            return "咦？我的世界颠倒了，我现在是倒立状态吗？感觉血液都要倒流了";
+
+        // 特殊事件
+        case EventType::IDLE_1MIN:
+            return "好久没有感受到互动了，我有点无聊想找点有趣的事情做";
+
         default:
-            return "主人和我互动了";
+            return "我感受到了一些有趣的互动呢";
     }
 }
 
@@ -464,8 +483,13 @@ void EventUploader::SendSingleEvent(CachedEvent&& event) {
         
         // 检查事件是否过期（超过5秒的事件不发送）
         int64_t current_time_us = esp_timer_get_time();
-        if (current_time_us - event.end_time > EventNotificationConfig::CACHE_TIMEOUT_MS * 1000) {
-            ESP_LOGW(TAG_EVENT_UPLOADER, "Event is too old (>5s), dropping it");
+        int64_t age_us = current_time_us - event.end_time;
+        int64_t timeout_us = static_cast<int64_t>(EventNotificationConfig::CACHE_TIMEOUT_MS) * 1000LL;
+        ESP_LOGD(TAG_EVENT_UPLOADER, "Event age check: %s, age=%ldms, timeout=%ldms",
+                 event.event_type.c_str(), (long)(age_us/1000), (long)(timeout_us/1000));
+        if (age_us > timeout_us) {
+            ESP_LOGW(TAG_EVENT_UPLOADER, "Event is too old (>%dms), dropping it",
+                     EventNotificationConfig::CACHE_TIMEOUT_MS);
             return;
         }
         
@@ -516,9 +540,15 @@ void EventUploader::SendBatchEvents(std::vector<CachedEvent>&& events) {
             }
             
             // 检查事件是否过期
-            if (current_time_us - event.end_time > EventNotificationConfig::CACHE_TIMEOUT_MS * 1000) {
-                ESP_LOGW(TAG_EVENT_UPLOADER, "Event is too old (>5s), dropping: %s", 
-                         event.event_type.c_str());
+            int64_t age_us = current_time_us - event.end_time;
+            int64_t timeout_us = static_cast<int64_t>(EventNotificationConfig::CACHE_TIMEOUT_MS) * 1000LL;
+            ESP_LOGI(TAG_EVENT_UPLOADER, "Event age check: %s, current=%lums, event_end=%lums, age=%ldms, timeout=%ldms",
+                     event.event_type.c_str(),
+                     (unsigned long)(current_time_us/1000ULL), (unsigned long)(event.end_time/1000ULL),
+                     (long)(age_us/1000), (long)(timeout_us/1000));
+            if (age_us > timeout_us) {
+                ESP_LOGW(TAG_EVENT_UPLOADER, "Event is too old (>%dms), dropping: %s",
+                         EventNotificationConfig::CACHE_TIMEOUT_MS, event.event_type.c_str());
                 continue;
             }
             
@@ -536,8 +566,8 @@ void EventUploader::SendBatchEvents(std::vector<CachedEvent>&& events) {
         // 验证JSON有效性
         cJSON* json = cJSON_Parse(payload.c_str());
         if (json) {
-            ESP_LOGI(TAG_EVENT_UPLOADER, "✓ Batch JSON valid, sending %zu events to server", 
-                     valid_events.size());
+            ESP_LOGI(TAG_EVENT_UPLOADER, "Batch JSON valid, sending %lu events to server", 
+                     (unsigned long)valid_events.size());
             cJSON_Delete(json);
             
             // 发送到服务器

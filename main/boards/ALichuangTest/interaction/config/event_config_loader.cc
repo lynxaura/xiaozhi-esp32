@@ -73,8 +73,8 @@ const char* DefaultEventConfig::GetDefaultConfig() {
                     "min_duration_ms": 300
                 },
                 "processing": {
-                    "strategy": "DEBOUNCE",
-                    "interval_ms": 500
+                    "strategy": "THROTTLE",
+                    "interval_ms": 1000
                 },
                 "va_impact": {
                     "valence": 0.05,
@@ -101,9 +101,8 @@ const char* DefaultEventConfig::GetDefaultConfig() {
                     "debounce_time_ms": 30
                 },
                 "processing": {
-                    "strategy": "MERGE",
-                    "merge_window_ms": 1500,
-                    "interval_ms": 500
+                    "strategy": "THROTTLE",
+                    "interval_ms": 300
                 },
                 "va_impact": {
                     "valence": 0.1,
@@ -325,8 +324,8 @@ bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engi
                 ESP_LOGD(TAG, "Processing strategy configured for %s", event_name);
             }
 
-            // 2.1.1 特殊处理：IDLE_3MIN事件的空闲阈值配置
-            if (event_type == EventType::IDLE_3MIN) {
+            // 2.1.1 特殊处理：IDLE_1MIN事件的空闲阈值配置
+            if (event_type == EventType::IDLE_1MIN) {
                 cJSON* detection = cJSON_GetObjectItem(event, "detection");
                 if (detection) {
                     cJSON* idle_duration = cJSON_GetObjectItem(detection, "idle_duration_ms");
@@ -396,7 +395,7 @@ EventType EventConfigLoader::ParseEventType(const std::string& type_str) {
     // 音频事件已移除 - 目前未实际使用
     
     // 特殊事件
-    if (type_str == "IDLE_3MIN") return EventType::IDLE_3MIN;
+    if (type_str == "IDLE_1MIN") return EventType::IDLE_1MIN;
     
     ESP_LOGW(TAG, "Unknown event type: %s", type_str.c_str());
     return EventType::MOTION_NONE;

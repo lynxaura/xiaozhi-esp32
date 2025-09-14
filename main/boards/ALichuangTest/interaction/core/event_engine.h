@@ -41,7 +41,7 @@ enum class EventType {
     SYSTEM_ERROR,
 
     // 特殊事件
-    IDLE_3MIN              // 空闲3分钟事件
+    IDLE_1MIN              // 空闲1分钟事件
 };
 
 // 触摸事件特定数据
@@ -182,6 +182,7 @@ private:
     // 空闲检测相关
     int64_t idle_threshold_us_;       // 空闲阈值时间（微秒）
     bool idle_event_triggered_;       // 防止重复触发IDLE事件的标记
+    int64_t idle_start_time_;         // 设备进入idle状态的时间戳（微秒）
 
     // 初始化子引擎的回调
     void SetupMotionEngineCallbacks();

@@ -5,14 +5,16 @@
 #include "../config/event_config_loader.h"
 #include "emotion_engine.h"
 #include "../../sddata_pro.h"
+#include "../../../../application.h"
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <algorithm>
 #include <vector>
+// #include <cinttypes>  // no longer needed after switching to 32-bit-friendly logs
 
 #define TAG "EventEngine"
 
-EventEngine::EventEngine() 
+EventEngine::EventEngine()
     : motion_engine_(nullptr)
     , owns_motion_engine_(false)
     , multitouch_engine_(nullptr)
@@ -21,8 +23,9 @@ EventEngine::EventEngine()
     , emotion_engine_initialized_(false)
     , last_event_time_(0)
     , batch_callback_(nullptr)
-    , idle_threshold_us_(180 * 1000 * 1000)  // 默认3分钟 (180秒 * 1000 * 1000微秒)
-    , idle_event_triggered_(false) {
+    , idle_threshold_us_(60 * 1000 * 1000)   // 默认1分钟 (60秒 * 1000 * 1000微秒)
+    , idle_event_triggered_(false)
+    , idle_start_time_(0) {
     // 创建事件处理器
     event_processor_ = new EventProcessor();
     
@@ -285,20 +288,25 @@ void EventEngine::OnMotionEvent(const MotionEvent& motion_event) {
 
 void EventEngine::DispatchEvent(const Event& event) {
     ESP_LOGI(TAG, "DispatchEvent called with event type=%d", (int)event.type);
-    
-    // 通过事件处理器处理事件
-    Event processed_event;
-    bool should_process = event_processor_->ProcessEvent(event, processed_event);
-    
-    if (!should_process) {
-        // 事件被丢弃（防抖、节流、冷却等）
+
+    if (!event_processor_) {
+        ESP_LOGE(TAG, "Event processor is null! Cannot process event type=%d", (int)event.type);
         return;
     }
 
-    // 重置空闲状态（对于非IDLE_3MIN事件）
-    if (processed_event.type != EventType::IDLE_3MIN) {
-        idle_event_triggered_ = false;
-        last_event_time_ = esp_timer_get_time();
+    // 注意：不再在这里重置空闲状态，因为现在基于设备状态进行空闲检测
+
+    // 通过事件处理器处理事件
+    Event processed_event;
+    bool should_process = event_processor_->ProcessEvent(event, processed_event);
+
+    ESP_LOGD(TAG, "ProcessEvent returned: should_process=%d for event type=%d",
+             should_process, (int)event.type);
+
+    if (!should_process) {
+        // 事件被丢弃（防抖、节流、冷却等），但空闲状态已经重置
+        ESP_LOGI(TAG, "Event type=%d was filtered out by processing strategy", (int)event.type);
+        return;
     }
 
     // 如果情感引擎已初始化，则更新情感状态
@@ -562,42 +570,52 @@ void EventEngine::LoadUploadConfig(const cJSON* json) {
 }
 
 void EventEngine::CheckIdleTimeout() {
-    // 如果空闲事件已经被触发，不需要重复检查
-    if (idle_event_triggered_) {
+    // 获取当前设备状态
+    Application& app = Application::GetInstance();
+    DeviceState current_state = app.GetDeviceState();
+
+    int64_t current_time = esp_timer_get_time();
+
+    // 如果设备不在idle状态，重置空闲状态记录
+    if (current_state != kDeviceStateIdle) {
+        if (idle_start_time_ != 0) {
+            // 设备刚从idle状态转换出来
+            ESP_LOGD(TAG, "Device left idle state, resetting idle timer");
+            idle_start_time_ = 0;
+            idle_event_triggered_ = false;
+        }
         return;
     }
 
-    // 如果没有任何事件发生过，使用系统启动时间作为参考
-    int64_t reference_time = last_event_time_;
-    if (reference_time == 0) {
-        // 没有事件发生过，使用系统启动3秒后作为起始时间（给系统初始化留时间）
-        reference_time = 3 * 1000 * 1000; // 3秒的微秒数
-        static bool logged_startup = false;
-        if (!logged_startup) {
-            ESP_LOGI(TAG, "Using system startup time as idle reference (no events occurred yet)");
-            logged_startup = true;
-        }
+    // 设备处于idle状态
+    if (idle_start_time_ == 0) {
+        // 刚进入idle状态，记录开始时间
+        idle_start_time_ = current_time;
+        idle_event_triggered_ = false;
+        ESP_LOGD(TAG, "Device entered idle state, starting idle timer");
+        return;
     }
 
-    int64_t current_time = esp_timer_get_time();
-    int64_t time_since_last_event = current_time - reference_time;
+    // 计算已经idle了多长时间
+    int64_t idle_duration = current_time - idle_start_time_;
 
-    // 检查是否超过空闲阈值
-    if (time_since_last_event >= idle_threshold_us_) {
-        ESP_LOGI(TAG, "Idle timeout detected: %lldms since last event",
-                 time_since_last_event / 1000);
+    // 检查是否超过空闲阈值且尚未触发空闲事件
+    if (idle_duration >= idle_threshold_us_ && !idle_event_triggered_) {
+        ESP_LOGI(TAG, "Idle timeout detected: %ldms in idle state",
+                 (long)(idle_duration / 1000));
 
         // 标记已触发，防止重复触发
         idle_event_triggered_ = true;
 
-        // 触发IDLE_3MIN事件
-        TriggerEvent(EventType::IDLE_3MIN);
+        // 触发IDLE_1MIN事件
+        TriggerEvent(EventType::IDLE_1MIN);
     }
 }
 
 void EventEngine::SetIdleThreshold(int64_t threshold_ms) {
     idle_threshold_us_ = threshold_ms * 1000;  // 转换为微秒
-    ESP_LOGI(TAG, "Idle threshold set to %lldms (%lldus)", threshold_ms, idle_threshold_us_);
+    ESP_LOGI(TAG, "Idle threshold set to %ldms (%ldus)",
+             (long)threshold_ms, (long)idle_threshold_us_);
 
     // 重置空闲事件标记，因为阈值改变了
     idle_event_triggered_ = false;

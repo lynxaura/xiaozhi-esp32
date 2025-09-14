@@ -3,6 +3,7 @@
 #include <esp_log.h>
 #include <algorithm>
 #include <memory> // For std::make_unique
+#include <cinttypes> // For PRId64 formatting
 
 #define TAG "EventProcessor"
 
@@ -142,12 +143,17 @@ bool EventProcessor::ProcessDebounce(Event& event, EventState& state) {
 
 bool EventProcessor::ProcessThrottle(Event& event, EventState& state) {
     int64_t current_time = esp_timer_get_time();
-    int64_t time_since_last = (current_time - state.last_process_time) / 1000;
-    
+    long time_since_last = (long)((current_time - state.last_process_time) / 1000);
+
+    ESP_LOGI(TAG, "[THROTTLE] Event type=%d, time_since=%ld ms, interval=%d ms",
+             (int)event.type, time_since_last, state.config.interval_ms);
+
     if (time_since_last < state.config.interval_ms) {
+        ESP_LOGD(TAG, "[THROTTLE] Rejected - too soon");
         return false;
     }
-    
+
+    ESP_LOGD(TAG, "[THROTTLE] Accepted - enough time passed");
     return true;
 }
 

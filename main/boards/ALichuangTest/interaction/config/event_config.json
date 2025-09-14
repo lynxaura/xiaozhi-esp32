@@ -160,9 +160,9 @@
       }
     },
     
-    "IDLE_3MIN": {
+    "IDLE_1MIN": {
       "detection": {
-        "idle_duration_ms": 180000
+        "idle_duration_ms": 60000
       },
       "processing": {
         "strategy": "IMMEDIATE"
