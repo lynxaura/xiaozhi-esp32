@@ -1,0 +1,50 @@
+{
+  "version": "1.0.0",
+  "format_version": "1.0",
+  "created": "2024-01-15T10:00:00Z",
+  "description": "Project Magic - Event and Asset Configuration",
+  "compatibility": {
+    "min_firmware_version": "2.1.0",
+    "board_types": ["ALichuangTest"]
+  },
+  "animation_specs": {
+    "format": "RGB565",
+    "resolution": "320x240",
+    "fps": 24,
+    "encoding": "raw_binary"
+  },
+  "audio_specs": {
+    "format": "P3",
+    "sample_rate": 16000,
+    "channels": 1,
+    "encoding": "compressed"
+  },
+  "assets": {
+    "total_events": 47,
+    "total_size_mb": 125.6,
+    "animation_total_frames": 234,
+    "audio_total_files": 25
+  },
+  "layers": {
+    "emergency": {
+      "priority": 1,
+      "interrupts_all": true,
+      "events": ["motion_free_fall", "motion_shake_violently", "motion_flip", "motion_upside_down"]
+    },
+    "interaction": {
+      "priority": 2,
+      "quadrant_based": true,
+      "events": ["motion_shake", "motion_pickup", "touch_tap", "touch_long_press", "touch_cradled", "touch_tickled"]
+    },
+    "state_expression": {
+      "priority": 3,
+      "context_dependent": true,
+      "events": ["speaking", "idle", "listening"]
+    },
+    "system": {
+      "priority": 0,
+      "functional_only": true,
+      "events": ["boot_up", "shut_down", "charging", "low_battery", "connecting", "error", "photo_taken", "body_detached", "body_attached"]
+    }
+  }
+}

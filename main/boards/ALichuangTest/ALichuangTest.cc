@@ -32,6 +32,7 @@
 
 #if CONFIG_LINGXI_ANIMA_UI
 #include "skills/animation.h"
+#include "skills/animation_player.h"
 //#include "images/emotions/neutral/1.h"
 //#include "images/emotions/angry/1.h"
 //#include "images/emotions/angry/2.h"
@@ -124,20 +125,35 @@ private:
     // 情感相关成员变量
     std::string current_emotion_ = "neutral";
     mutable std::mutex emotion_mutex_;
-    AnimaDisplay* display_;
+    Display* display_;
     TaskHandle_t image_task_handle_ = nullptr; // 图片显示任务句柄
 
     void StartImageSlideshow() {
-        // 设置情感变化回调
-        auto display = GetDisplay();
-        if (display) {
-            display->OnEmotionChanged([this](const std::string& emotion) {
-                ESP_LOGI(TAG, "接收到情感变化回调: %s", emotion.c_str());
-                SetCurrentEmotion(emotion);
-            });
+        ESP_LOGI(TAG, "=== StartImageSlideshow called ===");
+        ESP_LOGI(TAG, "CONFIG_LINGXI_ANIMA_UI is enabled");
+
+        // 检查AnimationPlayer是否已初始化
+        auto& player = AnimationPlayer::GetInstance();
+        if (!player.HasCanvas()) {
+            ESP_LOGW(TAG, "AnimationPlayer canvas not found, creating...");
+            player.CreateCanvas();
         }
-        xTaskCreate(ImageSlideshowTask, "img_slideshow", 4096, this, 3, &image_task_handle_);
-        ESP_LOGI(TAG, "图片循环显示任务已启动");
+
+        ESP_LOGI(TAG, "Starting idle animation with AnimationPlayer");
+        ESP_LOGI(TAG, "Expected animation path: /sdcard/state_expression/idle/idle_q1/animation/");
+
+        // 直接播放idle状态动画
+        // AnimationPlayer会自动：
+        // 1. 获取当前情感象限（开机默认V=0.2 A=0.2 = Q1）
+        // 2. 构建路径：/sdcard/state_expression/idle/idle_q1/animation/
+        // 3. 加载并播放动画
+        player.PlayStateExpression(kDeviceStateIdle);
+
+        ESP_LOGI(TAG, "=== Idle animation playback requested ===");
+
+        // 注释掉原来的ImageSlideshowTask创建
+        // xTaskCreate(ImageSlideshowTask, "img_slideshow", 4096, this, 3, &image_task_handle_);
+        // ESP_LOGI(TAG, "图片循环显示任务已启动");
     }
     
     // 根据情感获取对应的图片数组
@@ -237,11 +253,18 @@ private:
         }
     }
     
-    // 图片循环显示任务函数
+    // 图片循环显示任务函数 (DEPRECATED - now using AnimationPlayer)
     static void ImageSlideshowTask(void* arg) {
+#if CONFIG_LINGXI_ANIMA_UI
+        // 使用AnimationPlayer时，此函数不再需要
+        ESP_LOGI(TAG, "ImageSlideshowTask disabled - using AnimationPlayer instead");
+        vTaskDelete(NULL);
+        return;
+#else
         ALichuangTest* board = static_cast<ALichuangTest*>(arg);
-        AnimaDisplay* display = board->GetDisplay();
-        
+        // AnimaDisplay* display = board->GetDisplay(); // Commented out - using AnimationPlayer now
+        Display* display = board->GetDisplay();
+
         if (!display) {
             ESP_LOGE(TAG, "无法获取显示设备");
             vTaskDelete(NULL);
@@ -409,6 +432,7 @@ private:
         // 释放资源（实际上不会执行到这里，除非任务被外部终止）
         delete[] convertedData;
         vTaskDelete(NULL);
+#endif
     }
 #elif CONFIG_XIAOZHI_DEFAULT_UI
     LcdDisplay* display_;
@@ -522,8 +546,31 @@ private:
         esp_lcd_panel_swap_xy(panel, DISPLAY_SWAP_XY);
         esp_lcd_panel_mirror(panel, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
 #if CONFIG_LINGXI_ANIMA_UI
-        display_ = new AnimaDisplay(panel_io, panel,
-                                    DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY, {});
+        // 先创建常规SpiLcdDisplay来初始化LVGL系统
+        display_ = new SpiLcdDisplay(panel_io, panel,
+                                    DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY,
+                                    {
+                                        .text_font = &font_puhui_20_4,
+                                        .icon_font = &font_awesome_20_4,
+#if CONFIG_USE_WECHAT_MESSAGE_STYLE
+                                        .emoji_font = font_emoji_32_init(),
+#else
+                                        .emoji_font = font_emoji_64_init(),
+#endif
+                                    });
+
+        // 然后初始化AnimationPlayer（使用已经初始化的LVGL系统）
+        bool init_success = AnimationPlayer::GetInstance().Initialize(
+            panel_io, panel,
+            DISPLAY_WIDTH, DISPLAY_HEIGHT,
+            DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y,
+            DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
+
+        if (!init_success) {
+            ESP_LOGE(TAG, "Failed to initialize AnimationPlayer");
+        } else {
+            ESP_LOGI(TAG, "AnimationPlayer initialized successfully");
+        }
 #elif CONFIG_XIAOZHI_DEFAULT_UI
         display_ = new SpiLcdDisplay(panel_io, panel,
                                     DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY,
@@ -1002,8 +1049,9 @@ public:
         return camera_;
     }
 
-#if CONFIG_LINGXI_ANIMA_UI       
-    virtual AnimaDisplay* GetDisplay() override {
+#if CONFIG_LINGXI_ANIMA_UI
+    virtual Display* GetDisplay() override {
+        // 返回SpiLcdDisplay实例，保持兼容性
         return display_;
     }
 #elif CONFIG_XIAOZHI_DEFAULT_UI
