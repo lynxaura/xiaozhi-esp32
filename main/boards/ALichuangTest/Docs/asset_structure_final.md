@@ -207,59 +207,69 @@
 - 防御反应类：`MOTION_DODGE_SUBTLE`、`MOTION_DODGE_SLOWLY`、`MOTION_DODGE_OPPOSITE_LEFT`、`MOTION_DODGE_OPPOSITE_RIGHT`、`MOTION_TENSE_UP`、`MOTION_BODY_SHIVER`
 - 复杂表演类：`MOTION_TICKLE_TWIST_DANCE`、`MOTION_ANNOYED_TWIST_TO_HAPPY`、`MOTION_STRUGGLE_TWIST`、`MOTION_UNWILLING_TURN_BACK`
 
+中断机制说明：
+- **can_interrupt**: 定义事件可以中断的状态列表
+  - `["all"]`: 可以中断所有状态（紧急事件专用）
+  - `["idle", "listening"]`: 可以中断空闲和监听状态（交互事件）
+  - 不设置: 不能中断任何状态（状态表达事件）
+
 ```json
 {
   "version": "1.0",
-  
+
   "events": {
     "emergency/motion_free_fall": {
       "layer": 1,
-      "priority": 100,
-      "animation": { "frames": 6, "loop": false, "count": 1 },
-      "sound": { "volume": 95, "interrupt": true },
+      "can_interrupt": ["all"],
+      "animation": { "frames": 6, "count": 2 },
+      "sound": { "volume": 95 },
       "vibration": { "pattern": "VIBRATION_ERRATIC_STRONG" },
       "motion": { "action": "MOTION_STRUGGLE_TWIST" }
     },
     "emergency/motion_shake_violently": {
       "layer": 1,
-      "priority": 95,
-      "animation": { "frames": 6, "loop": false, "count": 1 },
-      "sound": { "volume": 90, "interrupt": true },
+      "can_interrupt": ["all"],
+      "animation": { "frames": 6, "count": 2 },
+      "sound": { "volume": 90 },
       "vibration": { "pattern": "VIBRATION_STRUGGLE_PATTERN" }
     },
     "interaction/motion_shake_q1": {
       "layer": 2,
-      "priority": 50,
-      "animation": { "frames": 4, "loop": true, "count": 2 },
-      "sound": { "volume": 70, "interrupt": false },
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "frames": 4, "count": 2 },
+      "sound": { "volume": 70 },
       "vibration": { "pattern": "VIBRATION_PURR_SHORT" }
     },
     "interaction/touch_tap_q1": {
       "layer": 2,
-      "priority": 45,
-      "animation": { "frames": 6, "loop": false, "count": 1 },
-      "sound": { "volume": 65, "interrupt": false },
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "frames": 6, "count": 2 },
+      "sound": { "volume": 65 },
       "vibration": { "pattern": "VIBRATION_SHORT_BUZZ" }
     },
     "state_expression/speaking/talk_happy": {
       "layer": 3,
-      "priority": 30,
-      "animation": { "frames": 5, "loop": true, "count": -1 },
+      "animation": { "frames": 5, "count": -1 },
       "sound": { "enabled": false },
       "vibration": { "enabled": false }
     },
     "state_expression/idle/idle_q1": {
       "layer": 4,
-      "priority": 20,
-      "animation": { "frames": 5, "loop": true, "count": -1 },
+      "animation": { "frames": 5, "count": -1 },
+      "sound": { "enabled": false },
+      "vibration": { "enabled": false }
+    },
+    "state_expression/listening/listening_q1": {
+      "layer": 5,
+      "animation": { "frames": 4, "count": -1 },
       "sound": { "enabled": false },
       "vibration": { "enabled": false }
     },
     "system/boot_up": {
       "layer": 0,
-      "priority": 90,
-      "animation": { "frames": 6, "loop": false, "count": 1 },
-      "sound": { "volume": 80, "interrupt": false },
+      "can_interrupt": ["all"],
+      "animation": { "frames": 6, "count": 1 },
+      "sound": { "volume": 80 },
       "vibration": { "pattern": "VIBRATION_SHORT_BUZZ" }
     }
   }
@@ -317,25 +327,23 @@ public:
 // 响应配置
 struct ResponseConfig {
     uint8_t layer;
-    uint8_t priority;
-    
+    std::vector<std::string> can_interrupt;  // 可以中断的状态列表
+
     struct {
         uint8_t frames;  // 动画帧数
-        bool loop;
-        int8_t count;  // -1 表示无限循环
+        int8_t count;    // -1 表示无限循环, 正数表示播放次数
     } animation;
-    
+
     struct {
         bool enabled = true;
         uint8_t volume;
-        bool interrupt;
     } sound;
-    
+
     struct {
         bool enabled = true;
         std::string pattern_name;
     } vibration;
-    
+
     struct {
         bool enabled = false;
         std::string action_name;
@@ -371,7 +379,25 @@ public:
         auto it = response_configs_.find(event_key);
         return (it != response_configs_.end()) ? &it->second : nullptr;
     }
-    
+
+    // 检查事件是否可以中断当前状态
+    bool CanInterrupt(const std::string& event_key, const std::string& current_state) const {
+        auto it = response_configs_.find(event_key);
+        if (it == response_configs_.end()) {
+            return false;
+        }
+
+        const auto& can_interrupt = it->second.can_interrupt;
+
+        // 检查是否可以中断所有状态
+        if (std::find(can_interrupt.begin(), can_interrupt.end(), "all") != can_interrupt.end()) {
+            return true;
+        }
+
+        // 检查是否可以中断特定状态
+        return std::find(can_interrupt.begin(), can_interrupt.end(), current_state) != can_interrupt.end();
+    }
+
     // 根据事件类型和象限构建事件键
     static std::string BuildEventKey(EventType type, int quadrant = -1) {
         std::string key;
@@ -409,26 +435,38 @@ private:
     AnimaDisplay* display_;
     AudioPlayer* audio_;
     VibrationSkill* vibration_;
-    
+    std::string current_state_ = "idle";  // 当前设备状态
+
 public:
+    void SetCurrentState(const std::string& state) {
+        current_state_ = state;
+    }
+
     void ExecuteEvent(EventType type, int quadrant = -1) {
         // 构建事件键
         std::string event_key = ConfigManager::BuildEventKey(type, quadrant);
-        
+
+        // 检查是否可以中断当前状态
+        if (!config_mgr_->CanInterrupt(event_key, current_state_)) {
+            ESP_LOGI(TAG, "Event %s cannot interrupt current state %s",
+                    event_key.c_str(), current_state_.c_str());
+            return;
+        }
+
         // 获取响应配置
         const auto* config = config_mgr_->GetResponseConfig(event_key);
         if (!config) {
             ESP_LOGW(TAG, "Response config not found: %s", event_key.c_str());
             return;
         }
-        
+
         // 解析分类和事件名
         std::string category, event_name;
         ResourcePathBuilder::ParseEventKey(event_key, category, event_name);
-        
-        ESP_LOGI(TAG, "Executing: %s (layer=%d, priority=%d)", 
-                event_key.c_str(), config->layer, config->priority);
-        
+
+        ESP_LOGI(TAG, "Executing: %s (layer=%d, interrupting state=%s)",
+                event_key.c_str(), config->layer, current_state_.c_str());
+
         // 执行响应组件
         ExecuteResponse(category, event_name, config);
     }
