@@ -1,0 +1,143 @@
+{
+  "version": "1.0",
+
+  "events": {
+    "emergency/motion_shake_violently": {
+      "layer": 1,
+      "can_interrupt": ["all"],
+      "animation": { "frames": 6, "count": 2 },
+      "sound": { "volume": 90 },
+      "vibration": { "pattern": "VIBRATION_ERRATIC_STRONG" },
+      "motion": { "action": "MOTION_STRUGGLE_TWIST" }
+    },
+    "emergency/motion_upside_down": {
+      "layer": 1,
+      "can_interrupt": ["all"],
+      "animation": { "frames": 6, "count": 2 },
+      "sound": { "volume": 85 },
+      "vibration": { "pattern": "VIBRATION_STRUGGLE_PATTERN" },
+      "motion": { "action": "MOTION_BODY_SHIVER" }
+    },
+    "interaction/motion_shake_q1": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "frames": 4, "count": 2 },
+      "sound": { "volume": 70 },
+      "vibration": { "pattern": "VIBRATION_PURR_SHORT" },
+      "motion": { "action": "MOTION_HAPPY_WIGGLE" }
+    },
+    "interaction/motion_shake_q2": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "frames": 4, "count": 2 },
+      "sound": { "volume": 70 },
+      "vibration": { "pattern": "VIBRATION_PURR_PATTERN" },
+      "motion": { "action": "MOTION_EXCITED_JIGGLE" }
+    },
+    "interaction/motion_pickup_q1": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "frames": 5, "count": 2 },
+      "sound": { "volume": 65 },
+      "vibration": { "pattern": "VIBRATION_GENTLE_HEARTBEAT" },
+      "motion": { "action": "MOTION_CURIOUS_PEEK_LEFT" }
+    },
+    "interaction/motion_pickup_q2": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "frames": 5, "count": 2 },
+      "sound": { "volume": 65 },
+      "vibration": { "pattern": "VIBRATION_HEARTBEAT_STRONG" },
+      "motion": { "action": "MOTION_CURIOUS_PEEK_RIGHT" }
+    },
+    "interaction/touch_tap_q1": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "frames": 6, "count": 2 },
+      "sound": { "volume": 60 },
+      "vibration": { "pattern": "VIBRATION_SHORT_BUZZ" },
+      "motion": { "action": "MOTION_NUZZLE_FORWARD" }
+    },
+    "interaction/touch_tap_q2": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "frames": 6, "count": 2 },
+      "sound": { "volume": 60 },
+      "vibration": { "pattern": "VIBRATION_PURR_SHORT" },
+      "motion": { "action": "MOTION_SHAKE_HEAD" }
+    },
+    "interaction/touch_long_press_q1": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "frames": 8, "count": 2 },
+      "sound": { "volume": 55 },
+      "vibration": { "pattern": "VIBRATION_GENTLE_HEARTBEAT" },
+      "motion": { "action": "MOTION_RELAX_COMPLETELY" }
+    },
+    "interaction/touch_cradled_q1": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "frames": 6, "count": 2 },
+      "sound": { "volume": 50 },
+      "vibration": { "pattern": "VIBRATION_PURR_PATTERN" },
+      "motion": { "action": "MOTION_RELAX_COMPLETELY" }
+    },
+    "interaction/touch_tickled_q1": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "frames": 8, "count": 2 },
+      "sound": { "volume": 75 },
+      "vibration": { "pattern": "VIBRATION_GIGGLE_PATTERN" },
+      "motion": { "action": "MOTION_TICKLE_TWIST_DANCE" }
+    },
+    "state_expression/speaking/talk_calm": {
+      "layer": 3,
+      "animation": { "frames": 5, "count": -1 },
+      "sound": { "enabled": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    },
+    "state_expression/speaking/talk_happy": {
+      "layer": 3,
+      "animation": { "frames": 6, "count": -1 },
+      "sound": { "enabled": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    },
+    "state_expression/speaking/talk_angry": {
+      "layer": 3,
+      "animation": { "frames": 5, "count": -1 },
+      "sound": { "enabled": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    },
+    "state_expression/speaking/talk_scared": {
+      "layer": 3,
+      "animation": { "frames": 6, "count": -1 },
+      "sound": { "enabled": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    },
+    "state_expression/speaking/talk_shy": {
+      "layer": 3,
+      "animation": { "frames": 4, "count": -1 },
+      "sound": { "enabled": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    },
+    "state_expression/idle/idle_q1": {
+      "layer": 4,
+      "animation": { "frames": 5, "count": -1 },
+      "sound": { "volume": 40, "interrupt": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    },
+    "state_expression/listening/listening_q1": {
+      "layer": 5,
+      "animation": { "frames": 4, "count": -1 },
+      "sound": { "enabled": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    }
+  }
+}

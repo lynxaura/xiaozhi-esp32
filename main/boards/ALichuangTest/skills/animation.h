@@ -7,8 +7,7 @@ class AnimaDisplay : public LcdDisplay {
 public:
     AnimaDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
                   int width, int height, int offset_x, int offset_y,
-                  bool mirror_x, bool mirror_y, bool swap_xy,
-                  DisplayFonts fonts);
+                  bool mirror_x, bool mirror_y, bool swap_xy);
 
     // 情感变化回调
     virtual void OnEmotionChanged(std::function<void(const std::string&)> callback) { 
@@ -20,11 +19,10 @@ public:
     virtual void SetStatus(const char* status) override {}
     virtual void ShowNotification(const char* notification, int duration_ms = 3000) override {}
     virtual void SetChatMessage(const char* role, const char* content) override {}
-    virtual void SetIcon(const char* icon) override {}
-    virtual void SetPreviewImage(const lv_img_dsc_t* image) override {}
+    virtual void SetPreviewImage(std::unique_ptr<LvglImage> image) override {}
     virtual void UpdateStatusBar(bool update_all = false) override {}
     virtual void SetPowerSaveMode(bool on) override {}
-    virtual void SetTheme(const std::string& theme_name) override;
+    virtual void SetTheme(Theme* theme) override;
 
     // 画布相关方法 - 用于在UI顶层显示图片
     virtual void CreateCanvas();

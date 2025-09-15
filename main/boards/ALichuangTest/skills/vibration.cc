@@ -256,61 +256,6 @@ void Vibration::Stop() {
     Play(VIBRATION_STOP);
 }
 
-void Vibration::PlayForEmotion(const std::string& emotion) {
-    if (!emotion_based_enabled_) {
-        return;
-    }
-    
-    current_emotion_ = emotion;
-    vibration_id_t vibration_id = GetVibrationForEmotion(emotion);
-    
-    if (vibration_id != VIBRATION_MAX) {
-        ESP_LOGI(TAG, "Playing vibration for emotion: %s -> %s", 
-                emotion.c_str(), vibration_pattern_names[vibration_id]);
-        Play(vibration_id);
-    }
-}
-
-void Vibration::SetEmotionBasedEnabled(bool enabled) {
-    emotion_based_enabled_ = enabled;
-    ESP_LOGI(TAG, "Emotion-based vibration %s", enabled ? "enabled" : "disabled");
-}
-
-// 暂时未启用
-vibration_id_t Vibration::GetVibrationForEmotion(const std::string& emotion) {
-    // 根据情绪映射到对应的振动模式
-    if (emotion == "happy" || emotion == "funny") {
-        return VIBRATION_GIGGLE_PATTERN;
-    }
-    else if (emotion == "laughing") {
-        return VIBRATION_GIGGLE_PATTERN;
-    }
-    else if (emotion == "angry") {
-        return VIBRATION_STRUGGLE_PATTERN;
-    }
-    else if (emotion == "sad" || emotion == "crying") {
-        return VIBRATION_GENTLE_HEARTBEAT;
-    }
-    else if (emotion == "surprised" || emotion == "shocked") {
-        return VIBRATION_SHARP_BUZZ;
-    }
-    else if (emotion == "excited") {
-        return VIBRATION_ERRATIC_STRONG;
-    }
-    else if (emotion == "comfortable" || emotion == "relaxed") {
-        return VIBRATION_PURR_PATTERN;
-    }
-    else if (emotion == "thinking") {
-        return VIBRATION_TREMBLE_PATTERN;
-    }
-    else if (emotion == "neutral") {
-        return VIBRATION_SHORT_BUZZ;
-    }
-    
-    // 默认情况下不播放振动
-    return VIBRATION_MAX;
-}
-
 void Vibration::SetVibrationStrength(uint16_t strength) {
     if (pca9685_ == nullptr) {
         ESP_LOGE(TAG, "❌ PCA9685 is null, cannot set vibration strength");

@@ -120,10 +120,6 @@ esp_err_t Motion::StartTask() {
     task_running_ = true;
     ESP_LOGI(TAG, "Motion task started");
     
-    // 启动速度对比测试
-    // vTaskDelay(pdMS_TO_TICKS(500)); // 等待任务完全启动
-    // RunSpeedTest();
-    
     return ESP_OK;
 }
 
@@ -204,7 +200,6 @@ void Motion::Stop() {
 void Motion::MotionTaskFunction(void* arg) {
     Motion* motion = static_cast<Motion*>(arg);
     motion_command_t cmd;
-    ESP_LOGI(TAG, "Motion task started");
 
     while (true) {
         if (xQueueReceive(motion->command_queue_, &cmd, portMAX_DELAY) == pdTRUE) {
@@ -249,8 +244,8 @@ void Motion::MotorTurnToAngle(float target_angle, motion_speed_t speed) {
     target_angle_ = target_angle;
     float angle_diff = target_angle - current_angle_;
     
-    ESP_LOGI(TAG, "精确转动: 从%.1f°到%.1f° (差值%.1f°)", 
-             current_angle_, target_angle, angle_diff);
+    // ESP_LOGI(TAG, "精确转动: 从%.1f°到%.1f° (差值%.1f°)", 
+    //          current_angle_, target_angle, angle_diff);
     
     // 如果角度差异很小，直接返回
     if (std::abs(angle_diff) < ANGLE_TOLERANCE) {
@@ -569,7 +564,7 @@ void Motion::SetMotorPwm(uint16_t pwm_a, uint16_t pwm_b) {
     if (pwm_a > PWM_MAX_VALUE) pwm_a = PWM_MAX_VALUE;
     if (pwm_b > PWM_MAX_VALUE) pwm_b = PWM_MAX_VALUE;
 
-    ESP_LOGI(TAG, "设置PWM: 通道%d=%d, 通道%d=%d", channel_a_, pwm_a, channel_b_, pwm_b);
+    //ESP_LOGI(TAG, "设置PWM: 通道%d=%d, 通道%d=%d", channel_a_, pwm_a, channel_b_, pwm_b);
 
     pca9685_->SetPwm(channel_a_, pwm_a);
     pca9685_->SetPwm(channel_b_, pwm_b);
@@ -636,29 +631,21 @@ uint32_t Motion::GetSpeedDelay(motion_speed_t speed) {
 
 uint16_t Motion::GetSpeedPwm(motion_speed_t speed) {
     uint16_t pwm_value;
-    const char* speed_name;
     
     switch (speed) {
         case MOTION_SPEED_SLOW:
             pwm_value = MOTOR_SPEED_SLOW_PWM;
-            speed_name = "慢速";
             break;
         case MOTION_SPEED_MEDIUM:
             pwm_value = MOTOR_SPEED_MEDIUM_PWM;
-            speed_name = "中速";
             break;
         case MOTION_SPEED_FAST:
             pwm_value = MOTOR_SPEED_FAST_PWM;
-            speed_name = "快速";
             break;
         default:
             pwm_value = MOTOR_SPEED_MEDIUM_PWM;
-            speed_name = "默认(中速)";
             break;
     }
-    
-    ESP_LOGI(TAG, "⚡ 设置马达速度: %s - PWM=%d (%.1f%%占空比)", 
-            speed_name, pwm_value, (float)pwm_value/4095.0*100);
     
     return pwm_value;
 }
@@ -714,53 +701,5 @@ uint32_t Motion::CalculateRotationTime(float angle_diff, motion_speed_t speed) {
     if (rotation_time < 5) rotation_time = 5;        // 最小5ms，仅防止系统延迟
     if (rotation_time > 5000) rotation_time = 5000;  // 最大5秒
     
-    ESP_LOGI(TAG, "精确转动计算: 角度差=%.1f°, PWM=%d(%.1f%%), 预期速度=%.1f°/s, 时间=%lums", 
-             angle_diff, speed_pwm, speed_ratio*100, degrees_per_second, (unsigned long)rotation_time);
-    
     return rotation_time;
-}
-
-void Motion::RunSpeedTest() {
-    ESP_LOGI(TAG, "🚀 开始马达速度对比测试");
-    ESP_LOGI(TAG, "══════════════════════════════════════════");
-    
-    // 测试1: 超快速转动1秒
-    ESP_LOGI(TAG, "⚡ 第一阶段: 超快速转动 (1秒钟)");
-    ESP_LOGI(TAG, "PWM频率: 200Hz, PWM值: %d (%.1f%%占空比)", 
-             MOTOR_SPEED_FAST_PWM, 4000/4095.0*100);
-    
-    pca9685_->IsDevicePresent();
-    SetMotorSpeed(1, 4000); // 超快速正向转动
-    vTaskDelay(pdMS_TO_TICKS(1000)); // 转动1秒
-    SetMotorSpeed(0, 0); // 停止
-
-    ESP_LOGI(TAG, "⏸️  暂停0.2秒以便观察差异...");
-    vTaskDelay(pdMS_TO_TICKS(200)); // 暂停0.2秒
-    
-    // 测试2: 快速转动1秒
-    ESP_LOGI(TAG, "⚡ 第二阶段: 快速转动 (1秒钟)");
-    ESP_LOGI(TAG, "PWM频率: 200Hz, PWM值: %d (%.1f%%占空比)", 
-             MOTOR_SPEED_FAST_PWM, MOTOR_SPEED_FAST_PWM/4095.0*100);
-    pca9685_->IsDevicePresent();
-    SetMotorSpeed(1, MOTOR_SPEED_FAST_PWM); // 快速正向转动
-    vTaskDelay(pdMS_TO_TICKS(1000)); // 转动1秒
-    SetMotorSpeed(0, 0); // 停止
-    
-    ESP_LOGI(TAG, "⏸️  暂停0.2秒以便观察差异...");
-    vTaskDelay(pdMS_TO_TICKS(200)); // 暂停0.2秒
-    
-    // 测试3: 慢速转动1秒  
-    pca9685_->IsDevicePresent();
-    ESP_LOGI(TAG, "🐌 第三阶段: 慢速转动 (1秒钟)");
-    ESP_LOGI(TAG, "PWM频率: 200Hz, PWM值: %d (%.1f%%占空比)", 
-             MOTOR_SPEED_SLOW_PWM, (float)MOTOR_SPEED_SLOW_PWM/4095.0*100);
-    
-    SetMotorSpeed(-1, MOTOR_SPEED_SLOW_PWM); // 慢速反向转动
-    vTaskDelay(pdMS_TO_TICKS(1000)); // 转动1秒
-    SetMotorSpeed(0, 0); // 停止
-    
-    ESP_LOGI(TAG, "✅ 速度对比测试完成!");
-    ESP_LOGI(TAG, "如果您看到明显的转速差异，说明PWM频率调整成功。");
-    ESP_LOGI(TAG, "如果转速仍然相似，可能需要进一步调整PWM频率或检查硬件连接。");
-    ESP_LOGI(TAG, "══════════════════════════════════════════");
 }

@@ -30,32 +30,46 @@ struct MotionEvent {
 };
 
 // 运动引擎类 - 专门处理IMU相关的运动检测
-// 运动检测配置结构
+// 运动检测配置结构 - 默认值通过JSON配置文件定义
 struct MotionDetectionConfig {
     // 自由落体参数
-    float free_fall_threshold_g = 0.3f;
-    int64_t free_fall_min_duration_ms = 200;
+    float free_fall_threshold_g;
+    int64_t free_fall_min_duration_ms;
     
     // 摇晃参数
-    float shake_normal_threshold_g = 1.5f;
-    float shake_violently_threshold_g = 3.0f;
+    float shake_normal_threshold_g;
+    float shake_violently_threshold_g;
     
     // 翻转参数
-    float flip_threshold_deg_s = 400.0f;
+    float flip_threshold_deg_s;
     
     // 拿起参数
-    float pickup_threshold_g = 0.15f;
-    float pickup_stable_threshold_g = 0.05f;
-    int pickup_stable_count = 5;
-    int64_t pickup_min_duration_ms = 300;
+    float pickup_threshold_g;
+    float pickup_stable_threshold_g;
+    int pickup_stable_count;
+    int64_t pickup_min_duration_ms;
     
     // 倒置参数
-    float upside_down_threshold_g = -0.8f;
-    int upside_down_stable_count = 10;
+    float upside_down_threshold_g;
+    int upside_down_stable_count;
     
     // 调试参数
-    int64_t debug_interval_ms = 1000;
-    bool debug_enabled = false;
+    bool debug_enabled;
+    
+    // 构造函数 - 所有值初始化为0/false，实际值由JSON配置加载
+    MotionDetectionConfig() 
+        : free_fall_threshold_g(0.0f)
+        , free_fall_min_duration_ms(0)
+        , shake_normal_threshold_g(0.0f)
+        , shake_violently_threshold_g(0.0f)
+        , flip_threshold_deg_s(0.0f)
+        , pickup_threshold_g(0.0f)
+        , pickup_stable_threshold_g(0.0f)
+        , pickup_stable_count(0)
+        , pickup_min_duration_ms(0)
+        , upside_down_threshold_g(0.0f)
+        , upside_down_stable_count(0)
+        , debug_enabled(false) {}
 };
 
 class MotionEngine {
@@ -124,6 +138,10 @@ private:
     float stable_z_reference_;
     int64_t pickup_start_time_;
     
+    // 运动活跃期跟踪 - 用于避免事件冲突
+    int64_t last_significant_motion_time_;
+    int consecutive_stable_readings_;
+    
     // 运动检测配置
     MotionDetectionConfig config_;
     
@@ -132,7 +150,7 @@ private:
     static constexpr int64_t SHAKE_VIOLENTLY_COOLDOWN_US = 400000; // 400ms
     static constexpr int64_t FLIP_COOLDOWN_US = 300000;           // 300ms
     static constexpr int64_t SHAKE_COOLDOWN_US = 200000;          // 200ms
-    static constexpr int64_t PICKUP_COOLDOWN_US = 1000000;        // 1s
+    static constexpr int64_t PICKUP_COOLDOWN_US = 1500000;       // 1.5s - 平衡冷却时间
     static constexpr int64_t UPSIDE_DOWN_COOLDOWN_US = 500000;    // 500ms
     
     // 运动检测方法
@@ -143,7 +161,7 @@ private:
     bool DetectShake(const ImuData& data);
     bool DetectPickup(const ImuData& data);
     bool DetectUpsideDown(const ImuData& data);
-    float CalculateAccelMagnitude(const ImuData& data);
+    float CalculateAccelMagnitude(const ImuData& data) const;
     float CalculateAccelDelta(const ImuData& current, const ImuData& last) const;
     
     // 辅助函数

@@ -1,4 +1,5 @@
 #include "event_config_loader.h"
+#include "../core/emotion_engine.h"
 #include <esp_log.h>
 #include <cJSON.h>
 #include <fstream>
@@ -9,34 +10,171 @@
 // 静态成员初始化
 std::map<std::string, EventResponse> EventConfigLoader::response_map_;
 
-// 默认配置（嵌入式版本）
+// 默认配置（嵌入式版本）- 包含所有支持的事件
 const char* DefaultEventConfig::GetDefaultConfig() {
     return R"({
-        "event_processing_strategies": {
-            "touch_events": {
-                "TOUCH_TAP": {
-                    "strategy": "MERGE",
-                    "merge_window_ms": 1500,
-                    "interval_ms": 500
+        "events": {
+            "MOTION_FREE_FALL": {
+                "detection": {
+                    "threshold_g": 0.3,
+                    "min_duration_ms": 200
                 },
-                "TOUCH_LONG_PRESS": {
-                    "strategy": "COOLDOWN",
-                    "interval_ms": 1000
+                "processing": {
+                    "strategy": "IMMEDIATE"
+                },
+                "va_impact": {
+                    "valence": -0.8,
+                    "arousal": 0.9
                 }
             },
-            "motion_events": {
-                "MOTION_SHAKE": {
+            "MOTION_SHAKE_VIOLENTLY": {
+                "detection": {
+                    "threshold_g": 3.0
+                },
+                "processing": {
+                    "strategy": "IMMEDIATE"
+                },
+                "va_impact": {
+                    "valence": -0.3,
+                    "arousal": 0.7
+                }
+            },
+            "MOTION_FLIP": {
+                "detection": {
+                    "threshold_deg_s": 400.0
+                },
+                "processing": {
                     "strategy": "THROTTLE",
                     "interval_ms": 2000
                 },
-                "MOTION_FREE_FALL": {
-                    "strategy": "IMMEDIATE",
-                    "allow_interrupt": true
+                "va_impact": {
+                    "valence": 0.2,
+                    "arousal": 0.4
                 }
             },
-            "default_strategy": {
+            "MOTION_SHAKE": {
+                "detection": {
+                    "normal_threshold_g": 1.5
+                },
+                "processing": {
+                    "strategy": "THROTTLE",
+                    "interval_ms": 2000
+                },
+                "va_impact": {
+                    "valence": 0.1,
+                    "arousal": 0.3
+                }
+            },
+            "MOTION_PICKUP": {
+                "detection": {
+                    "threshold_g": 0.15,
+                    "stable_threshold_g": 0.05,
+                    "stable_count": 5,
+                    "min_duration_ms": 300
+                },
+                "processing": {
+                    "strategy": "THROTTLE",
+                    "interval_ms": 1000
+                },
+                "va_impact": {
+                    "valence": 0.05,
+                    "arousal": 0.2
+                }
+            },
+            "MOTION_UPSIDE_DOWN": {
+                "detection": {
+                    "threshold_g": -0.8,
+                    "stable_count": 10
+                },
+                "processing": {
+                    "strategy": "THROTTLE",
+                    "interval_ms": 3000
+                },
+                "va_impact": {
+                    "valence": -0.2,
+                    "arousal": 0.3
+                }
+            },
+            "TOUCH_TAP": {
+                "detection": {
+                    "max_duration_ms": 500,
+                    "debounce_time_ms": 30
+                },
+                "processing": {
+                    "strategy": "THROTTLE",
+                    "interval_ms": 300
+                },
+                "va_impact": {
+                    "valence": 0.1,
+                    "arousal": 0.1
+                }
+            },
+            "TOUCH_DOUBLE_TAP": {
+                "detection": {
+                    "tap_interval_ms": 300
+                },
+                "processing": {
+                    "strategy": "COOLDOWN",
+                    "interval_ms": 1000
+                },
+                "va_impact": {
+                    "valence": 0.15,
+                    "arousal": 0.15
+                }
+            },
+            "TOUCH_LONG_PRESS": {
+                "detection": {
+                    "min_duration_ms": 600
+                },
+                "processing": {
+                    "strategy": "COOLDOWN",
+                    "interval_ms": 1000
+                },
+                "va_impact": {
+                    "valence": 0.2,
+                    "arousal": -0.2
+                }
+            },
+            "TOUCH_CRADLED": {
+                "detection": {
+                    "min_duration_ms": 2000
+                },
+                "processing": {
+                    "strategy": "THROTTLE",
+                    "interval_ms": 5000
+                },
+                "va_impact": {
+                    "valence": 0.3,
+                    "arousal": -0.4
+                }
+            },
+            "TOUCH_TICKLED": {
+                "detection": {
+                    "window_ms": 2000,
+                    "min_touches": 4
+                },
+                "processing": {
+                    "strategy": "COOLDOWN",
+                    "interval_ms": 3000
+                },
+                "va_impact": {
+                    "valence": 0.4,
+                    "arousal": 0.5
+                }
+            }
+        },
+        "global_settings": {
+            "batch_upload": {
+                "enabled": true,
+                "window_ms": 500,
+                "max_batch_size": 10
+            },
+            "default_processing": {
                 "strategy": "IMMEDIATE",
                 "interval_ms": 0
+            },
+            "debug": {
+                "motion_debug_enabled": false
             }
         }
     })";
@@ -46,8 +184,7 @@ bool EventConfigLoader::LoadFromFile(const std::string& filepath, EventEngine* e
     // 尝试从文件系统读取配置
     FILE* file = fopen(filepath.c_str(), "r");
     if (!file) {
-        ESP_LOGW(TAG, "Config file not found: %s, using default config", filepath.c_str());
-        return LoadFromEmbedded(engine);
+        return false;  // 返回false让调用者决定是否加载默认配置
     }
     
     // 获取文件大小
@@ -66,17 +203,20 @@ bool EventConfigLoader::LoadFromFile(const std::string& filepath, EventEngine* e
     delete[] json_data;
     
     if (!result) {
-        ESP_LOGW(TAG, "Failed to parse config file, using default config");
-        return LoadFromEmbedded(engine);
+        return false;  // 返回false让调用者决定是否加载默认配置
     }
     
-    ESP_LOGI(TAG, "Loaded event config from file: %s", filepath.c_str());
+    ESP_LOGI(TAG, "Event config loaded from SD card");
     return true;
 }
 
 bool EventConfigLoader::LoadFromEmbedded(EventEngine* engine) {
     const char* default_config = DefaultEventConfig::GetDefaultConfig();
-    return ParseJsonConfig(default_config, engine);
+    bool result = ParseJsonConfig(default_config, engine);
+    if (result) {
+        ESP_LOGI(TAG, "Event config loaded from embedded defaults");
+    }
+    return result;
 }
 
 bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engine) {
@@ -86,168 +226,139 @@ bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engi
         return false;
     }
     
-    // 解析事件处理策略
-    cJSON* strategies = cJSON_GetObjectItem(root, "event_processing_strategies");
-    if (strategies) {
-        // 解析默认策略
-        cJSON* default_strategy = cJSON_GetObjectItem(strategies, "default_strategy");
-        if (default_strategy) {
+    // 1. 解析全局设置
+    cJSON* global_settings = cJSON_GetObjectItem(root, "global_settings");
+    if (global_settings) {
+        // 解析批量上传配置
+        cJSON* batch_upload = cJSON_GetObjectItem(global_settings, "batch_upload");
+        if (batch_upload) {
+            // 创建兼容的JSON结构供LoadUploadConfig使用
+            cJSON* upload_config = cJSON_CreateObject();
+            cJSON* event_upload_config = cJSON_CreateObject();
+            
+            cJSON* enabled = cJSON_GetObjectItem(batch_upload, "enabled");
+            if (enabled) {
+                cJSON_AddBoolToObject(event_upload_config, "batch_upload_enabled", cJSON_IsTrue(enabled));
+            }
+            
+            cJSON* window_ms = cJSON_GetObjectItem(batch_upload, "window_ms");
+            if (window_ms) {
+                cJSON_AddNumberToObject(event_upload_config, "batch_window_ms", window_ms->valueint);
+            }
+            
+            cJSON* max_size = cJSON_GetObjectItem(batch_upload, "max_batch_size");
+            if (max_size) {
+                cJSON_AddNumberToObject(event_upload_config, "max_batch_size", max_size->valueint);
+            }
+            
+            cJSON_AddItemToObject(upload_config, "event_upload_config", event_upload_config);
+            engine->LoadUploadConfig(upload_config);
+            cJSON_Delete(upload_config);
+        }
+        
+        // 解析默认处理策略
+        cJSON* default_processing = cJSON_GetObjectItem(global_settings, "default_processing");
+        if (default_processing) {
             EventProcessingConfig config;
             
-            cJSON* strategy = cJSON_GetObjectItem(default_strategy, "strategy");
+            cJSON* strategy = cJSON_GetObjectItem(default_processing, "strategy");
             if (strategy) {
                 config.strategy = ParseStrategy(strategy->valuestring);
             }
             
-            cJSON* interval = cJSON_GetObjectItem(default_strategy, "interval_ms");
+            cJSON* interval = cJSON_GetObjectItem(default_processing, "interval_ms");
             if (interval) {
                 config.interval_ms = interval->valueint;
             }
             
             engine->SetDefaultProcessingStrategy(config);
-            ESP_LOGI(TAG, "Set default strategy: %d with interval %ldms", 
-                    (int)config.strategy, config.interval_ms);
         }
+    }
+    
+    // 2. 解析事件配置（统一处理所有事件）
+    cJSON* events = cJSON_GetObjectItem(root, "events");
+    if (events) {
+        // 获取EmotionEngine实例
+        EmotionEngine& emotion_engine = EmotionEngine::GetInstance();
         
-        // 解析触摸事件策略
-        cJSON* touch_events = cJSON_GetObjectItem(strategies, "touch_events");
-        if (touch_events) {
-            cJSON* event = NULL;
-            cJSON_ArrayForEach(event, touch_events) {
-                if (!event->string) continue;
-                
-                EventType event_type = ParseEventType(event->string);
-                if (event_type == EventType::MOTION_NONE) continue;
-                
+        cJSON* event = NULL;
+        cJSON_ArrayForEach(event, events) {
+            if (!event->string) continue;
+            
+            const char* event_name = event->string;
+            EventType event_type = ParseEventType(event_name);
+            
+            if (event_type == EventType::MOTION_NONE) {
+                ESP_LOGW(TAG, "Unknown event type: %s, skipping", event_name);
+                continue;
+            }
+            
+            ESP_LOGD(TAG, "Processing event config: %s", event_name);
+            
+            // 2.1 解析处理策略
+            cJSON* processing = cJSON_GetObjectItem(event, "processing");
+            if (processing) {
                 EventProcessingConfig config;
                 
-                cJSON* strategy = cJSON_GetObjectItem(event, "strategy");
-                if (strategy) {
+                cJSON* strategy = cJSON_GetObjectItem(processing, "strategy");
+                if (strategy && cJSON_IsString(strategy)) {
                     config.strategy = ParseStrategy(strategy->valuestring);
                 }
                 
-                cJSON* interval = cJSON_GetObjectItem(event, "interval_ms");
-                if (interval) {
+                cJSON* interval = cJSON_GetObjectItem(processing, "interval_ms");
+                if (interval && cJSON_IsNumber(interval)) {
                     config.interval_ms = interval->valueint;
                 }
                 
-                cJSON* merge_window = cJSON_GetObjectItem(event, "merge_window_ms");
-                if (merge_window) {
+                cJSON* merge_window = cJSON_GetObjectItem(processing, "merge_window_ms");
+                if (merge_window && cJSON_IsNumber(merge_window)) {
                     config.merge_window_ms = merge_window->valueint;
                 }
                 
-                cJSON* max_queue = cJSON_GetObjectItem(event, "max_queue_size");
-                if (max_queue) {
+                cJSON* max_queue = cJSON_GetObjectItem(processing, "max_queue_size");
+                if (max_queue && cJSON_IsNumber(max_queue)) {
                     config.max_queue_size = max_queue->valueint;
                 }
                 
-                cJSON* allow_interrupt = cJSON_GetObjectItem(event, "allow_interrupt");
-                if (allow_interrupt) {
-                    config.allow_interrupt = cJSON_IsTrue(allow_interrupt);
-                }
-                
                 engine->ConfigureEventProcessing(event_type, config);
-                ESP_LOGI(TAG, "Configured %s with strategy %d", 
-                        event->string, (int)config.strategy);
+                ESP_LOGD(TAG, "Processing strategy configured for %s", event_name);
             }
-        }
-        
-        // 解析运动事件策略
-        cJSON* motion_events = cJSON_GetObjectItem(strategies, "motion_events");
-        if (motion_events) {
-            cJSON* event = NULL;
-            cJSON_ArrayForEach(event, motion_events) {
-                if (!event->string) continue;
-                
-                EventType event_type = ParseEventType(event->string);
-                if (event_type == EventType::MOTION_NONE) continue;
-                
-                EventProcessingConfig config;
-                
-                cJSON* strategy = cJSON_GetObjectItem(event, "strategy");
-                if (strategy) {
-                    config.strategy = ParseStrategy(strategy->valuestring);
+
+            // 2.1.1 特殊处理：IDLE_1MIN事件的空闲阈值配置
+            if (event_type == EventType::IDLE_1MIN) {
+                cJSON* detection = cJSON_GetObjectItem(event, "detection");
+                if (detection) {
+                    cJSON* idle_duration = cJSON_GetObjectItem(detection, "idle_duration_ms");
+                    if (idle_duration && cJSON_IsNumber(idle_duration)) {
+                        engine->SetIdleThreshold(idle_duration->valueint);
+                        ESP_LOGI(TAG, "Idle threshold configured: %dms", idle_duration->valueint);
+                    }
                 }
+            }
+
+            // 2.2 解析VA影响
+            cJSON* va_impact = cJSON_GetObjectItem(event, "va_impact");
+            if (va_impact) {
+                cJSON* valence = cJSON_GetObjectItem(va_impact, "valence");
+                cJSON* arousal = cJSON_GetObjectItem(va_impact, "arousal");
                 
-                cJSON* interval = cJSON_GetObjectItem(event, "interval_ms");
-                if (interval) {
-                    config.interval_ms = interval->valueint;
+                if (valence && arousal && cJSON_IsNumber(valence) && cJSON_IsNumber(arousal)) {
+                    emotion_engine.SetEventImpact(event_type, 
+                                                  valence->valuedouble, 
+                                                  arousal->valuedouble);
+                    ESP_LOGI(TAG, "VA impact configured for %s: V=%.2f, A=%.2f", 
+                             event_name, valence->valuedouble, arousal->valuedouble);
                 }
-                
-                cJSON* allow_interrupt = cJSON_GetObjectItem(event, "allow_interrupt");
-                if (allow_interrupt) {
-                    config.allow_interrupt = cJSON_IsTrue(allow_interrupt);
-                }
-                
-                engine->ConfigureEventProcessing(event_type, config);
-                ESP_LOGI(TAG, "Configured %s with strategy %d", 
-                        event->string, (int)config.strategy);
             }
         }
     }
     
-    // 解析运动检测参数并应用到 motion_engine
-    cJSON* motion_params = cJSON_GetObjectItem(root, "motion_detection_parameters");
-    if (motion_params) {
-        engine->UpdateMotionEngineConfig(root);
-        ESP_LOGI(TAG, "Applied motion detection parameters to motion engine");
-    }
-    
-    // 解析响应映射
-    cJSON* response_mappings = cJSON_GetObjectItem(root, "response_mappings");
-    if (response_mappings) {
-        // 解析单击响应
-        cJSON* single_tap = cJSON_GetObjectItem(response_mappings, "single_tap");
-        if (single_tap) {
-            cJSON* left = cJSON_GetObjectItem(single_tap, "left");
-            if (left) {
-                EventResponse response;
-                cJSON* motion = cJSON_GetObjectItem(left, "motion");
-                if (motion) response.motion = motion->valuestring;
-                cJSON* sound = cJSON_GetObjectItem(left, "sound");
-                if (sound) response.sound = sound->valuestring;
-                cJSON* emotion = cJSON_GetObjectItem(left, "emotion");
-                if (emotion) response.emotion = emotion->valuestring;
-                
-                response_map_["tap_left"] = response;
-            }
-            
-            cJSON* right = cJSON_GetObjectItem(single_tap, "right");
-            if (right) {
-                EventResponse response;
-                cJSON* motion = cJSON_GetObjectItem(right, "motion");
-                if (motion) response.motion = motion->valuestring;
-                cJSON* sound = cJSON_GetObjectItem(right, "sound");
-                if (sound) response.sound = sound->valuestring;
-                cJSON* emotion = cJSON_GetObjectItem(right, "emotion");
-                if (emotion) response.emotion = emotion->valuestring;
-                
-                response_map_["tap_right"] = response;
-            }
-        }
-        
-        // 解析多击响应
-        cJSON* multi_tap = cJSON_GetObjectItem(response_mappings, "multi_tap");
-        if (multi_tap) {
-            cJSON* tap_config = NULL;
-            cJSON_ArrayForEach(tap_config, multi_tap) {
-                if (!tap_config->string) continue;
-                
-                EventResponse response;
-                cJSON* motion = cJSON_GetObjectItem(tap_config, "motion");
-                if (motion) response.motion = motion->valuestring;
-                cJSON* sound = cJSON_GetObjectItem(tap_config, "sound");
-                if (sound) response.sound = sound->valuestring;
-                cJSON* emotion = cJSON_GetObjectItem(tap_config, "emotion");
-                if (emotion) response.emotion = emotion->valuestring;
-                
-                response_map_[std::string("multi_") + tap_config->string] = response;
-            }
-        }
-    }
+    // 3. 传递完整的JSON给motion_engine和multitouch_engine进行检测参数配置
+    // 这两个引擎会从events节点下读取各自需要的detection参数
+    engine->UpdateMotionEngineConfig(root);
+    engine->UpdateMultitouchEngineConfig(root);
     
     cJSON_Delete(root);
-    ESP_LOGI(TAG, "Event config loaded successfully");
     return true;
 }
 
@@ -264,18 +375,27 @@ EventProcessingStrategy EventConfigLoader::ParseStrategy(const std::string& stra
 }
 
 EventType EventConfigLoader::ParseEventType(const std::string& type_str) {
+    // 运动事件
+    if (type_str == "MOTION_FREE_FALL") return EventType::MOTION_FREE_FALL;
+    if (type_str == "MOTION_SHAKE_VIOLENTLY") return EventType::MOTION_SHAKE_VIOLENTLY;
+    if (type_str == "MOTION_FLIP") return EventType::MOTION_FLIP;
+    if (type_str == "MOTION_SHAKE") return EventType::MOTION_SHAKE;
+    if (type_str == "MOTION_PICKUP") return EventType::MOTION_PICKUP;
+    if (type_str == "MOTION_UPSIDE_DOWN") return EventType::MOTION_UPSIDE_DOWN;
+    
     // 触摸事件
     if (type_str == "TOUCH_TAP") return EventType::TOUCH_TAP;
     if (type_str == "TOUCH_DOUBLE_TAP") return EventType::TOUCH_DOUBLE_TAP;
     if (type_str == "TOUCH_LONG_PRESS") return EventType::TOUCH_LONG_PRESS;
+    if (type_str == "TOUCH_CRADLED") return EventType::TOUCH_CRADLED;
+    if (type_str == "TOUCH_TICKLED") return EventType::TOUCH_TICKLED;
+    if (type_str == "TOUCH_HOLD") return EventType::TOUCH_HOLD;
+    if (type_str == "TOUCH_RELEASE") return EventType::TOUCH_RELEASE;
     
-    // 运动事件
-    if (type_str == "MOTION_SHAKE") return EventType::MOTION_SHAKE;
-    if (type_str == "MOTION_FLIP") return EventType::MOTION_FLIP;
-    if (type_str == "MOTION_PICKUP") return EventType::MOTION_PICKUP;
-    if (type_str == "MOTION_FREE_FALL") return EventType::MOTION_FREE_FALL;
-    if (type_str == "MOTION_SHAKE_VIOLENTLY") return EventType::MOTION_SHAKE_VIOLENTLY;
-    if (type_str == "MOTION_UPSIDE_DOWN") return EventType::MOTION_UPSIDE_DOWN;
+    // 音频事件已移除 - 目前未实际使用
+    
+    // 特殊事件
+    if (type_str == "IDLE_1MIN") return EventType::IDLE_1MIN;
     
     ESP_LOGW(TAG, "Unknown event type: %s", type_str.c_str());
     return EventType::MOTION_NONE;

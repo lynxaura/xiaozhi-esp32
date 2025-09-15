@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-// 触摸检测配置结构
+// 触摸检测配置结构 - 默认值通过JSON配置文件定义
 struct TouchDetectionConfig {
     uint32_t tap_max_duration_ms;      // 单击最大持续时间
     uint32_t hold_min_duration_ms;     // 长按最小持续时间
@@ -12,16 +12,16 @@ struct TouchDetectionConfig {
     uint32_t tickled_min_touches;      // 挠痒最小触摸次数
     uint32_t debounce_time_ms;         // 消抖时间
     float touch_threshold_ratio;       // 触摸阈值比例
-    
-    // 默认值构造函数
-    TouchDetectionConfig() 
-        : tap_max_duration_ms(500)
-        , hold_min_duration_ms(600)
-        , cradled_min_duration_ms(2000)
-        , tickled_window_ms(2000)
-        , tickled_min_touches(4)
-        , debounce_time_ms(30)
-        , touch_threshold_ratio(1.5f) {}
+
+    // 构造函数 - 所有值初始化为0，实际值由JSON配置加载
+    TouchDetectionConfig()
+        : tap_max_duration_ms(0)
+        , hold_min_duration_ms(0)
+        , cradled_min_duration_ms(0)
+        , tickled_window_ms(0)
+        , tickled_min_touches(0)
+        , debounce_time_ms(0)
+        , touch_threshold_ratio(0.0f) {}
 };
 
 // 触摸配置加载器

@@ -10,8 +10,10 @@
 #include "qmi8658.h"
 #include "interaction/core/event_engine.h"
 #include "interaction/upload/event_uploader.h"
+#include "interaction/controller/mcp_response_controller.h"
 #include "interaction/controller/local_response_controller.h"
 #include "pca9685.h"
+#include "i2c_bus_manager.h"
 
 #include <esp_log.h>
 #include <esp_lcd_panel_vendor.h>
@@ -24,23 +26,27 @@
 #include <esp_timer.h>
 #include <mutex>
 
+/* SD Card */
+#include "sddata_pro.h"
+/* SD Card End */
+
 #if CONFIG_LINGXI_ANIMA_UI
 #include "skills/animation.h"
-#include "images/emotions/neutral/1.h"
-#include "images/emotions/angry/1.h"
-#include "images/emotions/angry/2.h"
-#include "images/emotions/angry/3.h"
-#include "images/emotions/angry/4.h"
-#include "images/emotions/happy/1.h"
-#include "images/emotions/happy/2.h"
-#include "images/emotions/happy/3.h"
-#include "images/emotions/laughting/1.h"
-#include "images/emotions/sad/1.h"
-#include "images/emotions/sad/2.h"
-#include "images/emotions/sad/3.h"
-#include "images/emotions/surprised/2.h"
-#include "images/emotions/surprised/4.h"
-#include "images/emotions/surprised/6.h"
+//#include "images/emotions/neutral/1.h"
+//#include "images/emotions/angry/1.h"
+//#include "images/emotions/angry/2.h"
+//#include "images/emotions/angry/3.h"
+//#include "images/emotions/angry/4.h"
+//#include "images/emotions/happy/1.h"
+//#include "images/emotions/happy/2.h"
+//#include "images/emotions/happy/3.h"
+//#include "images/emotions/laughting/1.h"
+//#include "images/emotions/sad/1.h"
+//#include "images/emotions/sad/2.h"
+//#include "images/emotions/sad/3.h"
+//#include "images/emotions/surprised/2.h"
+//#include "images/emotions/surprised/4.h"
+//#include "images/emotions/surprised/6.h"
 #elif CONFIG_XIAOZHI_DEFAULT_UI
 #include "display/lcd_display.h"
 #endif
@@ -110,8 +116,10 @@ private:
     Pca9685* pca9685_ = nullptr;           // PCA9685 PWM控制器
     Vibration* vibration_skill_ = nullptr; // 振动技能管理器
     Motion* motion_skill_ = nullptr;       // 直流马达动作控制技能
-    LocalResponseController* local_response_controller_ = nullptr; // MCP本地响应控制器
+    McpResponseController* mcp_response_controller_ = nullptr; // MCP响应控制器
+    LocalResponseController* local_response_controller_ = nullptr; // 本地响应控制器
     TaskHandle_t delay_task_handle = nullptr;
+    SDdata_Pro* sdhccard = nullptr;   
 #if CONFIG_LINGXI_ANIMA_UI
     // 情感相关成员变量
     std::string current_emotion_ = "neutral";
@@ -135,43 +143,56 @@ private:
     // 根据情感获取对应的图片数组
     std::pair<const uint8_t**, int> GetEmotionImageArray(const std::string& emotion) {
         // 默认图片数组（neutral或未知情感时使用）
+        sdhccard->SetNeutralFlash();
         static const uint8_t* neutral_images[] = {
-            gImage_1  // neutral时只显示第一张静态图片
+            // gImage_1  // neutral时只显示第一张静态图片
+            sdhccard->m_image[0]
         };
         
         // 根据情感返回对应的图片数组
         if (emotion == "happy" || emotion == "funny") {
+            sdhccard->SetHappyFlash();
             // 开心相关情感 - 使用快节奏动画
             static const uint8_t* happy_images[] = {
-                gImage_9, gImage_10, gImage_11
+                // gImage_9, gImage_10, gImage_11
+                sdhccard->m_image[0], sdhccard->m_image[1], sdhccard->m_image[2]
+
             };
             return {happy_images, 3};
         }
         else if (emotion == "laughting") {
+            sdhccard->SetLaughFlash();
             // 大笑情感
             static const uint8_t* angry_images[] = {
-                gImage_12
+                // gImage_12
+                sdhccard->m_image[0]
             };
             return {angry_images, 1};
         }
         else if (emotion == "angry") {
+            sdhccard->SetAngryFlash();
             // 愤怒情感 - 使用较强烈的图片
             static const uint8_t* angry_images[] = {
-                gImage_2, gImage_3, gImage_4, gImage_5
+                // gImage_2, gImage_3, gImage_4, gImage_5
+                sdhccard->m_image[0], sdhccard->m_image[1], sdhccard->m_image[2], sdhccard->m_image[3]
             };
             return {angry_images, 4};
         }
         else if (emotion == "sad" || emotion == "crying") {
+            sdhccard->SetSadFlash();
             // 悲伤相关情感 - 使用较慢的动画
             static const uint8_t* sad_images[] = {
-                gImage_23, gImage_24, gImage_25
+                //gImage_23, gImage_24, gImage_25
+                sdhccard->m_image[0], sdhccard->m_image[1], sdhccard->m_image[2]
             };
             return {sad_images, 3};
         }
         else if (emotion == "surprised" || emotion == "shocked") {
+            sdhccard->SetSurpriseFlash();
             // 惊讶相关情感 - 使用跳跃式动画
             static const uint8_t* surprised_images[] = {
-                gImage_27, gImage_29, gImage_31
+                // gImage_27, gImage_29, gImage_31
+                sdhccard->m_image[1], sdhccard->m_image[3], sdhccard->m_image[5]
             };
             return {surprised_images, 3};
         }
@@ -358,7 +379,6 @@ private:
                     convertedData[i] = ((pixel & 0xFF) << 8) | ((pixel & 0xFF00) >> 8);
                 }
                 display->DrawImageOnCanvas(x, y, imgWidth, imgHeight, (const uint8_t*)convertedData);
-                ESP_LOGI(TAG, "播放情感动画: %s, 图片索引: %d", currentEmotion.c_str(), currentIndex);
                 
                 // 更新上次更新时间
                 lastUpdateTime = currentTime;
@@ -409,6 +429,9 @@ private:
             },
         };
         ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_));
+
+        // 设置I2C总线管理器
+        I2cBusManager::GetInstance()->SetBusHandle(i2c_bus_);
 
         // Initialize PCA9557
         pca9557_ = new Pca9557(i2c_bus_, 0x19);
@@ -500,7 +523,7 @@ private:
         esp_lcd_panel_mirror(panel, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
 #if CONFIG_LINGXI_ANIMA_UI
         display_ = new AnimaDisplay(panel_io, panel,
-                                    DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY, {});
+                                    DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
 #elif CONFIG_XIAOZHI_DEFAULT_UI
         display_ = new SpiLcdDisplay(panel_io, panel,
                                     DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY,
@@ -680,30 +703,57 @@ private:
         event_engine_ = new EventEngine();
         event_engine_->Initialize();
         
+        // 初始化情感引擎
+        event_engine_->InitializeEmotionEngine();
+        
         // 初始化运动引擎（如果IMU可用）
         if (imu_) {
             event_engine_->InitializeMotionEngine(imu_, true);  // 启用调试输出
+            // 重新加载配置，因为motion engine在Initialize()时还不存在
+            event_engine_->ReloadMotionConfig();
         }
         
-        // 初始化触摸引擎
-        event_engine_->InitializeTouchEngine();
+        // 初始化多点触摸引擎
+        event_engine_->InitializeMultitouchEngine(i2c_bus_);
         
         // 创建事件上传器
         event_uploader_ = new EventUploader();
         event_uploader_->Enable(true);
         ESP_LOGI(TAG, "EventUploader created and enabled");
         
+        // 设置情感状态上报回调
+        event_engine_->SetEmotionReportCallback([this](const Event& event, float valence, float arousal) {
+            ESP_LOGI(TAG, "🎭 Emotion state changed: V=%.2f, A=%.2f for event type=%d", 
+                     valence, arousal, (int)event.type);
+            
+            // 将情感状态设置到事件上传器中，用于云端上报
+            if (event_uploader_) {
+                event_uploader_->SetCurrentEmotionState(valence, arousal);
+            }
+        });
+        
         // 事件处理策略已通过配置文件自动加载
         // 如需覆盖特定策略，可在此处调用：
         // event_engine_->ConfigureEventProcessing(EventType::TOUCH_TAP, custom_config);
         
-        // 设置事件回调
+        // 设置单事件回调（用于本地响应和状态更新）
         event_engine_->RegisterCallback([this](const Event& event) {
-            HandleEvent(event);
+            // 1. 先执行本地响应（最高优先级，即时反应）
+            if (local_response_controller_) {
+                local_response_controller_->ProcessEvent(event);
+            }
             
-            // 添加事件上传处理
+            // 2. 处理事件日志和情感状态更新
+            HandleEvent(event);
+        });
+        
+        // 设置批量事件回调（用于云端上传）
+        event_engine_->RegisterBatchCallback([this](const std::vector<Event>& events) {
+            ESP_LOGI(TAG, "Batch upload: processing %u events", events.size());
+            
+            // 批量上传事件到云端（真正的批量，一个JSON payload）
             if (event_uploader_) {
-                event_uploader_->HandleEvent(event);
+                event_uploader_->HandleBatchEvents(events);
             }
         });
         
@@ -724,12 +774,18 @@ private:
         ESP_LOGI(TAG, "Interaction system initialized and started");
     }
     
+    void InitialSDCard() {
+        sdhccard = SDmoduleInit();
+        SDLoadImageTest();
+        //sdhccard->TestFile();
+    }
+
     void InitializeMcpTools() {
         ESP_LOGI(TAG, "Initializing MCP local response tools...");
         
         try {
-            // 创建LocalResponseController实例
-            local_response_controller_ = new LocalResponseController(
+            // 创建McpResponseController实例
+            mcp_response_controller_ = new McpResponseController(
                 motion_skill_,
                 vibration_skill_,
                 event_engine_,
@@ -739,15 +795,44 @@ private:
             );
             
             // 初始化MCP工具
-            if (local_response_controller_->Initialize()) {
+            if (mcp_response_controller_->Initialize()) {
                 ESP_LOGI(TAG, "✅ MCP local response system initialized successfully");
             } else {
                 ESP_LOGE(TAG, "❌ Failed to initialize MCP local response system");
+                delete mcp_response_controller_;
+                mcp_response_controller_ = nullptr;
+            }
+        } catch (const std::exception& e) {
+            ESP_LOGE(TAG, "Exception during MCP tools initialization: %s", e.what());
+            if (mcp_response_controller_) {
+                delete mcp_response_controller_;
+                mcp_response_controller_ = nullptr;
+            }
+        }
+    }
+    
+    void InitializeLocalResponseSystem() {
+        ESP_LOGI(TAG, "Initializing Local Response System...");
+        
+        try {
+            // 创建本地响应控制器
+            local_response_controller_ = new LocalResponseController(
+                motion_skill_,
+                vibration_skill_, 
+                GetDisplay()
+            );
+            
+            // 初始化本地响应系统
+            if (local_response_controller_->Initialize()) {
+                ESP_LOGI(TAG, "✅ Local Response System initialized successfully");
+                local_response_controller_->ListTemplates();
+            } else {
+                ESP_LOGE(TAG, "❌ Failed to initialize Local Response System");
                 delete local_response_controller_;
                 local_response_controller_ = nullptr;
             }
         } catch (const std::exception& e) {
-            ESP_LOGE(TAG, "Exception during MCP tools initialization: %s", e.what());
+            ESP_LOGE(TAG, "Exception during Local Response System initialization: %s", e.what());
             if (local_response_controller_) {
                 delete local_response_controller_;
                 local_response_controller_ = nullptr;
@@ -881,6 +966,7 @@ public:
         InitializePca9685();  // 初始化PCA9685 PWM控制器
         InitializeVibration();  // 初始化振动技能（使用PCA9685）
         InitializeMotion();  // 初始化直流马达动作控制技能
+        InitialSDCard();
         InitializeInteractionSystem();  // 初始化交互系统
 
         GetBacklight()->RestoreBrightness();
@@ -892,7 +978,10 @@ public:
         StartVibrationTask();
         // 启动直流马达动作控制任务
         StartMotionTask();
-        
+                
+        // 初始化本地响应系统（在交互系统和技能初始化后）
+        InitializeLocalResponseSystem();
+
         // 所有skills初始化完成后，初始化MCP工具
         InitializeMcpTools();
     }
@@ -950,6 +1039,11 @@ public:
     // 获取直流马达动作控制技能（可选，用于外部访问和测试）
     Motion* GetMotion() {
         return motion_skill_;
+    }
+    
+    // 获取本地响应控制器（用于调试和测试）
+    LocalResponseController* GetLocalResponseController() {
+        return local_response_controller_;
     }
 };
 

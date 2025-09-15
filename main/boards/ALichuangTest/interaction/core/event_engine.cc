@@ -1,21 +1,41 @@
 #include "event_engine.h"
 #include "../sensors/motion_engine.h"
-#include "../sensors/touch_engine.h"
+#include "../sensors/multitouch_engine.h"
 #include "event_processor.h"
 #include "../config/event_config_loader.h"
+#include "emotion_engine.h"
+#include "../../sddata_pro.h"
+#include "../../../../application.h"
 #include <esp_log.h>
 #include <esp_timer.h>
+#include <algorithm>
+#include <vector>
+// #include <cinttypes>  // no longer needed after switching to 32-bit-friendly logs
 
 #define TAG "EventEngine"
 
-EventEngine::EventEngine() 
+EventEngine::EventEngine()
     : motion_engine_(nullptr)
     , owns_motion_engine_(false)
-    , touch_engine_(nullptr)
-    , owns_touch_engine_(false)
-    , event_processor_(nullptr) {
+    , multitouch_engine_(nullptr)
+    , owns_multitouch_engine_(false)
+    , event_processor_(nullptr)
+    , emotion_engine_initialized_(false)
+    , last_event_time_(0)
+    , batch_callback_(nullptr)
+    , idle_threshold_us_(60 * 1000 * 1000)   // 默认1分钟 (60秒 * 1000 * 1000微秒)
+    , idle_event_triggered_(false)
+    , idle_start_time_(0) {
     // 创建事件处理器
     event_processor_ = new EventProcessor();
+    
+    // 初始化批量上传配置（默认值）
+    upload_config_.batch_upload_enabled = true;
+    upload_config_.batch_window_ms = 500;
+    upload_config_.max_batch_size = 10;
+    
+    // 预留事件列表空间
+    pending_events_.reserve(upload_config_.max_batch_size);
 }
 
 EventEngine::~EventEngine() {
@@ -24,9 +44,9 @@ EventEngine::~EventEngine() {
         delete motion_engine_;
         motion_engine_ = nullptr;
     }
-    if (owns_touch_engine_ && touch_engine_) {
-        delete touch_engine_;
-        touch_engine_ = nullptr;
+    if (owns_multitouch_engine_ && multitouch_engine_) {
+        delete multitouch_engine_;
+        multitouch_engine_ = nullptr;
     }
     if (event_processor_) {
         delete event_processor_;
@@ -41,13 +61,20 @@ void EventEngine::Initialize() {
 }
 
 void EventEngine::LoadEventConfiguration() {
-    // 首先尝试从文件系统加载配置
-    const char* config_path = "/spiffs/event_config.json";
+    // 检查SD卡是否已初始化
+    SDdata_Pro* sd_handle = GetSDHandle();
+    if (!sd_handle) {
+        EventConfigLoader::LoadFromEmbedded(this);
+        return;
+    }
+    
+    // SD卡已初始化，尝试从SD卡加载配置
+    const char* config_path = "/sdcard/event_config.json";
+    
     bool loaded = EventConfigLoader::LoadFromFile(config_path, this);
     
     if (!loaded) {
         // 如果文件不存在或加载失败，使用嵌入的默认配置
-        ESP_LOGI(TAG, "Loading embedded default event configuration");
         EventConfigLoader::LoadFromEmbedded(this);
     }
 }
@@ -96,6 +123,12 @@ void EventEngine::UpdateMotionEngineConfig(const cJSON* json) {
     }
 }
 
+void EventEngine::UpdateMultitouchEngineConfig(const cJSON* json) {
+    if (multitouch_engine_ && json) {
+        multitouch_engine_->UpdateConfigFromJson(json);
+    }
+}
+
 void EventEngine::InitializeMotionEngine(Qmi8658* imu, bool enable_debug) {
     if (!imu) {
         ESP_LOGW(TAG, "Cannot initialize motion engine without IMU");
@@ -123,21 +156,26 @@ void EventEngine::InitializeMotionEngine(Qmi8658* imu, bool enable_debug) {
     ESP_LOGI(TAG, "Motion engine initialized and registered with event engine");
 }
 
-void EventEngine::InitializeTouchEngine() {
+void EventEngine::InitializeMultitouchEngine(i2c_master_bus_handle_t i2c_bus) {
     // 如果已经存在旧的引擎，先清理
-    if (owns_touch_engine_ && touch_engine_) {
-        delete touch_engine_;
+    if (owns_multitouch_engine_ && multitouch_engine_) {
+        delete multitouch_engine_;
     }
     
-    // 创建新的触摸引擎
-    touch_engine_ = new TouchEngine();
-    touch_engine_->Initialize();
-    owns_touch_engine_ = true;
+    // 创建新的多点触摸引擎
+    if (i2c_bus) {
+        multitouch_engine_ = new MultitouchEngine(i2c_bus);
+    } else {
+        ESP_LOGW(TAG, "No I2C bus provided, using default constructor (may fail)");
+        multitouch_engine_ = new MultitouchEngine();
+    }
+    multitouch_engine_->Initialize();
+    owns_multitouch_engine_ = true;
     
     // 设置回调
-    SetupTouchEngineCallbacks();
+    SetupMultitouchEngineCallbacks();
     
-    ESP_LOGI(TAG, "Touch engine initialized and registered with event engine - GPIO10 (LEFT), GPIO11 (RIGHT)");
+    ESP_LOGI(TAG, "Multitouch engine initialized and registered with event engine - MPR121 @ 0x5A (polling mode)");
 }
 
 void EventEngine::SetupMotionEngineCallbacks() {
@@ -150,27 +188,52 @@ void EventEngine::SetupMotionEngineCallbacks() {
     }
 }
 
-void EventEngine::SetupTouchEngineCallbacks() {
-    if (touch_engine_) {
-        ESP_LOGI(TAG, "Registering touch engine callback");
-        touch_engine_->RegisterCallback(
+void EventEngine::SetupMultitouchEngineCallbacks() {
+    if (multitouch_engine_) {
+        ESP_LOGI(TAG, "Registering multitouch engine callback");
+        multitouch_engine_->RegisterCallback(
             [this](const TouchEvent& event) {
-                ESP_LOGI(TAG, "Lambda callback invoked for touch event");
+                ESP_LOGI(TAG, "Lambda callback invoked for multitouch event");
                 this->OnTouchEvent(event);
             }
         );
         
         // 设置IMU稳定性查询回调
-        touch_engine_->SetIMUStabilityCallback(
+        multitouch_engine_->SetIMUStabilityCallback(
             [this]() -> bool {
                 return this->IsIMUStable();
             }
         );
         
-        ESP_LOGI(TAG, "Touch engine callback and IMU stability callback registered");
+        ESP_LOGI(TAG, "Multitouch engine callback and IMU stability callback registered");
     } else {
-        ESP_LOGW(TAG, "Touch engine is null, cannot register callback");
+        ESP_LOGW(TAG, "Multitouch engine is null, cannot register callback");
     }
+}
+
+void EventEngine::InitializeEmotionEngine() {
+    if (emotion_engine_initialized_) {
+        ESP_LOGW(TAG, "Emotion engine already initialized");
+        return;
+    }
+    
+    // 获取情感引擎单例并初始化
+    EmotionEngine& emotion_engine = EmotionEngine::GetInstance();
+    emotion_engine.Initialize();
+    emotion_engine_initialized_ = true;
+    
+    ESP_LOGI(TAG, "Emotion engine initialized and integrated with event engine");
+}
+
+void EventEngine::SetEmotionReportCallback(EmotionEngine::EmotionReportCallback callback) {
+    if (!emotion_engine_initialized_) {
+        ESP_LOGW(TAG, "Emotion engine not initialized, call InitializeEmotionEngine() first");
+        return;
+    }
+    
+    EmotionEngine& emotion_engine = EmotionEngine::GetInstance();
+    emotion_engine.SetEmotionReportCallback(callback);
+    ESP_LOGI(TAG, "Emotion report callback set");
 }
 
 void EventEngine::RegisterCallback(EventCallback callback) {
@@ -181,14 +244,24 @@ void EventEngine::RegisterCallback(EventType type, EventCallback callback) {
     type_callbacks_.push_back({type, callback});
 }
 
+void EventEngine::RegisterBatchCallback(BatchEventCallback callback) {
+    batch_callback_ = callback;
+}
+
 void EventEngine::Process() {
     // 处理运动引擎
     if (motion_engine_) {
         motion_engine_->Process();
     }
     
-    // 注意：TouchEngine有自己的任务，不需要在这里调用Process
-    // TouchEngine的事件会通过回调异步到达
+    // 检查批量上传超时
+    CheckBatchUploadTimeout();
+
+    // 检查空闲超时
+    CheckIdleTimeout();
+
+    // 注意：MultitouchEngine有自己的任务，不需要在这里调用Process
+    // MultitouchEngine的事件会通过回调异步到达
 }
 
 void EventEngine::TriggerEvent(const Event& event) {
@@ -215,31 +288,63 @@ void EventEngine::OnMotionEvent(const MotionEvent& motion_event) {
 
 void EventEngine::DispatchEvent(const Event& event) {
     ESP_LOGI(TAG, "DispatchEvent called with event type=%d", (int)event.type);
-    
+
+    if (!event_processor_) {
+        ESP_LOGE(TAG, "Event processor is null! Cannot process event type=%d", (int)event.type);
+        return;
+    }
+
+    // 注意：不再在这里重置空闲状态，因为现在基于设备状态进行空闲检测
+
     // 通过事件处理器处理事件
     Event processed_event;
     bool should_process = event_processor_->ProcessEvent(event, processed_event);
-    
+
+    ESP_LOGD(TAG, "ProcessEvent returned: should_process=%d for event type=%d",
+             should_process, (int)event.type);
+
     if (!should_process) {
-        // 事件被丢弃（防抖、节流、冷却等）
+        // 事件被丢弃（防抖、节流、冷却等），但空闲状态已经重置
+        ESP_LOGI(TAG, "Event type=%d was filtered out by processing strategy", (int)event.type);
         return;
     }
+
+    // 如果情感引擎已初始化，则更新情感状态
+    if (emotion_engine_initialized_) {
+        ESP_LOGD(TAG, "Updating emotion state for event type=%d", (int)processed_event.type);
+        EmotionEngine& emotion_engine = EmotionEngine::GetInstance();
+        emotion_engine.OnEvent(processed_event);
+    } else {
+        ESP_LOGW(TAG, "Emotion engine not initialized, skipping emotion update for event type=%d", (int)processed_event.type);
+    }
     
-    // 调用全局回调
+    // 调用全局回调（单个事件处理，保持兼容性）
     if (global_callback_) {
         global_callback_(processed_event);
     }
     
-    // 调用特定类型的回调
+    // 调用特定类型的回调（单个事件处理，保持兼容性）
     for (const auto& pair : type_callbacks_) {
         if (pair.first == processed_event.type) {
             pair.second(processed_event);
         }
     }
     
+    // 批量上传处理
+    if (upload_config_.batch_upload_enabled && batch_callback_) {
+        AddToPendingBatch(processed_event);
+    }
+    
     // 处理队列中的事件
     Event queued_event;
     while (event_processor_->GetNextQueuedEvent(queued_event)) {
+        // 队列中的事件也需要更新情感状态
+        if (emotion_engine_initialized_) {
+            ESP_LOGD(TAG, "Updating emotion state for queued event type=%d", (int)queued_event.type);
+            EmotionEngine& emotion_engine = EmotionEngine::GetInstance();
+            emotion_engine.OnEvent(queued_event);
+        }
+        
         if (global_callback_) {
             global_callback_(queued_event);
         }
@@ -286,15 +391,15 @@ bool EventEngine::IsUpsideDown() const {
 }
 
 bool EventEngine::IsLeftTouched() const {
-    if (touch_engine_) {
-        return touch_engine_->IsLeftTouched();
+    if (multitouch_engine_) {
+        return multitouch_engine_->IsLeftTouched();
     }
     return false;
 }
 
 bool EventEngine::IsRightTouched() const {
-    if (touch_engine_) {
-        return touch_engine_->IsRightTouched();
+    if (multitouch_engine_) {
+        return multitouch_engine_->IsRightTouched();
     }
     return false;
 }
@@ -352,7 +457,7 @@ EventType EventEngine::ConvertTouchEventType(TouchEventType touch_type, TouchPos
         case TouchEventType::SINGLE_TAP:
             return EventType::TOUCH_TAP;  // 左右侧单击都映射为TAP
             
-        case TouchEventType::HOLD:
+        case TouchEventType::LONG_PRESS:
             return EventType::TOUCH_LONG_PRESS;
             
         case TouchEventType::RELEASE:
@@ -370,4 +475,160 @@ EventType EventEngine::ConvertTouchEventType(TouchEventType touch_type, TouchPos
         default:
             return EventType::MOTION_NONE;
     }
+}
+
+// 批量上传相关方法实现
+void EventEngine::AddToPendingBatch(const Event& event) {
+    int64_t current_time = esp_timer_get_time();
+    
+    // 添加事件到待上传队列
+    pending_events_.push_back(event);
+    last_event_time_ = current_time;
+    
+    ESP_LOGD(TAG, "Added event type=%d to batch, total events=%u", 
+             (int)event.type, pending_events_.size());
+    
+    // 检查是否达到最大批量大小，立即上传
+    if (pending_events_.size() >= upload_config_.max_batch_size) {
+        ESP_LOGI(TAG, "Batch size limit reached (%d), flushing immediately", 
+                 upload_config_.max_batch_size);
+        FlushPendingEvents();
+    }
+}
+
+void EventEngine::CheckBatchUploadTimeout() {
+    if (pending_events_.empty()) {
+        return;
+    }
+    
+    int64_t current_time = esp_timer_get_time();
+    int64_t time_since_last_event = current_time - last_event_time_;
+    
+    // 检查是否超过批量窗口时间
+    if (time_since_last_event >= upload_config_.batch_window_ms * 1000) { // 转换为微秒
+        ESP_LOGI(TAG, "Batch window timeout (%.1fms), flushing %u events",
+                 time_since_last_event / 1000.0f, pending_events_.size());
+        FlushPendingEvents();
+    }
+}
+
+void EventEngine::FlushPendingEvents() {
+    if (pending_events_.empty() || !batch_callback_) {
+        return;
+    }
+    
+    ESP_LOGI(TAG, "Flushing batch with %u events", pending_events_.size());
+    
+    // 按时间戳排序事件（确保顺序正确）
+    std::sort(pending_events_.begin(), pending_events_.end(), 
+              [](const Event& a, const Event& b) {
+                  return a.timestamp_us < b.timestamp_us;
+              });
+    
+    // 调用批量回调
+    batch_callback_(pending_events_);
+    
+    // 清空待上传队列
+    pending_events_.clear();
+    last_event_time_ = 0;
+}
+
+void EventEngine::LoadUploadConfig(const cJSON* json) {
+    if (!json) return;
+    
+    // 查找事件上传配置节点
+    const cJSON* upload_config = cJSON_GetObjectItem(json, "event_upload_config");
+    if (!upload_config) {
+        ESP_LOGW(TAG, "No event_upload_config found, using defaults");
+        return;
+    }
+    
+    // 加载批量上传启用状态
+    const cJSON* enabled = cJSON_GetObjectItem(upload_config, "batch_upload_enabled");
+    if (enabled && cJSON_IsBool(enabled)) {
+        upload_config_.batch_upload_enabled = cJSON_IsTrue(enabled);
+    }
+    
+    // 加载批量窗口时间
+    const cJSON* window_ms = cJSON_GetObjectItem(upload_config, "batch_window_ms");
+    if (window_ms && cJSON_IsNumber(window_ms)) {
+        upload_config_.batch_window_ms = window_ms->valueint;
+    }
+    
+    // 加载最大批量大小
+    const cJSON* max_size = cJSON_GetObjectItem(upload_config, "max_batch_size");
+    if (max_size && cJSON_IsNumber(max_size)) {
+        upload_config_.max_batch_size = max_size->valueint;
+        // 重新预留事件列表空间
+        pending_events_.reserve(upload_config_.max_batch_size);
+    }
+    
+    ESP_LOGI(TAG, "Upload config loaded: enabled=%d, window=%ums, max_size=%u",
+             upload_config_.batch_upload_enabled,
+             upload_config_.batch_window_ms,
+             upload_config_.max_batch_size);
+}
+
+void EventEngine::CheckIdleTimeout() {
+    // 获取当前设备状态
+    Application& app = Application::GetInstance();
+    DeviceState current_state = app.GetDeviceState();
+
+    int64_t current_time = esp_timer_get_time();
+
+    // 如果设备不在idle状态，重置空闲状态记录
+    if (current_state != kDeviceStateIdle) {
+        if (idle_start_time_ != 0) {
+            // 设备刚从idle状态转换出来
+            ESP_LOGD(TAG, "Device left idle state, resetting idle timer");
+            idle_start_time_ = 0;
+            idle_event_triggered_ = false;
+        }
+        return;
+    }
+
+    // 设备处于idle状态
+    if (idle_start_time_ == 0) {
+        // 刚进入idle状态，记录开始时间
+        idle_start_time_ = current_time;
+        idle_event_triggered_ = false;
+        ESP_LOGD(TAG, "Device entered idle state, starting idle timer");
+        return;
+    }
+
+    // 计算已经idle了多长时间
+    int64_t idle_duration = current_time - idle_start_time_;
+
+    // 检查是否超过空闲阈值且尚未触发空闲事件
+    if (idle_duration >= idle_threshold_us_ && !idle_event_triggered_) {
+        ESP_LOGI(TAG, "Idle timeout detected: %ldms in idle state",
+                 (long)(idle_duration / 1000));
+
+        // 标记已触发，防止重复触发
+        idle_event_triggered_ = true;
+
+        // 触发IDLE_1MIN事件
+        TriggerEvent(EventType::IDLE_1MIN);
+    }
+}
+
+void EventEngine::SetIdleThreshold(int64_t threshold_ms) {
+    idle_threshold_us_ = threshold_ms * 1000;  // 转换为微秒
+    ESP_LOGI(TAG, "Idle threshold set to %ldms (%ldus)",
+             (long)threshold_ms, (long)idle_threshold_us_);
+
+    // 重置空闲事件标记，因为阈值改变了
+    idle_event_triggered_ = false;
+}
+
+void EventEngine::ReloadMotionConfig() {
+    if (!motion_engine_) {
+        ESP_LOGW(TAG, "Cannot reload motion config: motion engine not initialized");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Reloading motion engine configuration...");
+
+    // 直接复用现有的配置加载逻辑
+    LoadEventConfiguration();
 }

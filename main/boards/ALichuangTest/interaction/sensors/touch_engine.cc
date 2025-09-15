@@ -56,8 +56,8 @@ void TouchEngine::Initialize() {
     // 3. 配置触摸传感器
     InitializeGPIO();
     
-    // 4. 创建触摸处理任务
-    BaseType_t task_result = xTaskCreate(TouchTask, "touch_task", 3072, this, 10, &task_handle_);
+    // 4. 创建触摸处理任务（增加栈大小以支持情感状态回调）
+    BaseType_t task_result = xTaskCreate(TouchTask, "touch_task", 6144, this, 10, &task_handle_);
     if (task_result != pdPASS) {
         ESP_LOGE(TAG, "Failed to create touch task");
         return;
@@ -450,17 +450,17 @@ void TouchEngine::ProcessSingleTouch(bool currently_touched, TouchPosition posit
         if (!state.event_triggered && duration_ms >= config_.hold_min_duration_ms) {
             // 触发长按事件
             TouchEvent event;
-            event.type = TouchEventType::HOLD;
+            event.type = TouchEventType::LONG_PRESS;
             event.position = position;
             event.timestamp_us = current_time;
             event.duration_ms = duration_ms;
             
-            ESP_LOGI(TAG, "Creating HOLD event: type=%d, position=%d, duration=%ld ms", 
+            ESP_LOGI(TAG, "Creating LONG_PRESS event: type=%d, position=%d, duration=%ld ms", 
                     (int)event.type, (int)event.position, event.duration_ms);
             
             DispatchEvent(event);
             
-            ESP_LOGI(TAG, "HOLD on %s dispatched (duration: %ld ms)", 
+            ESP_LOGI(TAG, "LONG_PRESS on %s dispatched (duration: %ld ms)", 
                     position == TouchPosition::LEFT ? "LEFT" : "RIGHT", duration_ms);
             
             state.event_triggered = true;  // 标记已触发，避免重复触发
