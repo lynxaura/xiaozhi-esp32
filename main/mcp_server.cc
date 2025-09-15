@@ -172,19 +172,18 @@ void McpServer::AddUserOnlyTools() {
 
     // Display control
 #ifdef HAVE_LVGL
-    auto display = dynamic_cast<LvglDisplay*>(Board::GetInstance().GetDisplay());
+    auto display = static_cast<LvglDisplay*>(Board::GetInstance().GetDisplay());
     if (display) {
         AddUserOnlyTool("self.screen.get_info", "Information about the screen, including width, height, etc.",
             PropertyList(),
-            [display](const PropertyList& properties) -> ReturnValue {
+            [](const PropertyList& properties) -> ReturnValue {
+                auto display = static_cast<LvglDisplay*>(Board::GetInstance().GetDisplay());
                 cJSON *json = cJSON_CreateObject();
                 cJSON_AddNumberToObject(json, "width", display->width());
                 cJSON_AddNumberToObject(json, "height", display->height());
-                if (dynamic_cast<OledDisplay*>(display)) {
-                    cJSON_AddBoolToObject(json, "monochrome", true);
-                } else {
-                    cJSON_AddBoolToObject(json, "monochrome", false);
-                }
+                // Check if it's an OLED display by checking class name or other methods
+                // For now, assume it's not monochrome unless we have a specific way to detect
+                cJSON_AddBoolToObject(json, "monochrome", false);
                 return json;
             });
 
@@ -193,7 +192,8 @@ void McpServer::AddUserOnlyTools() {
                 Property("url", kPropertyTypeString),
                 Property("quality", kPropertyTypeInteger, 80, 1, 100)
             }),
-            [display](const PropertyList& properties) -> ReturnValue {
+            [](const PropertyList& properties) -> ReturnValue {
+                auto display = static_cast<LvglDisplay*>(Board::GetInstance().GetDisplay());
                 auto url = properties["url"].value<std::string>();
                 auto quality = properties["quality"].value<int>();
 
@@ -249,7 +249,8 @@ void McpServer::AddUserOnlyTools() {
             PropertyList({
                 Property("url", kPropertyTypeString)
             }),
-            [display](const PropertyList& properties) -> ReturnValue {
+            [](const PropertyList& properties) -> ReturnValue {
+                auto display = static_cast<LvglDisplay*>(Board::GetInstance().GetDisplay());
                 auto url = properties["url"].value<std::string>();
                 auto http = Board::GetInstance().GetNetwork()->CreateHttp(3);
 

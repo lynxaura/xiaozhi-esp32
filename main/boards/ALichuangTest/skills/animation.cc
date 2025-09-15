@@ -11,9 +11,8 @@
 #define TAG "AnimaDisplay"
 
 AnimaDisplay::AnimaDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
-                           int width, int height, int offset_x, int offset_y, bool mirror_x, bool mirror_y, bool swap_xy,
-                           DisplayFonts fonts)
-    : LcdDisplay(panel_io, panel, fonts, width, height) {
+                           int width, int height, int offset_x, int offset_y, bool mirror_x, bool mirror_y, bool swap_xy)
+    : LcdDisplay(panel_io, panel, width, height) {
 
     // draw white
     std::vector<uint16_t> buffer(width_, 0xFFFF);
@@ -89,8 +88,8 @@ void AnimaDisplay::SetupUI() {
     lv_obj_set_style_pad_all(container_, 0, 0);
     
     // 创建基本的状态标签（设为隐藏，避免系统调用时崩溃）
-    emotion_label_ = lv_label_create(container_);
-    lv_obj_add_flag(emotion_label_, LV_OBJ_FLAG_HIDDEN);
+    emoji_label_ = lv_label_create(container_);
+    lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
     
     // 其他UI组件设为nullptr，避免系统调用时出错
     status_label_ = nullptr;
@@ -114,11 +113,6 @@ void AnimaDisplay::SetEmotion(const char* emotion) {
     }
 }
 
-void AnimaDisplay::SetTheme(const std::string& theme_name) {
-    // 只保存主题名称，不操作UI元素（因为我们使用canvas）
-    current_theme_name_ = theme_name;
-    ESP_LOGI(TAG, "Theme set to: %s (UI elements not affected due to canvas usage)", theme_name.c_str());
-}
 
 void AnimaDisplay::CreateCanvas() {
     DisplayLockGuard lock(this);
@@ -231,4 +225,10 @@ void AnimaDisplay::DrawImageOnCanvas(int x, int y, int width, int height, const 
     lv_obj_move_foreground(canvas_);
     
     // ESP_LOGI("Display", "Image drawn on canvas at x=%d, y=%d, w=%d, h=%d", x, y, width, height);
+}
+
+void AnimaDisplay::SetTheme(Theme* theme) {
+    // AnimaDisplay doesn't use traditional themes since it uses canvas-based rendering
+    // Store the theme but don't apply it to UI elements
+    current_theme_ = theme;
 }
