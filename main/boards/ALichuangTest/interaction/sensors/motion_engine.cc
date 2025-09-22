@@ -523,7 +523,10 @@ bool MotionEngine::IsCurrentlyStable() const {
 }
 
 void MotionEngine::UpdateConfigFromJson(const cJSON* json) {
-    if (!json) return;
+    if (!json) {
+        ESP_LOGW(TAG, "Motion engine JSON NULL");
+        return;
+    }
     
     // 新结构：从 events 节点读取各个运动事件的检测参数
     const cJSON* events = cJSON_GetObjectItem(json, "events");

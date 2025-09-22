@@ -91,7 +91,10 @@ void MultitouchEngine::Initialize() {
 }
 
 void MultitouchEngine::UpdateConfigFromJson(const cJSON* json) {
-    if (!json) return;
+    if (!json) {
+        ESP_LOGW(TAG, "Multitouch engine JSON NULL");
+        return;
+    }
     
     // 新结构：从 events 节点读取各个触摸事件的检测参数
     const cJSON* events = cJSON_GetObjectItem(json, "events");
