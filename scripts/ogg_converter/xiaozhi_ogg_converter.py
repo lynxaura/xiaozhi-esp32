@@ -107,7 +107,7 @@ class AudioConverterApp:
 
     def select_files(self):
         file_types = [
-            ("音频文件", "*.wav *.mogg *.ogg *.flac") if self.mode.get() == "audio_to_ogg" 
+            ("音频文件", "*.wav *.mogg *.ogg *.flac *.m4a *.mp3 *.aac") if self.mode.get() == "audio_to_ogg"
             else ("ogg文件", "*.ogg")
         ]
         
@@ -188,22 +188,39 @@ class AudioConverterApp:
 
     def convert_audio_to_ogg(self, target_lufs, input_files):
         """音频转到ogg转换逻辑"""
+        # 检查ffmpeg是否可用
+        import shutil
+        if not shutil.which('ffmpeg'):
+            print("错误: 未找到ffmpeg！")
+            print("请先安装ffmpeg:")
+            print("1. 访问 https://ffmpeg.org/download.html")
+            print("2. 下载Windows版本")
+            print("3. 解压并将bin目录添加到系统PATH")
+            print("或者使用winget安装: winget install ffmpeg\n")
+            return
+
         for input_path in input_files:
             try:
                 filename = os.path.basename(input_path)
                 base_name = os.path.splitext(filename)[0]
                 output_path = os.path.join(self.output_dir.get(), f"{base_name}.ogg")
-                
+
                 print(f"正在转换: {filename}")
+                print(f"输入文件: {input_path}")
+                print(f"输出文件: {output_path}")
+
                 (
                     ffmpeg
                     .input(input_path)
-                    .output(output_path, acodec='libopus', audio_bitrate='16k', ac=1, ar=16000, frame_duration=60)
-                    .run(overwrite_output=True)
+                    .output(output_path, acodec='libopus', audio_bitrate='16k', ac=1, ar=24000, frame_duration=60)
+                    .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
                 )
                 print(f"转换成功: {filename}\n")
+            except ffmpeg.Error as e:
+                print(f"FFmpeg错误输出: {e.stderr.decode('utf-8') if e.stderr else '无错误信息'}\n")
             except Exception as e:
-                print(f"转换失败: {str(e)}\n")
+                print(f"转换失败: {str(e)}")
+                print(f"错误类型: {type(e).__name__}\n")
 
     def convert_ogg_to_audio(self, input_files):
         """ogg转回音频转换逻辑"""
@@ -217,7 +234,7 @@ class AudioConverterApp:
                 (
                     ffmpeg
                     .input(input_path)
-                    .output(output_path, acodec='libopus', audio_bitrate='16k', ac=1, ar=16000, frame_duration=60)
+                    .output(output_path, acodec='libopus', audio_bitrate='16k', ac=1, ar=24000, frame_duration=60)
                     .run(overwrite_output=True)
                 )
                 print(f"转换成功: {filename}\n")

@@ -26,7 +26,13 @@
       "Read(/E:\\Study\\Cpp_project\\xiaozhi-esp32-projmagic\\main\\boards\\ALichuangTest/**)",
       "Read(/E:\\Study\\Cpp_project\\xiaozhi-esp32-projmagic\\main\\boards\\ALichuangTest/**)",
       "Read(/E:\\Study\\Cpp_project\\xiaozhi-esp32-projmagic\\main/**)",
-      "Read(/E:\\Study\\Cpp_project\\xiaozhi-esp32-projmagic\\main\\boards\\ALichuangTest\\interaction\\sensors/**)"
+      "Read(/E:\\Study\\Cpp_project\\xiaozhi-esp32-projmagic\\main\\boards\\ALichuangTest\\interaction\\sensors/**)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(where:*)",
+      "Bash(dir \"C:\\Users\\Administrator\\Downloads\\sound_effect_ogg\")",
+      "Bash(dir:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }
