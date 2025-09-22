@@ -62,14 +62,17 @@ void McpResponseController::RegisterMotionTools() {
     auto& mcp_server = McpServer::GetInstance();
     
     // 基础身体动作控制
-    mcp_server.AddTool("self.body.basic_motion", 
-        "控制身体做基础动作。可用动作：\n"
+    mcp_server.AddTool("self.body.basic_motion",
+        "控制身体做基础动作。\n"
+        "重要：每次调用只能执行一个动作，参数名为'action'\n"
+        "如需执行多个动作，请分别调用多次\n\n"
+        "可用动作：\n"
         "happy_wiggle: 开心摇摆\n"
-        "shake_head: 摇头表示不同意\n" 
+        "shake_head: 摇头表示不同意\n"
         "nuzzle_forward: 向前蹭表示亲昵\n"
         "relax_completely: 完全放松\n"
         "excited_jiggle: 兴奋抖动\n"
-        "stop: 停止当前动作", 
+        "stop: 停止当前动作",
         PropertyList({
             Property("action", kPropertyTypeString)
         }), [this](const PropertyList& properties) -> ReturnValue {
@@ -78,7 +81,10 @@ void McpResponseController::RegisterMotionTools() {
         
     // 探索和转头动作
     mcp_server.AddTool("self.body.explore_motion",
-        "控制身体做探索和转头动作。可用动作：\n"
+        "控制身体做探索和转头动作。\n"
+        "重要：每次调用只能执行一个动作，参数名为'action'\n"
+        "如需执行多个动作，请分别调用多次\n\n"
+        "可用动作：\n"
         "curious_peek_left: 好奇地向左探头\n"
         "curious_peek_right: 好奇地向右探头\n"
         "quick_turn_left: 快速转向左侧\n"
@@ -93,7 +99,10 @@ void McpResponseController::RegisterMotionTools() {
         
     // 反应和情感动作
     mcp_server.AddTool("self.body.reaction_motion",
-        "控制身体做反应性动作。可用动作：\n"
+        "控制身体做反应性动作。\n"
+        "重要：每次调用只能执行一个动作，参数名为'action'\n"
+        "如需执行多个动作，请分别调用多次\n\n"
+        "可用动作：\n"
         "dodge_subtle: 微妙躲闪\n"
         "dodge_slowly: 缓慢躲开\n"
         "dodge_opposite_left: 向右躲避(被左侧触摸)\n"
@@ -109,7 +118,10 @@ void McpResponseController::RegisterMotionTools() {
         
     // 复杂表演动作
     mcp_server.AddTool("self.body.performance_motion",
-        "控制身体做复杂表演动作。可用动作：\n"
+        "控制身体做复杂表演动作。\n"
+        "重要：每次调用只能执行一个动作，参数名为'action'\n"
+        "如需执行多个动作，请分别调用多次\n\n"
+        "可用动作：\n"
         "tickle_twist_dance: 被挠痒痒的扭动舞蹈\n"
         "annoyed_twist_to_happy: 从烦躁扭动过渡到开心\n"
         "unwilling_turn_back: 不情愿地回到中心\n"
@@ -139,7 +151,10 @@ void McpResponseController::RegisterVibrationTools() {
     
     // 基础振动控制
     mcp_server.AddTool("self.haptic.basic_vibration",
-        "控制振动马达产生触觉反馈。可用模式：\n"
+        "控制振动马达产生触觉反馈。\n"
+        "重要：每次调用只能执行一个振动模式，参数名为'pattern'\n"
+        "如需执行多个振动，请分别调用多次\n\n"
+        "可用模式：\n"
         "short_buzz: 短促确认振动 - 轻抚头部的清脆反馈\n"
         "purr_short: 短促的咕噜声 - 轻抚头部的温和反馈\n"
         "purr_pattern: 持续的咕噜咕噜声 - 按住头部的舒适感\n"

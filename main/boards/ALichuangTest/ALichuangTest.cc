@@ -499,7 +499,7 @@ private:
         esp_lcd_panel_io_spi_config_t io_config = {};
         io_config.cs_gpio_num = GPIO_NUM_NC;
         io_config.dc_gpio_num = GPIO_NUM_39;
-        io_config.spi_mode = 2;
+        io_config.spi_mode = 3;
         io_config.pclk_hz = 80 * 1000 * 1000;
         io_config.trans_queue_depth = 10;
         io_config.lcd_cmd_bits = 8;
@@ -701,20 +701,20 @@ private:
     void InitializeInteractionSystem() {
         // 创建事件引擎
         event_engine_ = new EventEngine();
+        // 初始化多点触摸引擎
+        event_engine_->InitializeMultitouchEngine(i2c_bus_);
+        // 初始化运动引擎（如果IMU可用）
+        if (imu_) {
+            event_engine_->InitializeMotionEngine(imu_, true);  // 启用调试输出
+            // 当前功能模块固定，必须初始化成功
+            // 重新加载配置，因为motion engine在Initialize()时还不存在
+            // event_engine_->ReloadMotionConfig(); 
+        }
+
         event_engine_->Initialize();
         
         // 初始化情感引擎
         event_engine_->InitializeEmotionEngine();
-        
-        // 初始化运动引擎（如果IMU可用）
-        if (imu_) {
-            event_engine_->InitializeMotionEngine(imu_, true);  // 启用调试输出
-            // 重新加载配置，因为motion engine在Initialize()时还不存在
-            event_engine_->ReloadMotionConfig();
-        }
-        
-        // 初始化多点触摸引擎
-        event_engine_->InitializeMultitouchEngine(i2c_bus_);
         
         // 创建事件上传器
         event_uploader_ = new EventUploader();
@@ -959,7 +959,7 @@ public:
         InitializeI2c();
         InitializeSpi();
         InitializeSt7789Display();
-        InitializeTouch();
+        //InitializeTouch();
         InitializeButtons();
         InitializeCamera();
         InitializeImu();  // 初始化IMU硬件
@@ -1044,6 +1044,12 @@ public:
     // 获取本地响应控制器（用于调试和测试）
     LocalResponseController* GetLocalResponseController() {
         return local_response_controller_;
+    }
+
+    void TestPlayOggSound() {
+        auto& app = Application::GetInstance();
+        const char* filepath = TEST_OGG_PATH;
+        app.PlaySoundOGGFile(filepath);
     }
 };
 

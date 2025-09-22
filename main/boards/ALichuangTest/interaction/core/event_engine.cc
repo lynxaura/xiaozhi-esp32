@@ -120,12 +120,16 @@ EventProcessor::EventStats EventEngine::GetEventStats(EventType type) const {
 void EventEngine::UpdateMotionEngineConfig(const cJSON* json) {
     if (motion_engine_ && json) {
         motion_engine_->UpdateConfigFromJson(json);
+    } else {
+        ESP_LOGW(TAG, "UpdateMotionEngineConfig err!");
     }
 }
 
 void EventEngine::UpdateMultitouchEngineConfig(const cJSON* json) {
     if (multitouch_engine_ && json) {
         multitouch_engine_->UpdateConfigFromJson(json);
+    } else {
+        ESP_LOGW(TAG, "UpdateMultitouchEngineConfig err!");
     }
 }
 
