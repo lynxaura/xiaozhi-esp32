@@ -1045,6 +1045,12 @@ public:
     LocalResponseController* GetLocalResponseController() {
         return local_response_controller_;
     }
+
+    void TestPlayOggSound() {
+        auto& app = Application::GetInstance();
+        const char* filepath = TEST_OGG_PATH;
+        app.PlaySoundOGGFile(filepath);
+    }
 };
 
 DECLARE_BOARD(ALichuangTest);

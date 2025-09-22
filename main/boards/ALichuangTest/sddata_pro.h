@@ -20,6 +20,9 @@
 /* CONFIG PATH */
 #define VASYS_CFG_PATH    "/sdcard/config/"
 
+/* SOUND PATH */
+#define TEST_OGG_PATH    "/sdcard/welcome.ogg"
+
 class SDdata_Pro {
 public:
     SDdata_Pro();

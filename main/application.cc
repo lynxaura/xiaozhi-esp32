@@ -380,6 +380,9 @@ void Application::Start() {
     /* Start the clock timer to update the status bar */
     esp_timer_start_periodic(clock_timer_handle_, 1000000);
 
+    const char* filepath = "/sdcard/welcome.ogg";
+    PlaySoundOGGFile(filepath);
+
     /* Wait for the network to be ready */
     board.StartNetwork();
 
@@ -921,4 +924,29 @@ void Application::SetAecMode(AecMode mode) {
 
 void Application::PlaySound(const std::string_view& sound) {
     audio_service_.PlaySound(sound);
+}
+
+void Application::PlaySoundOGGFile(const char *filePath) {
+    FILE *f = fopen(filePath, "r");
+    if (f == NULL) {
+        ESP_LOGW(TAG, "sound file err: %s", filePath);
+        return;
+    }
+    // 获取文件大小置位到文件起始处
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    ESP_LOGI(TAG, "ogg audio size: %ld", file_size);
+    fseek(f, 0, SEEK_SET);
+
+    char* databuf = (char* )malloc((file_size) * sizeof(char));
+
+    fread(databuf, 1, file_size, f);
+
+    const std::string_view& ogg = {
+        static_cast<const char*>(databuf),
+        static_cast<size_t>(file_size)
+    };
+    audio_service_.PlaySound(ogg);
+    fclose(f); // 关闭文件
+    free(databuf);
 }
