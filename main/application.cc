@@ -15,6 +15,10 @@
 #include <cJSON.h>
 #include <driver/gpio.h>
 #include <arpa/inet.h>
+
+#include "ble_wifi_integration.h"
+#include "ble_ota.h"
+#include <ssid_manager.h>
 #include <font_awesome.h>
 
 #define TAG "Application"
@@ -353,7 +357,16 @@ void Application::StopListening() {
     });
 }
 
+bool IsWifiConfigMode() {
+    auto& ssid_manager = SsidManager::GetInstance();
+    auto ssid_list = ssid_manager.GetSsidList();
+    Settings settings("wifi", true);
+    return settings.GetInt("force_ap") == 1 || ssid_list.empty();
+}
+
 void Application::Start() {
+    bool en = IsWifiConfigMode();
+
     auto& board = Board::GetInstance();
     SetDeviceState(kDeviceStateStarting);
 
@@ -383,6 +396,33 @@ void Application::Start() {
     const char* filepath = "/sdcard/welcome.ogg";
     PlaySoundOGGFile(filepath);
 
+        if (en && ble_wifi_config_enabled_) {
+        BleWifiIntegration::StartBleWifiConfig();
+        
+        // 同时启动BLE OTA功能
+        auto& ble_ota = BleOta::GetInstance();
+        if (ble_ota.Initialize()) {
+            ESP_LOGI(TAG, "BLE OTA service initialized successfully");
+            
+            // 设置OTA进度回调（可选）
+            ble_ota.SetProgressCallback([](int progress) {
+                ESP_LOGI(TAG, "BLE OTA progress: %d%%", progress);
+            });
+            
+            // 设置OTA完成回调（可选）
+            ble_ota.SetCompleteCallback([](bool success) {
+                if (success) {
+                    ESP_LOGI(TAG, "BLE OTA completed successfully, restarting...");
+                    vTaskDelay(pdMS_TO_TICKS(1000));
+                    esp_restart();
+                } else {
+                    ESP_LOGE(TAG, "BLE OTA failed");
+                }
+            });
+        } else {
+            ESP_LOGE(TAG, "Failed to initialize BLE OTA service");
+        }
+    }
     /* Wait for the network to be ready */
     board.StartNetwork();
 
