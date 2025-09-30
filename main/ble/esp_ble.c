@@ -35,7 +35,7 @@ static const char* TAG = "esp_ble";
 #define USR_ESP_BLE_LOG_LEVEL ESP_LOG_INFO
 #endif
 
-#define MAX_CONN_INSTANCES (BLE_MAX_CONN+1)
+#define MAX_CONN_INSTANCES (BLE_MAX_CONN+1)  // 恢复到参考项目的动态配置
 #define BLE_MTU_MAX CONFIG_NIMBLE_ATT_PREFERRED_MTU
 #define OWN_ADDR_TYPE BLE_OWN_ADDR_RANDOM
 static bool m_ble_sync_flag = false;
@@ -55,7 +55,7 @@ typedef struct{
 }scan_test_t;
 static scan_test_t m_scan_test = {0};
 
-#define SCAN_CB_MAX 1
+#define SCAN_CB_MAX 1  // 保持1不变，已经很小
 static ble_scan_callback_t m_scan_callback[SCAN_CB_MAX] ;
 ///Declare static functions
 // static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);

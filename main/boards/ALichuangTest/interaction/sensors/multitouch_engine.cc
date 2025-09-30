@@ -422,6 +422,49 @@ void MultitouchEngine::SetIMUStabilityCallback(IMUStabilityCallback callback) {
     imu_stability_callback_ = callback;
 }
 
+esp_err_t MultitouchEngine::SuspendTask() {
+    if (task_handle_ == nullptr) {
+        ESP_LOGW(TAG, "Multitouch task not running, nothing to suspend");
+        return ESP_OK;
+    }
+
+    // 禁用触摸检测
+    enabled_ = false;
+
+    // 等待当前处理完成
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    // 等待更长时间确保任务完全停止处理
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    // 删除任务以释放栈内存
+    vTaskDelete(task_handle_);
+    task_handle_ = nullptr;
+
+    ESP_LOGI(TAG, "✅ Multitouch task suspended (deleted), stack memory freed: 3072 bytes");
+    return ESP_OK;
+}
+
+esp_err_t MultitouchEngine::ResumeTask() {
+    if (task_handle_ != nullptr) {
+        ESP_LOGW(TAG, "Multitouch task already running, nothing to resume");
+        return ESP_OK;
+    }
+
+    // 重新创建任务
+    BaseType_t task_result = xTaskCreate(TouchTask, "multitouch_task", 3072, this, 10, &task_handle_);
+    if (task_result != pdPASS) {
+        ESP_LOGE(TAG, "Failed to recreate multitouch task");
+        return ESP_ERR_NO_MEM;
+    }
+
+    // 启用触摸检测
+    enabled_ = true;
+
+    ESP_LOGI(TAG, "✅ Multitouch task resumed (recreated), stack memory allocated: 3072 bytes");
+    return ESP_OK;
+}
+
 void MultitouchEngine::TouchTask(void* param) {
     MultitouchEngine* engine = static_cast<MultitouchEngine*>(param);
     ESP_LOGI(TAG, "Multitouch task started");

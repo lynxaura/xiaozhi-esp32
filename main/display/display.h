@@ -40,6 +40,10 @@ public:
     virtual void UpdateStatusBar(bool update_all = false);
     virtual void SetPowerSaveMode(bool on);
 
+    // 内存优化相关虚函数 - 用于暂停动画释放内存（BLE配网时使用）
+    virtual void SuspendAnimation() {}  // 默认空实现
+    virtual void ResumeAnimation() {}   // 默认空实现
+
     inline int width() const { return width_; }
     inline int height() const { return height_; }
 

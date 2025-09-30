@@ -12,11 +12,12 @@
 
 #define TAG "Esp32Camera"
 
-Esp32Camera::Esp32Camera(const camera_config_t& config) {
+Esp32Camera::Esp32Camera(const camera_config_t& config) : config_(config) {
     // camera init
     esp_err_t err = esp_camera_init(&config); // 配置上面定义的参数
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Camera init failed with error 0x%x", err);
+        initialized_ = false;
         return;
     }
 
@@ -24,6 +25,8 @@ Esp32Camera::Esp32Camera(const camera_config_t& config) {
     if (s->id.PID == GC0308_PID) {
         s->set_hmirror(s, 0);  // 这里控制摄像头镜像 写1镜像 写0不镜像
     }
+    initialized_ = true;
+    ESP_LOGI(TAG, "Camera initialized successfully, frame buffer: ~600KB PSRAM");
 }
 
 Esp32Camera::~Esp32Camera() {
@@ -40,6 +43,11 @@ void Esp32Camera::SetExplainUrl(const std::string& url, const std::string& token
 }
 
 bool Esp32Camera::Capture() {
+    if (!initialized_) {
+        ESP_LOGE(TAG, "Camera not initialized, cannot capture");
+        return false;
+    }
+
     if (encoder_thread_.joinable()) {
         encoder_thread_.join();
     }
@@ -256,4 +264,61 @@ std::string Esp32Camera::Explain(const std::string& question) {
     ESP_LOGI(TAG, "Explain image size=%dx%d, compressed size=%d, remain stack size=%d, question=%s\n%s",
         fb_->width, fb_->height, total_sent, remain_stack_size, question.c_str(), result.c_str());
     return result;
+}
+
+bool Esp32Camera::Deinitialize() {
+    if (!initialized_) {
+        ESP_LOGW(TAG, "Camera already deinitialized");
+        return true;
+    }
+
+    ESP_LOGI(TAG, "Deinitializing camera to release ~600KB PSRAM");
+
+    // 等待编码线程完成
+    if (encoder_thread_.joinable()) {
+        encoder_thread_.join();
+    }
+
+    // 释放帧缓冲区
+    if (fb_) {
+        esp_camera_fb_return(fb_);
+        fb_ = nullptr;
+    }
+
+    // 反初始化摄像头驱动，释放PSRAM内存
+    esp_err_t err = esp_camera_deinit();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to deinitialize camera: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    initialized_ = false;
+    ESP_LOGI(TAG, "Camera deinitialized successfully, ~600KB PSRAM released");
+    return true;
+}
+
+bool Esp32Camera::Reinitialize() {
+    if (initialized_) {
+        ESP_LOGW(TAG, "Camera already initialized");
+        return true;
+    }
+
+    ESP_LOGI(TAG, "Reinitializing camera, allocating ~600KB PSRAM");
+
+    // 重新初始化摄像头
+    esp_err_t err = esp_camera_init(&config_);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Camera reinit failed with error 0x%x", err);
+        return false;
+    }
+
+    // 重新设置镜像参数
+    sensor_t *s = esp_camera_sensor_get();
+    if (s && s->id.PID == GC0308_PID) {
+        s->set_hmirror(s, 0);
+    }
+
+    initialized_ = true;
+    ESP_LOGI(TAG, "Camera reinitialized successfully, ~600KB PSRAM allocated");
+    return true;
 }

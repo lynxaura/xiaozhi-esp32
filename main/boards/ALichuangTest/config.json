@@ -10,7 +10,25 @@
                 "CONFIG_PARTITION_TABLE_FILENAME=\"partitions/v1/16m_anima.csv\"",
                 "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
                 "CONFIG_ESPTOOLPY_FLASHSIZE=\"16MB\"",
-                "CONFIG_OTA_URL=\"http://101.126.79.22:8002/xiaozhi/ota/\""
+                "CONFIG_OTA_URL=\"http://101.126.79.22:8002/xiaozhi/ota/\"",
+                "CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y",
+                "CONFIG_BT_NIMBLE_MSYS_1_BLOCK_COUNT=16",
+                "CONFIG_BT_NIMBLE_MSYS_2_BLOCK_COUNT=20",
+                "CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=3072",
+                "CONFIG_BT_NIMBLE_TASK_STACK_SIZE=3072",
+                "CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192",
+                "CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1",
+                "CONFIG_BT_NIMBLE_TRANSPORT_ACL_FROM_LL_COUNT=20",
+                "CONFIG_BT_NIMBLE_TRANSPORT_EVT_COUNT=24",
+                "CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=247",
+                "CONFIG_BT_CTRL_BLE_MAX_ACT=4",
+                "CONFIG_SPIRAM=y",
+                "CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=1024",
+                "CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=98304",
+                "CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY=y",
+                "CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y",
+                "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=4096",
+                "CONFIG_FREERTOS_THREAD_LOCAL_STORAGE_POINTERS=3"
             ]
         },
         {

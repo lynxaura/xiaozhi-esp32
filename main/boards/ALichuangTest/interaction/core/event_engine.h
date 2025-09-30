@@ -158,6 +158,16 @@ public:
     // 情感引擎集成
     void InitializeEmotionEngine();
     void SetEmotionReportCallback(EmotionEngine::EmotionReportCallback callback);
+
+    // 引擎控制方法（用于内存优化）
+    void EnableMotionEngine(bool enable);
+    void EnableMultitouchEngine(bool enable);
+    bool IsMotionEngineEnabled() const;
+    bool IsMultitouchEngineEnabled() const;
+
+    // 事件处理器控制方法（用于内存优化）
+    void SuspendEventProcessor();
+    void ResumeEventProcessor();
     
 private:
     // 运动引擎（内部创建和管理）
@@ -169,7 +179,8 @@ private:
     
     // 事件处理器
     EventProcessor* event_processor_;
-    
+    bool event_processor_suspended_;
+
     // 情感引擎集成标记
     bool emotion_engine_initialized_;
     

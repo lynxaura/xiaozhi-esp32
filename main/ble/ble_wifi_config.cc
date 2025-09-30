@@ -628,58 +628,64 @@ int ble_wifi_config_start_advertising(const char* ap_ssid, int battery_level, bo
         return ret;
     }
     
-    // 构建广播数据
-    static uint8_t adv_data[31];
+    // 构建广播数据 - 极简版本以确保成功
+    uint8_t adv_data[31];
     size_t adv_len = 0;
-    
-    // Flags
-    adv_data[adv_len++] = 2;  // Length
-    adv_data[adv_len++] = 0x01;  // Flags
+
+    // 清零广告数据缓冲区
+    memset(adv_data, 0, sizeof(adv_data));
+
+    // Flags - 最基本的标志
+    adv_data[adv_len++] = 2;     // Length
+    adv_data[adv_len++] = 0x01;  // Flags AD Type
     adv_data[adv_len++] = 0x06;  // LE General Discoverable + BR/EDR Not Supported
-    
-    // Complete Local Name
-    size_t name_len = adv_name.length();
-    if (adv_len + 2 + name_len <= 31) {
-        adv_data[adv_len++] = 1 + name_len;  // Length
-        adv_data[adv_len++] = 0x09;  // Complete Local Name
-        memcpy(&adv_data[adv_len], adv_name.c_str(), name_len);
-        adv_len += name_len;
-    }
-    
-    // 16-bit Service UUID
-    if (adv_len + 4 <= 31) {
-        adv_data[adv_len++] = 3;  // Length
-        adv_data[adv_len++] = 0x03;  // Complete List of 16-bit Service UUIDs
-        adv_data[adv_len++] = (BLE_WIFI_CONFIG_SERVICE_UUID_16 & 0xFF);
-        adv_data[adv_len++] = (BLE_WIFI_CONFIG_SERVICE_UUID_16 >> 8) & 0xFF;
+
+    // 16-bit Service UUID - 必要的服务标识
+    adv_data[adv_len++] = 3;     // Length
+    adv_data[adv_len++] = 0x03;  // Complete List of 16-bit Service UUIDs
+    adv_data[adv_len++] = (BLE_WIFI_CONFIG_SERVICE_UUID_16 & 0xFF);
+    adv_data[adv_len++] = (BLE_WIFI_CONFIG_SERVICE_UUID_16 >> 8) & 0xFF;
+
+    // Shortened Local Name - 只保留关键部分
+    const char* short_name = "lxzn_wificfg";
+    size_t short_name_len = strlen(short_name);
+    if (short_name_len > 10) short_name_len = 10; // 最多10字节
+
+    if (adv_len + 2 + short_name_len <= 29) { // 确保不超过限制
+        adv_data[adv_len++] = 1 + short_name_len;  // Length
+        adv_data[adv_len++] = 0x08;  // Shortened Local Name
+        memcpy(&adv_data[adv_len], short_name, short_name_len);
+        adv_len += short_name_len;
     }
 
-    static uint8_t rsp_data[31];
+    // 验证广告数据不超过31字节限制
+    if (adv_len > 31) {
+        ESP_LOGE(TAG, "Advertising data too long: %d bytes (max 31)", adv_len);
+        return ESP_ERR_INVALID_SIZE;
+    }
+    ESP_LOGI(TAG, "Advertising data length: %d bytes", adv_len);
+
+    // 最小响应数据以减少内存占用
+    uint8_t rsp_data[10]; // 确保足够的缓冲区大小
     size_t rsp_len = 0;
-    uint8_t len_idx;
-    // 设置广播数据
 
-    len_idx = rsp_len;
-    rsp_data[rsp_len++] = 0;  // Length
-    rsp_data[rsp_len++] = 0xff;  // Manufacturer Specific Data
-    rsp_data[rsp_len++] = (BLE_WIFI_CONFIG_MANUFACTURER_ID & 0xFF);
-    rsp_data[rsp_len++] = (BLE_WIFI_CONFIG_MANUFACTURER_ID >> 8) & 0xFF;
+    // 极简Manufacturer Specific Data - 只包含必要信息
+    rsp_data[rsp_len++] = 4;  // Length (3字节数据 + 1字节类型标识)
+    rsp_data[rsp_len++] = 0xFF;  // Manufacturer Specific Data
+    rsp_data[rsp_len++] = 0x00;  // 厂商ID低字节
+    rsp_data[rsp_len++] = 0x01;  // 厂商ID高字节
 
-    const esp_app_desc_t *p_desc = esp_app_get_description();
-    int versino[3] = {0};
-    sscanf(p_desc->version, "%d.%d.%d", &versino[0], &versino[1], &versino[2]);
-    rsp_data[rsp_len++] = versino[0] & 0xFF;
-    rsp_data[rsp_len++] = versino[1] & 0xFF;
-    rsp_data[rsp_len++] = versino[2] & 0xFF;
-
-    rsp_data[rsp_len++] = (BLE_VERSION & 0xFF);
-
-    if(battery_level < 0) battery_level = 0;
+    // 电池信息（可选，作为厂商数据的一部分）
+    if(battery_level < 0) battery_level = 50; // 默认值
     if(battery_level > 100) battery_level = 100;
+    rsp_data[rsp_len++] = (battery_level & 0x7F) | (charging ? 0x80 : 0x00);
 
-    rsp_data[rsp_len++] = (battery_level & 0xFF) | (charging ? 0x80 : 0x00);
-
-    rsp_data[len_idx] = rsp_len - len_idx - 1; // 更新长度字段
+    // 验证响应数据不超过31字节限制
+    if (rsp_len > 31) {
+        ESP_LOGE(TAG, "Response data too long: %d bytes (max 31)", rsp_len);
+        return ESP_ERR_INVALID_SIZE;
+    }
+    ESP_LOGI(TAG, "Response data length: %d bytes", rsp_len);
 
     ret = esp_ble_adv_set_data(adv_data, adv_len, rsp_data, rsp_len);
     if (ret != 0) {

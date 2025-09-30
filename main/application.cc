@@ -17,8 +17,9 @@
 #include <arpa/inet.h>
 
 #include "ble_wifi_integration.h"
-#include "ble_ota.h"
+// #include "ble_ota.h"  // 禁用BLE OTA以节省内存
 #include <ssid_manager.h>
+#include <wifi_station.h>
 #include <font_awesome.h>
 
 #define TAG "Application"
@@ -365,8 +366,6 @@ bool IsWifiConfigMode() {
 }
 
 void Application::Start() {
-    bool en = IsWifiConfigMode();
-
     auto& board = Board::GetInstance();
     SetDeviceState(kDeviceStateStarting);
 
@@ -396,34 +395,26 @@ void Application::Start() {
     const char* filepath = "/sdcard/welcome.ogg";
     PlaySoundOGGFile(filepath);
 
-        if (en && ble_wifi_config_enabled_) {
-        BleWifiIntegration::StartBleWifiConfig();
-        
-        // 同时启动BLE OTA功能
-        auto& ble_ota = BleOta::GetInstance();
-        if (ble_ota.Initialize()) {
-            ESP_LOGI(TAG, "BLE OTA service initialized successfully");
-            
-            // 设置OTA进度回调（可选）
-            ble_ota.SetProgressCallback([](int progress) {
-                ESP_LOGI(TAG, "BLE OTA progress: %d%%", progress);
-            });
-            
-            // 设置OTA完成回调（可选）
-            ble_ota.SetCompleteCallback([](bool success) {
-                if (success) {
-                    ESP_LOGI(TAG, "BLE OTA completed successfully, restarting...");
-                    vTaskDelay(pdMS_TO_TICKS(1000));
-                    esp_restart();
-                } else {
-                    ESP_LOGE(TAG, "BLE OTA failed");
-                }
-            });
-        } else {
-            ESP_LOGE(TAG, "Failed to initialize BLE OTA service");
-        }
+#if CONFIG_ENABLE_BLE_CONFIG
+    // 在BLE配网启动前，先暂停所有非必要任务以释放内存
+    ESP_LOGI(TAG, "Pre-emptively suspending tasks for BLE config mode");
+    esp_err_t suspend_ret = board.SuspendNonEssentialTasks();
+    if (suspend_ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to pre-suspend some tasks: %d", suspend_ret);
     }
+    vTaskDelay(pdMS_TO_TICKS(200)); // 等待任务完全暂停
+
+    // 蓝牙配网模式：参考xiaozhi-esp32-ble项目的成功做法
+    ESP_LOGI(TAG, "Starting BLE config mode with optimized memory");
+    BleWifiIntegration::StartBleWifiConfig();
+
+    // BLE OTA功能已禁用以节省内存和避免初始化失败
+    ESP_LOGI(TAG, "BLE OTA service disabled to save memory and prevent initialization failures");
+#endif
+
+    // 无论是否启用BLE配网，都要初始化WiFi网络（学习xiaozhi-esp32-ble）
     /* Wait for the network to be ready */
+    ESP_LOGI(TAG, "Initializing network (WiFi) - required for both BLE and traditional config");
     board.StartNetwork();
 
     // Update the status bar immediately to show the network state
@@ -432,6 +423,48 @@ void Application::Start() {
     // Check for new assets version
     CheckAssetsVersion();
 
+#if CONFIG_ENABLE_BLE_CONFIG
+    // 在蓝牙配网模式下，检查WiFi连接状态并恢复任务
+    ESP_LOGI(TAG, "BLE config mode: checking WiFi status and task recovery");
+
+    // 检查WiFi是否已连接，如果连接成功则停止BLE服务（任务恢复由StopBleWifiConfig处理）
+    auto& wifi_station = WifiStation::GetInstance();
+    if (wifi_station.IsConnected()) {
+        ESP_LOGI(TAG, "WiFi already connected: %s, stopping BLE service", wifi_station.GetSsid().c_str());
+
+        // 停止BLE服务以节省资源（这会自动恢复任务）
+        if (BleWifiIntegration::IsBleWifiConfigActive()) {
+            ESP_LOGI(TAG, "Stopping BLE service since WiFi is connected");
+            BleWifiIntegration::StopBleWifiConfig();
+        } else {
+            // 如果BLE服务未运行，直接恢复任务
+            ESP_LOGI(TAG, "BLE service not active, resuming tasks directly");
+            esp_err_t resume_ret = board.ResumeNonEssentialTasks();
+            if (resume_ret != ESP_OK) {
+                ESP_LOGW(TAG, "Failed to resume some tasks on startup: %d", resume_ret);
+            }
+        }
+    }
+
+    ESP_LOGI(TAG, "BLE config mode: skipping OTA check and protocol initialization");
+
+    // Initialize the protocol with a dummy configuration
+    display->SetStatus(Lang::Strings::LOADING_PROTOCOL);
+    auto& mcp_server = McpServer::GetInstance();
+    mcp_server.AddCommonTools();
+    mcp_server.AddUserOnlyTools();
+
+    // Use MQTT protocol as default but don't start it
+    protocol_ = std::make_unique<MqttProtocol>();
+
+    SystemInfo::PrintHeapStats();
+    SetDeviceState(kDeviceStateIdle);
+
+    // Show device ready message
+    display->ShowNotification("BLE Config Mode Ready");
+    display->SetChatMessage("system", "");
+    audio_service_.PlaySound(Lang::Sounds::OGG_SUCCESS);
+#else
     // Check for new firmware version or get the MQTT broker address
     Ota ota;
     CheckNewVersion(ota);
@@ -593,6 +626,7 @@ void Application::Start() {
         // Play the success sound to indicate the device is ready
         audio_service_.PlaySound(Lang::Sounds::OGG_SUCCESS);
     }
+#endif
 
     // Start the main event loop task with priority 3
     xTaskCreate([](void* arg) {

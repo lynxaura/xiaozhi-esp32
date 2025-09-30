@@ -87,6 +87,24 @@ public:
     esp_err_t StartTask();
 
     /**
+     * @brief 暂停振动任务（保留队列和任务，但暂停执行）
+     * @return ESP_OK 如果成功，其他错误码如果失败
+     */
+    esp_err_t SuspendTask();
+
+    /**
+     * @brief 恢复振动任务
+     * @return ESP_OK 如果成功，其他错误码如果失败
+     */
+    esp_err_t ResumeTask();
+
+    /**
+     * @brief 停止并删除振动任务（释放所有资源）
+     * @return ESP_OK 如果成功，其他错误码如果失败
+     */
+    esp_err_t StopTask();
+
+    /**
      * @brief 播放指定的振动模式
      * @param id 振动模式ID
      */

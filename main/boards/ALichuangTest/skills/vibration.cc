@@ -227,6 +227,98 @@ esp_err_t Vibration::StartTask() {
     return ESP_OK;
 }
 
+esp_err_t Vibration::SuspendTask() {
+    if (vibration_task_handle_ == nullptr) {
+        ESP_LOGW(TAG, "Vibration task not running, nothing to suspend");
+        return ESP_OK;
+    }
+
+    // 停止当前振动
+    Stop();
+
+    // 等待振动完全停止并清空队列
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    // 清空队列中的所有待处理消息，避免任务删除时的竞争条件
+    if (vibration_queue_) {
+        vibration_id_t dummy;
+        while (xQueueReceive(vibration_queue_, &dummy, 0) == pdTRUE) {
+            // 清空队列
+        }
+    }
+
+    // 发送停止命令确保任务安全退出
+    vibration_id_t stop_cmd = VIBRATION_STOP;
+    xQueueSend(vibration_queue_, &stop_cmd, pdMS_TO_TICKS(50));
+
+    // 等待更长时间确保任务处理完成
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    // 删除任务以释放栈内存（保留队列用于重启）
+    vTaskDelete(vibration_task_handle_);
+    vibration_task_handle_ = nullptr;
+
+    ESP_LOGI(TAG, "✅ Vibration task suspended (deleted), stack memory freed: %d bytes", VIBRATION_TASK_STACK_SIZE);
+    return ESP_OK;
+}
+
+esp_err_t Vibration::ResumeTask() {
+    if (vibration_task_handle_ != nullptr) {
+        ESP_LOGW(TAG, "Vibration task already running, nothing to resume");
+        return ESP_OK;
+    }
+
+    // 确保队列存在（如果被删除则重新创建）
+    if (vibration_queue_ == nullptr) {
+        vibration_queue_ = xQueueCreate(VIBRATION_QUEUE_SIZE, sizeof(vibration_id_t));
+        if (vibration_queue_ == nullptr) {
+            ESP_LOGE(TAG, "Failed to recreate vibration queue");
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
+    // 重新创建任务
+    BaseType_t ret = xTaskCreate(
+        VibrationTask,
+        "vibration_task",
+        VIBRATION_TASK_STACK_SIZE,
+        this,
+        VIBRATION_TASK_PRIORITY,
+        &vibration_task_handle_
+    );
+
+    if (ret != pdPASS) {
+        ESP_LOGE(TAG, "Failed to recreate vibration task");
+        return ESP_ERR_NO_MEM;
+    }
+
+    ESP_LOGI(TAG, "✅ Vibration task resumed (recreated), stack memory allocated: %d bytes", VIBRATION_TASK_STACK_SIZE);
+    return ESP_OK;
+}
+
+esp_err_t Vibration::StopTask() {
+    if (vibration_task_handle_ == nullptr) {
+        ESP_LOGW(TAG, "Vibration task not running, nothing to stop");
+        return ESP_OK;
+    }
+
+    // 停止当前振动
+    Stop();
+
+    // 删除任务
+    vTaskDelete(vibration_task_handle_);
+    vibration_task_handle_ = nullptr;
+
+    // 删除队列
+    if (vibration_queue_) {
+        vQueueDelete(vibration_queue_);
+        vibration_queue_ = nullptr;
+    }
+
+    ESP_LOGI(TAG, "Vibration task stopped and resources freed");
+    return ESP_OK;
+}
+
 void Vibration::Play(vibration_id_t id) {
     if (!initialized_) {
         ESP_LOGE(TAG, "❌ Vibration not initialized, call Initialize() first");

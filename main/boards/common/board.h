@@ -45,6 +45,7 @@ public:
     virtual Display* GetDisplay();
     virtual Camera* GetCamera();
     virtual NetworkInterface* GetNetwork() = 0;
+    virtual void InitializeWifi() {} // 默认空实现，WiFi板子会重写
     virtual void StartNetwork() = 0;
     virtual const char* GetNetworkStateIcon() = 0;
     virtual bool GetBatteryLevel(int &level, bool& charging, bool& discharging);
@@ -53,6 +54,10 @@ public:
     virtual std::string GetBoardJson() = 0;
     virtual std::string GetDeviceStatusJson() = 0;
     virtual Assets* GetAssets();
+
+    // 内存优化相关的虚函数（用于蓝牙配网时的任务管理）
+    virtual esp_err_t SuspendNonEssentialTasks() { return ESP_OK; } // 默认空实现
+    virtual esp_err_t ResumeNonEssentialTasks() { return ESP_OK; }  // 默认空实现
 };
 
 #define DECLARE_BOARD(BOARD_CLASS_NAME) \

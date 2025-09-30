@@ -402,6 +402,14 @@ choice ALichuang_Display_UI_TYPE
         bool "灵犀动画UI界面"
 endchoice
 
+config ENABLE_BLE_CONFIG
+    depends on BOARD_TYPE_ALICHUANGTEST
+    bool "Enable Bluetooth Provisioning"
+    default n
+    help
+        启用蓝牙配网功能。选择此选项将使用蓝牙配网替代WiFi配网，以节省内存。
+        Enable Bluetooth provisioning. This replaces WiFi provisioning to save memory.
+
 choice DISPLAY_OLED_TYPE
     depends on BOARD_TYPE_BREAD_COMPACT_WIFI || BOARD_TYPE_BREAD_COMPACT_ML307 || BOARD_TYPE_BREAD_COMPACT_ESP32
     prompt "OLED Type"

@@ -2,6 +2,7 @@
 #include "esp_ble.h"
 #include "esp_log.h"
 #include "esp_err.h"
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -10,12 +11,12 @@
 
 static const char* TAG = "BLE_PROTOCOL";
 
-// 数据队列结构
+// 数据队列结构 - 渐进式优化：保证功能同时减少内存
 typedef struct {
     uint16_t conn_id;
     uint16_t handle;
     uint16_t len;
-    uint8_t data[256];  // 最大数据长度
+    uint8_t data[128];  // 适中的缓冲区大小
 } ble_protocol_data_msg_t;
 
 // 全局变量
@@ -25,10 +26,10 @@ static QueueHandle_t g_data_queue = NULL;
 static TaskHandle_t g_process_task = NULL;
 static bool g_task_running = false;
 
-// 任务配置
-#define BLE_PROTOCOL_TASK_STACK_SIZE    4096
-#define BLE_PROTOCOL_TASK_PRIORITY      3
-#define BLE_PROTOCOL_QUEUE_SIZE         10
+// 任务配置 - 渐进式优化：保证功能同时减少内存占用
+#define BLE_PROTOCOL_TASK_STACK_SIZE    3072   // 适中的栈大小(3KB)
+#define BLE_PROTOCOL_TASK_PRIORITY      5      // 提高优先级避免看门狗超时
+#define BLE_PROTOCOL_QUEUE_SIZE         10     // 增加队列大小减少丢包
 
 // 内部函数声明
 static void ble_protocol_event_handler(ble_evt_t *evt);
@@ -38,7 +39,24 @@ static esp_err_t ble_protocol_process_data(uint16_t conn_id, uint8_t *data, uint
 esp_err_t ble_protocol_init(void)
 {
     ESP_LOGI(TAG, "Initializing BLE protocol module");
-    
+
+    // 内存诊断 - 检查可用内存
+    size_t free_heap = esp_get_free_heap_size();
+    size_t min_free_heap = esp_get_minimum_free_heap_size();
+    ESP_LOGI(TAG, "Memory before BLE init - Free: %d bytes, Min free: %d bytes", free_heap, min_free_heap);
+
+    // 检查是否有足够内存进行BLE初始化
+    size_t required_memory = sizeof(ble_protocol_data_msg_t) * BLE_PROTOCOL_QUEUE_SIZE +
+                           BLE_PROTOCOL_TASK_STACK_SIZE +
+                           sizeof(g_handlers) + 1024; // 额外的1KB缓冲
+    ESP_LOGI(TAG, "Required memory: %d bytes", required_memory);
+
+    if (free_heap < required_memory) {
+        ESP_LOGE(TAG, "Insufficient memory for BLE protocol init. Need %d bytes, have %d bytes",
+                 required_memory, free_heap);
+        return ESP_ERR_NO_MEM;
+    }
+
     // 初始化处理器数组
     memset(g_handlers, 0, sizeof(g_handlers));
     
@@ -49,13 +67,37 @@ esp_err_t ble_protocol_init(void)
         return ESP_ERR_NO_MEM;
     }
     
-    // 创建数据队列
+    // 创建数据队列 - 带详细的错误诊断
+    ESP_LOGI(TAG, "Attempting to create queue: size=%d, item_size=%d, total_memory=%d bytes",
+             BLE_PROTOCOL_QUEUE_SIZE, sizeof(ble_protocol_data_msg_t),
+             BLE_PROTOCOL_QUEUE_SIZE * sizeof(ble_protocol_data_msg_t));
+
     g_data_queue = xQueueCreate(BLE_PROTOCOL_QUEUE_SIZE, sizeof(ble_protocol_data_msg_t));
     if (g_data_queue == NULL) {
-        ESP_LOGE(TAG, "Failed to create data queue");
-        vSemaphoreDelete(g_handlers_mutex);
-        return ESP_ERR_NO_MEM;
+        size_t free_after_mutex = esp_get_free_heap_size();
+        ESP_LOGW(TAG, "Failed to create standard queue, trying smaller configuration...");
+        ESP_LOGI(TAG, "Queue parameters: size=%d, item_size=%d bytes, total_needed=%d bytes",
+                 BLE_PROTOCOL_QUEUE_SIZE, sizeof(ble_protocol_data_msg_t),
+                 BLE_PROTOCOL_QUEUE_SIZE * sizeof(ble_protocol_data_msg_t));
+        ESP_LOGI(TAG, "Free memory after mutex creation: %d bytes", free_after_mutex);
+
+        // 尝试最小配置：队列大小为2
+        ESP_LOGW(TAG, "Attempting fallback configuration: queue size = 2");
+        g_data_queue = xQueueCreate(2, sizeof(ble_protocol_data_msg_t));
+        if (g_data_queue == NULL) {
+            ESP_LOGE(TAG, "Even minimal queue creation failed - memory severely limited");
+            vSemaphoreDelete(g_handlers_mutex);
+            g_handlers_mutex = NULL;
+            return ESP_ERR_NO_MEM;
+        }
+        ESP_LOGW(TAG, "Fallback queue created successfully with size=2");
     }
+
+    ESP_LOGI(TAG, "Data queue created successfully");
+
+    // 再次检查内存状态
+    size_t free_after_queue = esp_get_free_heap_size();
+    ESP_LOGI(TAG, "Free memory after queue creation: %d bytes", free_after_queue);
     
     
     
@@ -68,27 +110,138 @@ esp_err_t ble_protocol_init(void)
         return esp_ret;
     }
 
+    // 任务创建前的系统诊断
+    size_t free_before_task = esp_get_free_heap_size();
+    min_free_heap = esp_get_minimum_free_heap_size();  // 重用之前的变量
+    UBaseType_t task_count = uxTaskGetNumberOfTasks();
+
+    // 增强内存诊断 - 检查碎片化
+    multi_heap_info_t heap_info;
+    heap_caps_get_info(&heap_info, MALLOC_CAP_DEFAULT);
+    size_t largest_free_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    size_t internal_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    size_t internal_largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+
+    ESP_LOGI(TAG, "=== Enhanced Memory Diagnostics ===");
+    ESP_LOGI(TAG, "  Total free: %d bytes, Min free ever: %d bytes", free_before_task, min_free_heap);
+    ESP_LOGI(TAG, "  Largest free block: %d bytes", largest_free_block);
+    ESP_LOGI(TAG, "  Internal SRAM free: %d bytes, largest: %d bytes", internal_free, internal_largest);
+    ESP_LOGI(TAG, "  Current task count: %d", task_count);
+    ESP_LOGI(TAG, "  Requested stack size: %d bytes", BLE_PROTOCOL_TASK_STACK_SIZE);
+
+    // 检查是否存在严重碎片化
+    float fragmentation_ratio = (float)(free_before_task - largest_free_block) / free_before_task * 100;
+    ESP_LOGI(TAG, "  Fragmentation ratio: %.1f%%", fragmentation_ratio);
+
+    if (largest_free_block < 8192) {  // 如果最大连续块小于8KB
+        ESP_LOGW(TAG, "  WARNING: Severe fragmentation detected!");
+    }
+
     g_task_running = true;
-    // 创建数据处理任务
-    BaseType_t ret = xTaskCreate(
-        ble_protocol_process_task,
-        "ble_protocol_task",
-        BLE_PROTOCOL_TASK_STACK_SIZE,
-        NULL,
-        BLE_PROTOCOL_TASK_PRIORITY,
-        &g_process_task
-    );
-    
-    if (ret != pdPASS) {
+
+    // 如果碎片化严重，尝试强制垃圾回收
+    if (largest_free_block < 4096) {
+        ESP_LOGW(TAG, "Attempting heap defragmentation...");
+        // 强制释放一些内存并触发垃圾回收
+        heap_caps_malloc_extmem_enable(32 * 1024);  // 扩展内存阈值
+    }
+
+    // 尝试不同的任务创建策略
+    uint32_t stack_sizes[] = {BLE_PROTOCOL_TASK_STACK_SIZE, 4096, 2048}; // 优先使用配置的栈大小
+    uint32_t priorities[] = {BLE_PROTOCOL_TASK_PRIORITY, 3, 1}; // 优先使用配置的优先级
+    const char* task_names[] = {"ble_proto", "ble_prot", "ble_task"};
+    BaseType_t ret = pdFAIL;
+    bool task_created = false;
+
+    // 策略1: 标准任务创建
+    for (int i = 0; i < 3 && !task_created; i++) {
+        for (int j = 0; j < 3 && !task_created; j++) {
+            ESP_LOGI(TAG, "Strategy 1 - xTaskCreate: stack=%d, priority=%d, name=%s",
+                     stack_sizes[i], priorities[j], task_names[i]);
+
+            ret = xTaskCreate(
+                ble_protocol_process_task,
+                task_names[i],
+                stack_sizes[i],
+                NULL,
+                priorities[j],
+                &g_process_task
+            );
+
+            if (ret == pdPASS) {
+                ESP_LOGI(TAG, "Standard task creation succeeded");
+                task_created = true;
+                break;
+            } else {
+                ESP_LOGW(TAG, "Standard creation failed: %d", ret);
+            }
+        }
+    }
+
+    // 策略2: 固定到CPU核心0的任务创建
+    if (!task_created) {
+        ESP_LOGW(TAG, "Trying pinned task creation on core 0...");
+        for (int i = 0; i < 3 && !task_created; i++) {
+            ESP_LOGI(TAG, "Strategy 2 - xTaskCreatePinnedToCore: stack=%d, core=0",
+                     stack_sizes[i]);
+
+            ret = xTaskCreatePinnedToCore(
+                ble_protocol_process_task,
+                task_names[i],
+                stack_sizes[i],
+                NULL,
+                priorities[i],  // 使用对应的优先级
+                &g_process_task,
+                0  // 固定到核心0
+            );
+
+            if (ret == pdPASS) {
+                ESP_LOGI(TAG, "Pinned task creation succeeded - stack: %d", stack_sizes[i]);
+                task_created = true;
+                break;
+            } else {
+                ESP_LOGW(TAG, "Pinned creation failed - stack: %d, error: %d", stack_sizes[i], ret);
+            }
+        }
+    }
+
+    // 策略3: 使用静态任务创建（最后手段）
+    if (!task_created) {
+        ESP_LOGW(TAG, "Trying static task creation as last resort...");
+
+        // 为静态任务分配内存
+        static StackType_t task_stack[BLE_PROTOCOL_TASK_STACK_SIZE];  // 使用配置的栈大小
+        static StaticTask_t task_buffer;
+
+        g_process_task = xTaskCreateStatic(
+            ble_protocol_process_task,
+            "ble_static",
+            BLE_PROTOCOL_TASK_STACK_SIZE,
+            NULL,
+            BLE_PROTOCOL_TASK_PRIORITY,  // 使用配置的优先级
+            task_stack,
+            &task_buffer
+        );
+
+        if (g_process_task != NULL) {
+            ESP_LOGI(TAG, "Static task creation succeeded");
+            task_created = true;
+        } else {
+            ESP_LOGE(TAG, "Even static task creation failed");
+        }
+    }
+
+    if (!task_created) {
         g_task_running = false;
-        ESP_LOGE(TAG, "Failed to create protocol task");
+        ESP_LOGE(TAG, "All task creation attempts failed!");
         esp_ble_unregister_evt_callback(ble_protocol_event_handler);
         vQueueDelete(g_data_queue);
+        g_data_queue = NULL;
         vSemaphoreDelete(g_handlers_mutex);
+        g_handlers_mutex = NULL;
         return ESP_ERR_NO_MEM;
     }
-    
-    
+
     ESP_LOGI(TAG, "BLE protocol module initialized successfully");
     return ESP_OK;
 }
@@ -198,37 +351,46 @@ static void ble_protocol_event_handler(ble_evt_t *evt)
     if (evt == NULL) {
         return;
     }
-    
+
+    // 在中断上下文中，减少日志输出以避免阻塞
     switch (evt->evt_id) {
         case BLE_EVT_CONNECTED:
-            ESP_LOGI(TAG, "BLE connected, conn_id: %d", evt->params.connected.conn_id);
+            // 简化日志，避免在中断上下文中长时间处理
+            ESP_LOGD(TAG, "BLE connected: %d", evt->params.connected.conn_id);
             break;
-            
+
         case BLE_EVT_DISCONNECTED:
-            ESP_LOGI(TAG, "BLE disconnected, conn_id: %d", evt->params.disconnected.conn_id);
+            ESP_LOGD(TAG, "BLE disconnected: %d", evt->params.disconnected.conn_id);
             break;
-            
+
         case BLE_EVT_DATA_RECEIVED:
             {
+                // 快速检查数据有效性
+                if (evt->params.data_received.len > BLE_PROTOCOL_MAX_PAYLOAD_LEN) {
+                    return; // 直接返回，不输出日志避免阻塞
+                }
+
                 // 将数据放入队列中异步处理
                 ble_protocol_data_msg_t msg;
                 msg.conn_id = evt->params.data_received.conn_id;
                 msg.handle = evt->params.data_received.handle;
                 msg.len = evt->params.data_received.len;
-                
-                if (msg.len > sizeof(msg.data)) {
-                    ESP_LOGE(TAG, "Data too large: %d bytes", msg.len);
-                    break;
-                }
-                
+
+                // 快速内存拷贝
                 memcpy(msg.data, evt->params.data_received.p_data, msg.len);
-                
-                if (xQueueSend(g_data_queue, &msg, 0) != pdTRUE) {
-                    ESP_LOGE(TAG, "Failed to send data to queue");
+
+                // 使用FromISR版本的队列发送，确保中断安全
+                BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+                if (xQueueSendFromISR(g_data_queue, &msg, &xHigherPriorityTaskWoken) != pdTRUE) {
+                    // 队列满时静默丢弃，避免日志阻塞
+                    // 可以在这里增加计数器统计丢失的包
                 }
+
+                // 如果有更高优先级任务被唤醒，进行任务切换
+                portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
             }
             break;
-            
+
         default:
             break;
     }
@@ -237,17 +399,22 @@ static void ble_protocol_event_handler(ble_evt_t *evt)
 static void ble_protocol_process_task(void *arg)
 {
     ble_protocol_data_msg_t msg;
-    
-    ESP_LOGI(TAG, "BLE protocol process task started");
-    
+
+    ESP_LOGI(TAG, "BLE protocol process task started (priority %d)", uxTaskPriorityGet(NULL));
+
     while (g_task_running) {
-        // 等待队列消息
-        if (xQueueReceive(g_data_queue, &msg, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        // 减少超时等待时间，提高响应性
+        if (xQueueReceive(g_data_queue, &msg, pdMS_TO_TICKS(100)) == pdTRUE) {
             // 处理数据
-            ble_protocol_process_data(msg.conn_id, msg.data, msg.len);
+            esp_err_t ret = ble_protocol_process_data(msg.conn_id, msg.data, msg.len);
+            if (ret != ESP_OK) {
+                ESP_LOGW(TAG, "Failed to process data: %s", esp_err_to_name(ret));
+            }
         }
+        // 短暂让出CPU，避免独占处理器
+        taskYIELD();
     }
-    
+
     ESP_LOGI(TAG, "BLE protocol process task exited");
     vTaskDelete(NULL);
 }

@@ -12,6 +12,7 @@ protected:
 public:
     WifiBoard();
     virtual std::string GetBoardType() override;
+    virtual void InitializeWifi() override;
     virtual void StartNetwork() override;
     virtual NetworkInterface* GetNetwork() override;
     virtual const char* GetNetworkStateIcon() override;

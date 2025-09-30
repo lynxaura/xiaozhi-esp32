@@ -105,6 +105,18 @@ public:
     esp_err_t StartTask();
 
     /**
+     * @brief 暂停Motion任务（保留队列和任务，但暂停执行）
+     * @return ESP_OK 如果成功，其他错误码如果失败
+     */
+    esp_err_t SuspendTask();
+
+    /**
+     * @brief 恢复Motion任务
+     * @return ESP_OK 如果成功，其他错误码如果失败
+     */
+    esp_err_t ResumeTask();
+
+    /**
      * @brief 停止后台任务（如果需要外部控制任务生命周期）
      */
     void StopTask();

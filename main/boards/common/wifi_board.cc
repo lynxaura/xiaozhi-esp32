@@ -10,6 +10,7 @@
 #include <freertos/task.h>
 #include <esp_network.h>
 #include <esp_log.h>
+#include <esp_wifi.h>
 
 #include <font_awesome.h>
 #include <wifi_station.h>
@@ -68,6 +69,52 @@ void WifiBoard::EnterWifiConfigMode() {
     }
 }
 
+void WifiBoard::InitializeWifi() {
+    ESP_LOGI(TAG, "Initializing WiFi subsystem for BLE configuration");
+
+    // 初始化网络接口
+    esp_err_t ret = esp_netif_init();
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "Failed to initialize netif: %s", esp_err_to_name(ret));
+        return;
+    }
+
+    // 创建默认事件循环
+    ret = esp_event_loop_create_default();
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "Failed to create event loop: %s", esp_err_to_name(ret));
+        return;
+    }
+
+    // 创建默认WiFi站点接口
+    esp_netif_t* sta_netif = esp_netif_create_default_wifi_sta();
+    if (sta_netif == NULL) {
+        ESP_LOGW(TAG, "WiFi STA netif might already exist");
+    }
+
+    // 初始化WiFi
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ret = esp_wifi_init(&cfg);
+    if (ret != ESP_OK) {
+        // 检查是否是WiFi已经初始化的错误（这是正常的）
+        if (ret == ESP_ERR_INVALID_STATE) {
+            ESP_LOGW(TAG, "WiFi already initialized");
+        } else {
+            ESP_LOGE(TAG, "Failed to initialize WiFi: %s", esp_err_to_name(ret));
+            return;
+        }
+    }
+
+    // 设置WiFi模式为Station
+    ret = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set WiFi mode: %s", esp_err_to_name(ret));
+        return;
+    }
+
+    ESP_LOGI(TAG, "WiFi subsystem initialized successfully (STA mode, not connected)");
+}
+
 void WifiBoard::StartNetwork() {
     // User can press BOOT button while starting to enter WiFi configuration mode
     if (wifi_config_mode_) {
@@ -122,6 +169,10 @@ const char* WifiBoard::GetNetworkStateIcon() {
     if (wifi_config_mode_) {
         return FONT_AWESOME_WIFI;
     }
+#if CONFIG_ENABLE_BLE_CONFIG
+    // 在蓝牙配网模式下，WiFi可能未初始化，直接返回断开图标
+    return FONT_AWESOME_WIFI_SLASH;
+#else
     auto& wifi_station = WifiStation::GetInstance();
     if (!wifi_station.IsConnected()) {
         return FONT_AWESOME_WIFI_SLASH;
@@ -134,20 +185,24 @@ const char* WifiBoard::GetNetworkStateIcon() {
     } else {
         return FONT_AWESOME_WIFI_WEAK;
     }
+#endif
 }
 
 std::string WifiBoard::GetBoardJson() {
     // Set the board type for OTA
-    auto& wifi_station = WifiStation::GetInstance();
     std::string board_json = R"({)";
     board_json += R"("type":")" + std::string(BOARD_TYPE) + R"(",)";
     board_json += R"("name":")" + std::string(BOARD_NAME) + R"(",)";
+#if !CONFIG_ENABLE_BLE_CONFIG
+    // 仅在WiFi模式下获取WiFi相关信息
+    auto& wifi_station = WifiStation::GetInstance();
     if (!wifi_config_mode_) {
         board_json += R"("ssid":")" + wifi_station.GetSsid() + R"(",)";
         board_json += R"("rssi":)" + std::to_string(wifi_station.GetRssi()) + R"(,)";
         board_json += R"("channel":)" + std::to_string(wifi_station.GetChannel()) + R"(,)";
         board_json += R"("ip":")" + wifi_station.GetIpAddress() + R"(",)";
     }
+#endif
     board_json += R"("mac":")" + SystemInfo::GetMacAddress() + R"(")";
     board_json += R"(})";
     return board_json;
@@ -236,6 +291,13 @@ std::string WifiBoard::GetDeviceStatusJson() {
 
     // Network
     auto network = cJSON_CreateObject();
+#if CONFIG_ENABLE_BLE_CONFIG
+    // 在蓝牙配网模式下，使用蓝牙信息
+    cJSON_AddStringToObject(network, "type", "bluetooth");
+    cJSON_AddStringToObject(network, "ssid", "BLE Config Mode");
+    cJSON_AddStringToObject(network, "signal", "unknown");
+#else
+    // 在WiFi模式下使用WiFi信息
     auto& wifi_station = WifiStation::GetInstance();
     cJSON_AddStringToObject(network, "type", "wifi");
     cJSON_AddStringToObject(network, "ssid", wifi_station.GetSsid().c_str());
@@ -247,6 +309,7 @@ std::string WifiBoard::GetDeviceStatusJson() {
     } else {
         cJSON_AddStringToObject(network, "signal", "weak");
     }
+#endif
     cJSON_AddItemToObject(root, "network", network);
 
     // Chip

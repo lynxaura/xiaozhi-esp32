@@ -32,7 +32,11 @@
       "Bash(where:*)",
       "Bash(dir \"C:\\Users\\Administrator\\Downloads\\sound_effect_ogg\")",
       "Bash(dir:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Read(//e/Study/Cpp_project/xiaozhi-esp32-ble/main/ble/**)",
+      "Read(//e/Study/Cpp_project/xiaozhi-esp32-ble/main/**)",
+      "Read(//e/Study/Cpp_project/xiaozhi-esp32-ble/**)",
+      "Bash(idf.py build:*)"
     ],
     "deny": []
   }

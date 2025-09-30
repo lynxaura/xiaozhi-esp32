@@ -97,7 +97,7 @@ typedef struct{
 
 typedef void (*ble_evt_callback_t)(ble_evt_t *evt);
 
-#define BLE_EVT_CALLBACK_MAX 5
+#define BLE_EVT_CALLBACK_MAX 3  // 适中的回调数量
 
 int esp_ble_register_evt_callback(ble_evt_callback_t callback);
 int esp_ble_unregister_evt_callback(ble_evt_callback_t callback);

@@ -20,6 +20,7 @@ EventEngine::EventEngine()
     , multitouch_engine_(nullptr)
     , owns_multitouch_engine_(false)
     , event_processor_(nullptr)
+    , event_processor_suspended_(false)
     , emotion_engine_initialized_(false)
     , last_event_time_(0)
     , batch_callback_(nullptr)
@@ -295,6 +296,12 @@ void EventEngine::DispatchEvent(const Event& event) {
 
     if (!event_processor_) {
         ESP_LOGE(TAG, "Event processor is null! Cannot process event type=%d", (int)event.type);
+        return;
+    }
+
+    // 检查事件处理器是否已暂停
+    if (event_processor_suspended_) {
+        ESP_LOGD(TAG, "Event processor suspended, dropping event type=%d", (int)event.type);
         return;
     }
 
@@ -635,4 +642,68 @@ void EventEngine::ReloadMotionConfig() {
 
     // 直接复用现有的配置加载逻辑
     LoadEventConfiguration();
+}
+
+void EventEngine::EnableMotionEngine(bool enable) {
+    if (motion_engine_) {
+        motion_engine_->Enable(enable);
+        ESP_LOGI(TAG, "Motion engine %s", enable ? "enabled" : "disabled");
+    } else {
+        ESP_LOGW(TAG, "Cannot enable/disable motion engine: not initialized");
+    }
+}
+
+void EventEngine::EnableMultitouchEngine(bool enable) {
+    if (multitouch_engine_) {
+        if (enable) {
+            // 启用时恢复任务（如果之前被暂停）
+            esp_err_t ret = multitouch_engine_->ResumeTask();
+            if (ret == ESP_OK) {
+                multitouch_engine_->Enable(true);
+                ESP_LOGI(TAG, "✅ Multitouch engine enabled and task resumed");
+            } else {
+                ESP_LOGE(TAG, "❌ Failed to resume multitouch task: %s", esp_err_to_name(ret));
+            }
+        } else {
+            // 禁用时暂停任务以释放内存
+            multitouch_engine_->Enable(false);
+            esp_err_t ret = multitouch_engine_->SuspendTask();
+            if (ret == ESP_OK) {
+                ESP_LOGI(TAG, "✅ Multitouch engine disabled and task suspended");
+            } else {
+                ESP_LOGE(TAG, "❌ Failed to suspend multitouch task: %s", esp_err_to_name(ret));
+            }
+        }
+    } else {
+        ESP_LOGW(TAG, "Cannot enable/disable multitouch engine: not initialized");
+    }
+}
+
+bool EventEngine::IsMotionEngineEnabled() const {
+    if (motion_engine_) {
+        return motion_engine_->IsEnabled();
+    }
+    return false;
+}
+
+bool EventEngine::IsMultitouchEngineEnabled() const {
+    if (multitouch_engine_) {
+        return multitouch_engine_->IsEnabled();
+    }
+    return false;
+}
+
+void EventEngine::SuspendEventProcessor() {
+    if (event_processor_) {
+        event_processor_->ClearEventQueueAll();
+        event_processor_suspended_ = true;
+        ESP_LOGI(TAG, "✅ EventProcessor suspended, event queues cleared (~2-4KB memory management optimized)");
+    }
+}
+
+void EventEngine::ResumeEventProcessor() {
+    if (event_processor_) {
+        event_processor_suspended_ = false;
+        ESP_LOGI(TAG, "✅ EventProcessor resumed");
+    }
 }

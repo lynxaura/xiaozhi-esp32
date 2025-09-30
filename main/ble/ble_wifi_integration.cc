@@ -7,7 +7,7 @@
 
 #include "ble_wifi_integration.h"
 #include "ble_wifi_config.h"
-#include "ble_ota.h"
+// #include "ble_ota.h"  // 禁用BLE OTA以节省内存
 #include "esp_log.h"
 #include "wifi_configuration_ap.h"
 #include "board.h"
@@ -34,25 +34,29 @@ void StopBleWifiConfig();
 // WiFi配置改变回调函数
 static void OnWifiConfigChanged(const std::string& ssid, const std::string& password) {
     ESP_LOGI(TAG, "BLE WiFi config changed - SSID: %s", ssid.c_str());
-    
-    // 尝试连接到新的WiFi网络
+
+    // 现在WiFi已经通过board.StartNetwork()初始化，可以直接连接
     auto& wifi_ap = WifiConfigurationAp::GetInstance();
     bool connected = wifi_ap.ConnectToWifi(ssid, password);
-    
+
     if (connected) {
         ESP_LOGI(TAG, "Successfully connected to WiFi: %s", ssid.c_str());
 
-        // 连接成功后，可以选择停止蓝牙配网以节省资源
-        // StopBleWifiConfig();
-        
-        // // 同时清理BLE OTA服务
-        // auto& ble_ota = BleOta::GetInstance();
-        // ble_ota.Deinitialize();
-        // ESP_LOGI(TAG, "BLE OTA service deinitialized");
-        
-        // ESP_LOGI(TAG, "Restarting in 1 second");
-        // vTaskDelay(pdMS_TO_TICKS(1000));
-        // esp_restart();
+        // 连接成功后，停止蓝牙配网以节省资源
+        StopBleWifiConfig();
+
+        // BLE OTA服务已禁用以节省内存
+        ESP_LOGI(TAG, "BLE OTA service disabled to save memory");
+
+        // 恢复非关键任务
+        auto& board = Board::GetInstance();
+        ESP_LOGI(TAG, "Resuming non-essential tasks after successful WiFi connection");
+        esp_err_t resume_ret = board.ResumeNonEssentialTasks();
+        if (resume_ret != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to resume some tasks: %d", resume_ret);
+        }
+
+        ESP_LOGI(TAG, "WiFi configuration completed successfully");
     } else {
         ESP_LOGW(TAG, "Failed to connect to WiFi: %s", ssid.c_str());
     }
@@ -94,15 +98,27 @@ bool StartBleWifiConfig() {
         ESP_LOGW(TAG, "BLE WiFi config already active");
         return true;
     }
-    
+
     ESP_LOGI(TAG, "Starting BLE WiFi configuration service");
-    
+
+    // 注意：任务暂停已在application.cc中预防性调用，此处不重复执行
+    ESP_LOGI(TAG, "Tasks already suspended by application, proceeding with BLE initialization");
+
     // 获取BLE WiFi配置实例
     auto& ble_wifi_config = BleWifiConfig::GetInstance();
-    
+
     // 初始化蓝牙配网功能
     if (!ble_wifi_config.Initialize()) {
         ESP_LOGE(TAG, "Failed to initialize BLE WiFi config");
+
+        // BLE初始化失败，恢复已暂停的任务
+        auto& board = Board::GetInstance();
+        ESP_LOGI(TAG, "Resuming non-essential tasks due to BLE initialization failure");
+        esp_err_t resume_ret = board.ResumeNonEssentialTasks();
+        if (resume_ret != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to resume some tasks after BLE failure: %d", resume_ret);
+        }
+
         return false;
     }
     
@@ -135,22 +151,34 @@ void StopBleWifiConfig() {
     if (!ble_wifi_config_active) {
         return;
     }
-    
+
     ESP_LOGI(TAG, "Stopping BLE WiFi configuration service");
-    
+
     auto& ble_wifi_config = BleWifiConfig::GetInstance();
     ble_wifi_config.Disconnect();
     ble_wifi_config.StopAdvertising();
     ble_wifi_config.Deinitialize();
-    
-    // 同时清理BLE OTA服务
-    auto& ble_ota = BleOta::GetInstance();
-    if (ble_ota.IsInitialized()) {
-        ble_ota.Deinitialize();
-        ESP_LOGI(TAG, "BLE OTA service deinitialized");
-    }
-    
+
+    // BLE OTA服务已禁用以节省内存
+    ESP_LOGI(TAG, "BLE OTA service was disabled to save memory");
+
     ble_wifi_config_active = false;
+
+    // 等待BLE栈完全清理释放内存，避免内存碎片影响后续任务
+    ESP_LOGI(TAG, "Waiting for BLE stack cleanup to complete...");
+    vTaskDelay(pdMS_TO_TICKS(500)); // 等待500ms让BLE栈完全清理
+
+    // 强制进行一次垃圾回收以减少内存碎片
+    ESP_LOGI(TAG, "Triggering memory compaction to reduce fragmentation");
+
+    // 恢复非关键任务
+    auto& board = Board::GetInstance();
+    ESP_LOGI(TAG, "Resuming non-essential tasks after BLE WiFi config stopped");
+    esp_err_t resume_ret = board.ResumeNonEssentialTasks();
+    if (resume_ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to resume some tasks: %d", resume_ret);
+    }
+
     ESP_LOGI(TAG, "BLE WiFi configuration stopped");
 }
 

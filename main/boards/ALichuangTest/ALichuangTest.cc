@@ -123,7 +123,7 @@ private:
 #if CONFIG_LINGXI_ANIMA_UI
     // 情感相关成员变量
     std::string current_emotion_ = "neutral";
-    mutable std::mutex emotion_mutex_;
+    mutable SemaphoreHandle_t emotion_mutex_ = nullptr;
     AnimaDisplay* display_;
     TaskHandle_t image_task_handle_ = nullptr; // 图片显示任务句柄
 
@@ -204,15 +204,31 @@ private:
     
     // 获取当前情感状态
     std::string GetCurrentEmotion() {
-        std::lock_guard<std::mutex> lock(emotion_mutex_);
-        return current_emotion_;
+        if (emotion_mutex_ && xSemaphoreTake(emotion_mutex_, pdMS_TO_TICKS(100)) == pdTRUE) {
+            // 确保返回有效的字符串，避免空字符串或损坏的数据
+            std::string result = current_emotion_.empty() ? "neutral" : current_emotion_;
+            xSemaphoreGive(emotion_mutex_);
+            return result;
+        }
+        // 如果无法获取锁，返回默认值
+        return "neutral";
     }
-    
+
     // 设置当前情感状态
     void SetCurrentEmotion(const std::string& emotion) {
-        std::lock_guard<std::mutex> lock(emotion_mutex_);
-        current_emotion_ = emotion;
-        ESP_LOGI(TAG, "情感状态变更为: %s", emotion.c_str());
+        if (emotion_mutex_ && xSemaphoreTake(emotion_mutex_, pdMS_TO_TICKS(100)) == pdTRUE) {
+            // 验证输入字符串的有效性
+            if (emotion.empty() || emotion.size() > 32) {
+                ESP_LOGW(TAG, "Invalid emotion string, using neutral instead");
+                current_emotion_ = "neutral";
+            } else {
+                current_emotion_ = emotion;
+                ESP_LOGI(TAG, "情感状态变更为: %s", emotion.c_str());
+            }
+            xSemaphoreGive(emotion_mutex_);
+        } else {
+            ESP_LOGW(TAG, "Failed to acquire emotion mutex, emotion change ignored");
+        }
     }
     
     // 根据情感获取播放间隔（毫秒）
@@ -297,8 +313,8 @@ private:
         // 定义用于判断是否正在播放音频的变量
         bool isAudioPlaying = false;
         
-        // 定义用于检测情感变化的变量
-        std::string lastEmotion = current_emotion;
+        // 定义用于检测情感变化的变量，使用安全的方法获取初始状态
+        std::string lastEmotion = board->GetCurrentEmotion();
         
         // 定义用于判断是否应该播放情感动画的变量
         bool shouldPlayAnimation = false;
@@ -312,7 +328,10 @@ private:
             // 检查情感是否发生变化
             std::string currentEmotion = board->GetCurrentEmotion();
             if (currentEmotion != lastEmotion) {
-                ESP_LOGI(TAG, "情感变化检测: %s -> %s", lastEmotion.c_str(), currentEmotion.c_str());
+                // 安全的字符串日志输出，避免乱码
+                ESP_LOGI(TAG, "情感变化检测: [%s] -> [%s]",
+                    lastEmotion.empty() ? "empty" : lastEmotion.c_str(),
+                    currentEmotion.empty() ? "empty" : currentEmotion.c_str());
                 // 重新获取图片数组
                 auto [newImageArray, newTotalImages] = board->GetEmotionImageArray(currentEmotion);
                 imageArray = newImageArray;
@@ -956,6 +975,13 @@ private:
 
 public:
     ALichuangTest() : boot_button_(BOOT_BUTTON_GPIO) {
+#if CONFIG_LINGXI_ANIMA_UI
+        // 初始化情感状态互斥锁
+        emotion_mutex_ = xSemaphoreCreateMutex();
+        if (emotion_mutex_ == nullptr) {
+            ESP_LOGE(TAG, "Failed to create emotion mutex");
+        }
+#endif
         InitializeI2c();
         InitializeSpi();
         InitializeSt7789Display();
@@ -1050,6 +1076,201 @@ public:
         auto& app = Application::GetInstance();
         const char* filepath = TEST_OGG_PATH;
         app.PlaySoundOGGFile(filepath);
+    }
+
+    /**
+     * @brief 暂停非关键任务以释放内存（用于蓝牙配网时）
+     * @return ESP_OK 如果成功
+     */
+    virtual esp_err_t SuspendNonEssentialTasks() override {
+        ESP_LOGI(TAG, "Suspending non-essential tasks for memory optimization...");
+
+        // 打印暂停前的内存状态
+        multi_heap_info_t info;
+        heap_caps_get_info(&info, MALLOC_CAP_INTERNAL);
+        ESP_LOGI(TAG, "[BEFORE] Internal RAM - Free: %d, Largest: %d", info.total_free_bytes, info.largest_free_block);
+        heap_caps_get_info(&info, MALLOC_CAP_SPIRAM);
+        ESP_LOGI(TAG, "[BEFORE] PSRAM - Free: %d, Largest: %d", info.total_free_bytes, info.largest_free_block);
+
+        esp_err_t ret = ESP_OK;
+
+        // 暂停振动任务
+        if (vibration_skill_) {
+            esp_err_t vibration_ret = vibration_skill_->SuspendTask();
+            if (vibration_ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to suspend vibration task: %d", vibration_ret);
+                ret = vibration_ret;
+            }
+        }
+
+        // 禁用运动检测
+        if (event_engine_) {
+            event_engine_->EnableMotionEngine(false);
+            ESP_LOGI(TAG, "Motion detection disabled");
+        }
+
+        // 禁用触摸检测
+        if (event_engine_) {
+            event_engine_->EnableMultitouchEngine(false);
+            ESP_LOGI(TAG, "Multitouch detection disabled");
+        }
+
+        // 暂停马达控制任务（如果存在）
+        if (motion_skill_) {
+            esp_err_t motion_ret = motion_skill_->SuspendTask();
+            if (motion_ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to suspend motion task: %d", motion_ret);
+                ret = motion_ret;
+            }
+        }
+
+        // 禁用事件上传器以节省内存（~15-25KB事件缓存）
+        if (event_uploader_) {
+            event_uploader_->Enable(false);
+            ESP_LOGI(TAG, "EventUploader disabled (~15-25KB memory optimization)");
+        }
+
+        // 暂停事件处理器以清空队列（~2-4KB队列缓存）
+        if (event_engine_) {
+            event_engine_->SuspendEventProcessor();
+        }
+
+        // 暂停动画播放以释放Canvas内存（~150KB）
+#if CONFIG_LINGXI_ANIMA_UI
+        if (display_) {
+            display_->SuspendAnimation();
+        }
+#endif
+
+        // 释放摄像头帧缓冲区内存（~600KB PSRAM）
+        if (camera_) {
+            if (!camera_->Deinitialize()) {
+                ESP_LOGE(TAG, "Failed to deinitialize camera");
+                ret = ESP_ERR_NO_MEM;
+            }
+        }
+
+        // 打印暂停后的内存状态
+        multi_heap_info_t info2;
+        heap_caps_get_info(&info2, MALLOC_CAP_INTERNAL);
+        ESP_LOGI(TAG, "[AFTER] Internal RAM - Free: %d, Largest: %d", info2.total_free_bytes, info2.largest_free_block);
+        heap_caps_get_info(&info2, MALLOC_CAP_SPIRAM);
+        ESP_LOGI(TAG, "[AFTER] PSRAM - Free: %d, Largest: %d", info2.total_free_bytes, info2.largest_free_block);
+
+        ESP_LOGI(TAG, "Non-essential tasks suspended successfully (~771KB memory released)");
+        return ret;
+    }
+
+    /**
+     * @brief 恢复非关键任务（蓝牙配网完成后）
+     * @return ESP_OK 如果成功
+     */
+    virtual esp_err_t ResumeNonEssentialTasks() override {
+        ESP_LOGI(TAG, "Resuming non-essential tasks...");
+
+        // 打印任务恢复前的内存状态
+        multi_heap_info_t info;
+        heap_caps_get_info(&info, MALLOC_CAP_INTERNAL);
+        ESP_LOGI(TAG, "[RESUME START] Internal RAM - Free: %d, Largest: %d", info.total_free_bytes, info.largest_free_block);
+        heap_caps_get_info(&info, MALLOC_CAP_SPIRAM);
+        ESP_LOGI(TAG, "[RESUME START] PSRAM - Free: %d, Largest: %d", info.total_free_bytes, info.largest_free_block);
+
+        esp_err_t ret = ESP_OK;
+
+        // 恢复振动任务
+        if (vibration_skill_) {
+            esp_err_t vibration_ret = vibration_skill_->ResumeTask();
+            if (vibration_ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to resume vibration task: %d", vibration_ret);
+                ret = vibration_ret;
+            }
+        }
+
+        // 启用运动检测
+        if (event_engine_) {
+            event_engine_->EnableMotionEngine(true);
+            ESP_LOGI(TAG, "Motion detection enabled");
+        }
+
+        // 启用触摸检测
+        if (event_engine_) {
+            event_engine_->EnableMultitouchEngine(true);
+            ESP_LOGI(TAG, "Multitouch detection enabled");
+        }
+
+        // 恢复马达控制任务（如果存在）
+        if (motion_skill_) {
+            esp_err_t motion_ret = motion_skill_->ResumeTask();
+            if (motion_ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to resume motion task: %d", motion_ret);
+                ret = motion_ret;
+            }
+        }
+
+        // 重新启用事件上传器
+        if (event_uploader_) {
+            event_uploader_->Enable(true);
+            ESP_LOGI(TAG, "EventUploader re-enabled");
+        }
+
+        // 恢复事件处理器
+        if (event_engine_) {
+            event_engine_->ResumeEventProcessor();
+        }
+
+        // 恢复动画播放功能
+#if CONFIG_LINGXI_ANIMA_UI
+        if (display_) {
+            display_->ResumeAnimation();
+        }
+#endif
+
+        // 重新初始化摄像头（~600KB PSRAM）
+        if (camera_) {
+            // 检查内存状态，确保有足够空间重新初始化摄像头
+            multi_heap_info_t psram_info;
+            heap_caps_get_info(&psram_info, MALLOC_CAP_SPIRAM);
+            ESP_LOGI(TAG, "PSRAM before camera reinit - Free: %d, Largest: %d",
+                     psram_info.total_free_bytes, psram_info.largest_free_block);
+
+            // 如果最大连续块小于700KB，等待一段时间让内存碎片整理
+            if (psram_info.largest_free_block < 700 * 1024) {
+                ESP_LOGW(TAG, "PSRAM fragmented (largest block: %d), waiting for cleanup...",
+                         psram_info.largest_free_block);
+                vTaskDelay(pdMS_TO_TICKS(200));
+            }
+
+            if (!camera_->Reinitialize()) {
+                ESP_LOGE(TAG, "Failed to reinitialize camera on first attempt");
+
+                // 重试一次，有些时候内存需要更多时间释放
+                ESP_LOGW(TAG, "Retrying camera initialization after delay...");
+                vTaskDelay(pdMS_TO_TICKS(300));
+
+                if (!camera_->Reinitialize()) {
+                    ESP_LOGE(TAG, "Failed to reinitialize camera after retry - continuing without camera");
+                    // 不设置错误状态，继续运行其他功能
+                } else {
+                    ESP_LOGI(TAG, "Camera reinitialize succeeded on retry");
+                }
+            } else {
+                ESP_LOGI(TAG, "Camera reinitialize succeeded on first attempt");
+            }
+        }
+
+        // 在所有任务恢复后，额外等待一段时间确保内存状态稳定
+        ESP_LOGI(TAG, "Waiting for memory state to stabilize before AFE initialization...");
+        vTaskDelay(pdMS_TO_TICKS(300));
+
+        // 打印最终内存状态
+        multi_heap_info_t final_info;
+        heap_caps_get_info(&final_info, MALLOC_CAP_INTERNAL);
+        ESP_LOGI(TAG, "[RESUME END] Internal RAM - Free: %d, Largest: %d", final_info.total_free_bytes, final_info.largest_free_block);
+        heap_caps_get_info(&final_info, MALLOC_CAP_SPIRAM);
+        ESP_LOGI(TAG, "[RESUME END] PSRAM - Free: %d, Largest: %d", final_info.total_free_bytes, final_info.largest_free_block);
+
+        ESP_LOGI(TAG, "Non-essential tasks resumed successfully (~771KB memory restored)");
+        return ret;
     }
 };
 

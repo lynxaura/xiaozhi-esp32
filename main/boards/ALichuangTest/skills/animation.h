@@ -30,6 +30,11 @@ public:
     virtual void DrawImageOnCanvas(int x, int y, int width, int height, const uint8_t* img_data);
     virtual bool HasCanvas() const { return canvas_ != nullptr; }
 
+    // 动画暂停/恢复方法 - 用于内存优化
+    virtual void SuspendAnimation();
+    virtual void ResumeAnimation();
+    virtual bool IsAnimationSuspended() const { return animation_suspended_; }
+
 protected:
     // 重载SetupUI为简化版本，避免复杂UI初始化
     void SetupUI();
@@ -37,7 +42,11 @@ protected:
     // 画布对象 - 用于在顶层显示图片
     lv_obj_t* canvas_ = nullptr;
     void* canvas_buffer_ = nullptr;
-            
+
+    // 动画暂停状态
+    bool animation_suspended_ = false;
+    bool canvas_was_created_ = false; // 记录暂停前是否有canvas
+
     // 情感变化回调函数
     std::function<void(const std::string&)> emotion_callback_ = nullptr;
 };

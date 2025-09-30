@@ -61,15 +61,32 @@ bool Assets::InitializePartition() {
     uint32_t storage_size = free_pages * 64 * 1024;
     ESP_LOGI(TAG, "The storage free size is %ld KB", storage_size / 1024);
     ESP_LOGI(TAG, "The partition size is %ld KB", partition_->size / 1024);
+
+    // 优化内存映射策略 - 允许部分映射而不是完全拒绝
     if (storage_size < partition_->size) {
-        ESP_LOGE(TAG, "The free size %ld KB is less than assets partition required %ld KB", storage_size / 1024, partition_->size / 1024);
-        return false;
+        ESP_LOGW(TAG, "The free size %ld KB is less than assets partition required %ld KB", storage_size / 1024, partition_->size / 1024);
+        ESP_LOGW(TAG, "Attempting to map only available storage size");
+        // 尝试映射可用的存储大小而不是整个分区
+        if (storage_size < 64 * 1024) { // 至少需要64KB
+            ESP_LOGE(TAG, "Available storage size %ld KB is too small, need at least 64KB", storage_size / 1024);
+            return false;
+        }
     }
 
-    esp_err_t err = esp_partition_mmap(partition_, 0, partition_->size, ESP_PARTITION_MMAP_DATA, (const void**)&mmap_root_, &mmap_handle_);
+    // 优化内存映射 - 尝试映射合适的大小
+    uint32_t map_size = (storage_size < partition_->size) ? storage_size : partition_->size;
+    esp_err_t err = esp_partition_mmap(partition_, 0, map_size, ESP_PARTITION_MMAP_DATA, (const void**)&mmap_root_, &mmap_handle_);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to mmap assets partition: %s", esp_err_to_name(err));
-        return false;
+        ESP_LOGE(TAG, "Failed to mmap assets partition with size %ld KB: %s", map_size / 1024, esp_err_to_name(err));
+
+        // 如果失败，尝试更小的映射大小
+        map_size = 64 * 1024; // 最小64KB
+        ESP_LOGW(TAG, "Retrying with smaller map size: %ld KB", map_size / 1024);
+        err = esp_partition_mmap(partition_, 0, map_size, ESP_PARTITION_MMAP_DATA, (const void**)&mmap_root_, &mmap_handle_);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to mmap assets partition with minimum size: %s", esp_err_to_name(err));
+            return false;
+        }
     }
 
     partition_valid_ = true;
@@ -78,9 +95,11 @@ bool Assets::InitializePartition() {
     uint32_t stored_chksum = *(uint32_t*)(mmap_root_ + 4);
     uint32_t stored_len = *(uint32_t*)(mmap_root_ + 8);
 
-    if (stored_len > partition_->size - 12) {
-        ESP_LOGD(TAG, "The stored_len (0x%lx) is greater than the partition size (0x%lx) - 12", stored_len, partition_->size);
-        return false;
+    if (stored_len > map_size - 12) {
+        ESP_LOGD(TAG, "The stored_len (0x%lx) is greater than the mapped size (0x%lx) - 12", stored_len, map_size);
+        ESP_LOGW(TAG, "Assets may be partially loaded due to memory constraints");
+        // 不完全失败，而是继续处理可用的部分
+        stored_len = map_size - 12;
     }
 
     auto start_time = esp_timer_get_time();

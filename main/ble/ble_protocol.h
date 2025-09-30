@@ -69,8 +69,8 @@ typedef struct {
     const char* name;
 } ble_protocol_cmd_handler_t;
 
-// 最大支持的指令处理器数量
-#define BLE_PROTOCOL_MAX_HANDLERS 16
+// 最大支持的指令处理器数量 - 渐进式优化：平衡功能与内存
+#define BLE_PROTOCOL_MAX_HANDLERS 8  // 适中的处理器数量
 
 // 协议管理器初始化和去初始化
 esp_err_t ble_protocol_init(void);

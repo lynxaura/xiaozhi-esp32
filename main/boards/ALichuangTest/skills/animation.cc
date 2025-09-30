@@ -29,8 +29,9 @@ AnimaDisplay::AnimaDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_han
 
     ESP_LOGI(TAG, "Initialize LVGL port");
     lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
-    port_cfg.task_priority = 1;
-    port_cfg.timer_period_ms = 50;
+    port_cfg.task_priority = 2;  // 降低LVGL任务优先级，避免与蓝牙任务(优先级5)冲突
+    port_cfg.timer_period_ms = 100;  // 增加定时器周期，减少与蓝牙任务的冲突
+    port_cfg.task_stack = 4096;  // 确保足够的栈大小
     lvgl_port_init(&port_cfg);
 
     ESP_LOGI(TAG, "Adding LCD display");
@@ -107,6 +108,12 @@ void AnimaDisplay::SetupUI() {
 }
 
 void AnimaDisplay::SetEmotion(const char* emotion) {
+    // 检查动画是否已暂停
+    if (animation_suspended_) {
+        ESP_LOGD(TAG, "Animation suspended, deferring emotion change to: %s", emotion);
+        return;
+    }
+
     // 触发情感变化回调
     if (emotion_callback_) {
         emotion_callback_(std::string(emotion));
@@ -116,10 +123,17 @@ void AnimaDisplay::SetEmotion(const char* emotion) {
 
 void AnimaDisplay::CreateCanvas() {
     DisplayLockGuard lock(this);
-    
+
     // 如果已经有画布，先销毁
     if (canvas_ != nullptr) {
-        DestroyCanvas();
+        // 在当前锁内直接销毁，不再调用DestroyCanvas()
+        lv_obj_del(canvas_);
+        canvas_ = nullptr;
+
+        if (canvas_buffer_ != nullptr) {
+            heap_caps_free(canvas_buffer_);
+            canvas_buffer_ = nullptr;
+        }
     }
     
     // 创建画布所需的缓冲区
@@ -164,27 +178,39 @@ void AnimaDisplay::CreateCanvas() {
 }
 
 void AnimaDisplay::DestroyCanvas() {
-    DisplayLockGuard lock(this);
-    
+    // 注意：此方法假设调用者已经获取了LVGL锁
+
     if (canvas_ != nullptr) {
         lv_obj_del(canvas_);
         canvas_ = nullptr;
     }
-    
+
     if (canvas_buffer_ != nullptr) {
         heap_caps_free(canvas_buffer_);
         canvas_buffer_ = nullptr;
     }
-    
+
     ESP_LOGI("Display", "Canvas destroyed");
 }
 
 void AnimaDisplay::DrawImageOnCanvas(int x, int y, int width, int height, const uint8_t* img_data) {
-    DisplayLockGuard lock(this);
-    
-    // 确保有画布
+    // 首先检查动画是否已暂停，避免不必要的锁获取
+    if (animation_suspended_) {
+        ESP_LOGD("Display", "Animation suspended, skipping image draw");
+        return;
+    }
+
+    // 确保有画布，避免不必要的锁获取
     if (canvas_ == nullptr) {
-        ESP_LOGE("Display", "Canvas not created");
+        ESP_LOGD("Display", "Canvas not created, skipping image draw");
+        return;
+    }
+
+    DisplayLockGuard lock(this);
+
+    // 再次检查状态，因为可能在获取锁的过程中状态发生了变化
+    if (animation_suspended_ || canvas_ == nullptr) {
+        ESP_LOGD("Display", "Animation suspended or canvas destroyed during lock acquisition");
         return;
     }
     
@@ -231,4 +257,121 @@ void AnimaDisplay::SetTheme(Theme* theme) {
     // AnimaDisplay doesn't use traditional themes since it uses canvas-based rendering
     // Store the theme but don't apply it to UI elements
     current_theme_ = theme;
+}
+
+void AnimaDisplay::SuspendAnimation() {
+    if (animation_suspended_) {
+        ESP_LOGW(TAG, "Animation already suspended");
+        return;
+    }
+
+    // 记录内存状态
+    size_t free_heap_before = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    size_t free_psram_before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+
+    ESP_LOGI(TAG, "🔍 Memory before suspension - Heap: %zu KB, PSRAM: %zu KB",
+             free_heap_before / 1024, free_psram_before / 1024);
+
+    // 记录当前是否有canvas
+    canvas_was_created_ = (canvas_ != nullptr);
+
+    // 先设置暂停标志，防止新的绘制操作
+    animation_suspended_ = true;
+
+    // 等待更长时间确保LVGL任务完成所有操作
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    // 现在安全地销毁canvas
+    if (canvas_was_created_) {
+        ESP_LOGI(TAG, "Suspending animation - destroying canvas to free memory");
+
+        // 计算预期释放的内存大小
+        size_t expected_freed = width_ * height_ * 2;  // RGB565: 2 bytes per pixel
+
+        // 获取LVGL锁并销毁canvas
+        if (lvgl_port_lock(500)) {
+            DestroyCanvas();
+            lvgl_port_unlock();
+
+            // 强制垃圾回收
+            vTaskDelay(pdMS_TO_TICKS(100));
+
+            // 验证内存是否真正释放
+            size_t free_heap_after = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+            size_t free_psram_after = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+
+            size_t heap_freed = free_heap_after - free_heap_before;
+            size_t psram_freed = free_psram_after - free_psram_before;
+
+            ESP_LOGI(TAG, "📊 Memory after suspension - Heap: %zu KB (+%zu KB), PSRAM: %zu KB (+%zu KB)",
+                     free_heap_after / 1024, heap_freed / 1024,
+                     free_psram_after / 1024, psram_freed / 1024);
+
+            if (heap_freed > 0 || psram_freed > 0) {
+                ESP_LOGI(TAG, "✅ Animation suspended - actually freed %zu KB (expected %zu KB)",
+                         (heap_freed + psram_freed) / 1024, expected_freed / 1024);
+            } else {
+                ESP_LOGW(TAG, "⚠️ Animation suspended but no memory freed! Expected %zu KB",
+                         expected_freed / 1024);
+            }
+        } else {
+            ESP_LOGE(TAG, "❌ Failed to get LVGL lock for canvas destruction");
+        }
+    } else {
+        ESP_LOGI(TAG, "✅ Animation suspended - no canvas to free");
+    }
+}
+
+void AnimaDisplay::ResumeAnimation() {
+    if (!animation_suspended_) {
+        ESP_LOGW(TAG, "Animation not suspended");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Resuming animation - current state: canvas_was_created=%s",
+             canvas_was_created_ ? "true" : "false");
+
+    // 如果之前有canvas，重新创建
+    if (canvas_was_created_) {
+        ESP_LOGI(TAG, "Resuming animation - recreating canvas");
+
+        // 获取LVGL锁并创建canvas
+        if (lvgl_port_lock(500)) {
+            // 在锁内重新创建canvas
+            size_t buf_size = width_ * height_ * 2;  // RGB565: 2 bytes per pixel
+
+            // 分配内存，优先使用PSRAM
+            canvas_buffer_ = heap_caps_malloc(buf_size, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
+            if (canvas_buffer_ != nullptr) {
+                // 获取活动屏幕
+                lv_obj_t* screen = lv_screen_active();
+
+                // 创建画布对象
+                canvas_ = lv_canvas_create(screen);
+                if (canvas_ != nullptr) {
+                    // 初始化画布
+                    lv_canvas_set_buffer(canvas_, canvas_buffer_, width_, height_, LV_COLOR_FORMAT_RGB565);
+                    lv_obj_set_pos(canvas_, 0, 0);
+                    lv_obj_set_size(canvas_, width_, height_);
+                    lv_canvas_fill_bg(canvas_, lv_color_make(0, 0, 0), LV_OPA_TRANSP);
+                    lv_obj_move_foreground(canvas_);
+
+                    ESP_LOGI(TAG, "Animation resumed - canvas recreated successfully");
+                } else {
+                    ESP_LOGE(TAG, "Failed to create canvas object during resume");
+                    heap_caps_free(canvas_buffer_);
+                    canvas_buffer_ = nullptr;
+                }
+            } else {
+                ESP_LOGE(TAG, "Failed to allocate canvas buffer during resume");
+            }
+
+            lvgl_port_unlock();
+        } else {
+            ESP_LOGE(TAG, "Failed to get LVGL lock for canvas recreation");
+        }
+    }
+
+    animation_suspended_ = false;
+    canvas_was_created_ = false; // 重置状态
 }

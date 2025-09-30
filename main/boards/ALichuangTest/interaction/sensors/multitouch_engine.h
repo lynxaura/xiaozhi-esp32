@@ -69,7 +69,11 @@ public:
     // 启用/禁用触摸检测
     void Enable(bool enable) { enabled_ = enable; }
     bool IsEnabled() const { return enabled_; }
-    
+
+    // 任务管理函数（用于内存优化）
+    esp_err_t SuspendTask();
+    esp_err_t ResumeTask();
+
     // 处理函数（由任务调用）
     void Process();
     

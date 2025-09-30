@@ -26,10 +26,10 @@ typedef struct {
     uint8_t data[];
 } ble_ota_data_msg_t;
 
-// 任务配置
-#define BLE_OTA_TASK_STACK_SIZE     4096
-#define BLE_OTA_TASK_PRIORITY       3
-#define BLE_OTA_QUEUE_SIZE          10
+// 任务配置 - 优化内存使用
+#define BLE_OTA_TASK_STACK_SIZE     2048  // 从4096减少到2048
+#define BLE_OTA_TASK_PRIORITY       2     // 从3减少到2
+#define BLE_OTA_QUEUE_SIZE          3     // 从10减少到3
 
 static uint32_t lr_crc_compute(uint8_t const * p_data, uint32_t size,uint32_t*p_crc)
 {
@@ -291,8 +291,8 @@ static esp_err_t ble_ota_handle_send_file_info(uint16_t conn_id, const uint8_t *
 
     ESP_LOGI(TAG, "esp_ota_begin %s", g_ota_ctx.ota_partition->label);
     
-    // 设置数据包长度 (64-4096字节范围内)
-    g_ota_ctx.packet_length = 964; // 244- 3 =241， 241*4 = 964
+    // 设置数据包长度 - 减少内存占用
+    g_ota_ctx.packet_length = 512; // 从964字节减少到512字节
 
     g_ota_ctx.ota_buffer = (uint8_t *)malloc(g_ota_ctx.packet_length);
     if (g_ota_ctx.ota_buffer == NULL) {
