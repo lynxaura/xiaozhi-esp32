@@ -53,8 +53,8 @@ void TouchEngine::Initialize() {
     }
     ESP_LOGI(TAG, "Touch pad driver initialized successfully");
     
-    // 3. 配置触摸传感器
-    InitializeGPIO();
+    // 屏蔽可能有的GPIO操作或初始化 3. 配置触摸传感器
+    // InitializeGPIO();
     
     // 4. 创建触摸处理任务（增加栈大小以支持情感状态回调）
     BaseType_t task_result = xTaskCreate(TouchTask, "touch_task", 6144, this, 10, &task_handle_);
@@ -215,7 +215,7 @@ void TouchEngine::ResetTouchSensor() {
     ESP_LOGI(TAG, "Step 4: Touch pad reinitialized");
     
     // 5. 重新配置
-    InitializeGPIO();
+    // InitializeGPIO();
     ESP_LOGI(TAG, "Step 5: GPIO reconfigured");
     
     // 6. 等待稳定并重新读取基线
