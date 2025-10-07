@@ -236,11 +236,12 @@ void Motion::MotionTaskFunction(void* arg) {
 void Motion::MotorTurnToAngle(float target_angle, motion_speed_t speed) {
     if (!pca9685_) return;
     pca9685_->IsDevicePresent();
-    
+
+#if 0 // 结合角度传感器后可不限制角度
     // 限制目标角度
     if (target_angle > ANGLE_MAX) target_angle = ANGLE_MAX;
     if (target_angle < ANGLE_MIN) target_angle = ANGLE_MIN;
-    
+#endif
     target_angle_ = target_angle;
     float angle_diff = target_angle - current_angle_;
     
