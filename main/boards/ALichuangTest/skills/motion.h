@@ -108,6 +108,16 @@ public:
      * @brief 停止后台任务（如果需要外部控制任务生命周期）
      */
     void StopTask();
+    /**
+     * @brief 控制马达转动到指定角度
+     * @param target_angle 目标角度 (-90 到 +90)
+     * @param speed 转动速度
+     */
+    void MotorTurnToAngle(float target_angle, motion_speed_t speed);
+    /**
+     * @brief 停止马达
+     */
+    void StopMotor();
 
 private:
     // 硬件控制相关
@@ -153,13 +163,6 @@ private:
     static void MotionTaskFunction(void* arg);
 
     /**
-     * @brief 控制马达转动到指定角度
-     * @param target_angle 目标角度 (-90 到 +90)
-     * @param speed 转动速度
-     */
-    void MotorTurnToAngle(float target_angle, motion_speed_t speed);
-
-    /**
      * @brief 执行预设动作序列
      * @param motion_id 动作ID
      */
@@ -178,11 +181,6 @@ private:
      * @param speed_pwm 速度PWM值 (0-4095)
      */
     void SetMotorSpeed(int8_t direction, uint16_t speed_pwm);
-
-    /**
-     * @brief 停止马达
-     */
-    void StopMotor();
 
     /**
      * @brief 角度到PWM值的转换

@@ -10,6 +10,20 @@
 
 #define TAG "AnimaDisplay"
 
+#define BOOT_GIF_PATH  "/sdcard/system/system_boot_up.gif"
+#define DEFAUULT_GIF_PATH "/sdcard/state_expression/idle/idle_q1/idle_q1.gif"
+// 表情映射表，映射文件系统表情文件到对应表情状态
+const AnimaDisplay::EmotionMap AnimaDisplay::emotion_maps_[] = {
+    // 默认表情 -> idle_q1.gif
+    {"neutral",     "/sdcard/state_expression/idle/idle_q1/idle_q1.gif"},
+    {"angry",       "/sdcard/state_expression/speaking/talk_angry/talk_angry.gif"             },
+    {"happy",       "/sdcard/state_expression/speaking/talk_happy/talk_happy.gif"             },
+    {"laughting",   "/sdcard/state_expression/speaking/talk_happy/talk_happy.gif"             },
+    {"sad",         "/sdcard/state_expression/speaking/talk_sad/motion_shake_violently.gif"   },
+    {"crying",      "/sdcard/state_expression/speaking/talk_sad/motion_shake_violently.gif"   },
+    {"surprised",   "/sdcard/state_expression/speaking/talk_scared/talk_scared.gif"           },
+};
+
 AnimaDisplay::AnimaDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
                            int width, int height, int offset_x, int offset_y, bool mirror_x, bool mirror_y, bool swap_xy)
     : LcdDisplay(panel_io, panel, width, height) {
@@ -69,7 +83,8 @@ AnimaDisplay::AnimaDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_han
     if (offset_x != 0 || offset_y != 0) {
         lv_display_set_offset(display_, offset_x, offset_y);
     }
-
+    lv_fs_stdio_init();
+    vTaskDelay(pdMS_TO_TICKS(10));
     // 调用简化的SetupUI
     SetupUI();
 }
@@ -90,7 +105,14 @@ void AnimaDisplay::SetupUI() {
     // 创建基本的状态标签（设为隐藏，避免系统调用时崩溃）
     emoji_label_ = lv_label_create(container_);
     lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
-    
+
+    emotion_gif_ = lv_gif_create(screen);
+    lv_obj_set_size(emotion_gif_, width_, height_);
+    lv_obj_set_style_border_width(emotion_gif_, 0, 0);
+    lv_obj_set_style_bg_opa(emotion_gif_, LV_OPA_TRANSP, 0);
+    lv_obj_center(emotion_gif_);
+    lv_gif_set_src(emotion_gif_, BOOT_GIF_PATH);
+
     // 其他UI组件设为nullptr，避免系统调用时出错
     status_label_ = nullptr;
     notification_label_ = nullptr;
@@ -112,7 +134,6 @@ void AnimaDisplay::SetEmotion(const char* emotion) {
         emotion_callback_(std::string(emotion));
     }
 }
-
 
 void AnimaDisplay::CreateCanvas() {
     DisplayLockGuard lock(this);
@@ -231,4 +252,19 @@ void AnimaDisplay::SetTheme(Theme* theme) {
     // AnimaDisplay doesn't use traditional themes since it uses canvas-based rendering
     // Store the theme but don't apply it to UI elements
     current_theme_ = theme;
+}
+
+void AnimaDisplay::ShowAGifByFS
+(const std::string& emotion) {
+    DisplayLockGuard lock(this);
+    for (const auto& map : emotion_maps_) {
+        if (emotion == map.emotion) {
+            lv_gif_set_src(emotion_gif_, map.filepath);
+            ESP_LOGI(TAG, "设置表情: %s", emotion);
+            return;
+        }
+    }
+
+    lv_gif_set_src(emotion_gif_, DEFAUULT_GIF_PATH);
+    ESP_LOGI(TAG, "未知表情'%s'，使用默认", emotion);
 }

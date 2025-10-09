@@ -950,3 +950,8 @@ void Application::PlaySoundOGGFile(const char *filePath) {
     fclose(f); // 关闭文件
     free(databuf);
 }
+
+void Application::SetBacKlight(uint8_t brightness) {
+    auto& board = Board::GetInstance();
+    board.GetBacklight()->SetBrightness(brightness);
+}

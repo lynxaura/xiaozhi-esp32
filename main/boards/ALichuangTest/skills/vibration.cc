@@ -480,12 +480,12 @@ void Vibration::EnableButtonTest(vibration_id_t pattern_id, bool cycle_test) {
         return;
     }
     
-    // 初始化测试按键
-    esp_err_t ret = InitTestButton();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize test button");
-        return;
-    }
+    // 202509屏蔽可能的GPIO操作，初始化测试按键
+    //esp_err_t ret = InitTestButton();
+    //if (ret != ESP_OK) {
+    //    ESP_LOGE(TAG, "Failed to initialize test button");
+    //    return;
+    //}
     
     current_test_pattern_ = pattern_id;
     button_test_enabled_ = true;

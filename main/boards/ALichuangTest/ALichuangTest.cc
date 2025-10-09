@@ -14,6 +14,7 @@
 #include "interaction/controller/local_response_controller.h"
 #include "pca9685.h"
 #include "i2c_bus_manager.h"
+#include "analog.h"
 
 #include <esp_log.h>
 #include <esp_lcd_panel_vendor.h>
@@ -50,7 +51,6 @@
 #elif CONFIG_XIAOZHI_DEFAULT_UI
 #include "display/lcd_display.h"
 #endif
-
 
 #define TAG "ALichuangTest"
 
@@ -116,10 +116,12 @@ private:
     Pca9685* pca9685_ = nullptr;           // PCA9685 PWM控制器
     Vibration* vibration_skill_ = nullptr; // 振动技能管理器
     Motion* motion_skill_ = nullptr;       // 直流马达动作控制技能
+    AngleSensor* angle_sensor = nullptr;
     McpResponseController* mcp_response_controller_ = nullptr; // MCP响应控制器
     LocalResponseController* local_response_controller_ = nullptr; // 本地响应控制器
     TaskHandle_t delay_task_handle = nullptr;
-    SDdata_Pro* sdhccard = nullptr;   
+    SDdata_Pro* sdhccard = nullptr;
+
 #if CONFIG_LINGXI_ANIMA_UI
     // 情感相关成员变量
     std::string current_emotion_ = "neutral";
@@ -136,7 +138,7 @@ private:
                 SetCurrentEmotion(emotion);
             });
         }
-        xTaskCreate(ImageSlideshowTask, "img_slideshow", 4096, this, 3, &image_task_handle_);
+        xTaskCreate(ImageSlideshowTask, "img_slideshow", 6144, this, 3, &image_task_handle_);
         ESP_LOGI(TAG, "图片循环显示任务已启动");
     }
     
@@ -201,7 +203,6 @@ private:
             return {neutral_images, 1};
         }
     }
-    
     // 获取当前情感状态
     std::string GetCurrentEmotion() {
         std::lock_guard<std::mutex> lock(emotion_mutex_);
@@ -236,12 +237,14 @@ private:
             return 60;  // 默认间隔
         }
     }
-    
+
     // 图片循环显示任务函数
+    // 屏蔽原有任务
+    #if 0
     static void ImageSlideshowTask(void* arg) {
         ALichuangTest* board = static_cast<ALichuangTest*>(arg);
         AnimaDisplay* display = board->GetDisplay();
-        
+
         if (!display) {
             ESP_LOGE(TAG, "无法获取显示设备");
             vTaskDelete(NULL);
@@ -408,6 +411,110 @@ private:
         
         // 释放资源（实际上不会执行到这里，除非任务被外部终止）
         delete[] convertedData;
+        vTaskDelete(NULL);
+    }
+    #endif
+    static void ImageSlideshowTask(void* arg) {
+        ALichuangTest* board = static_cast<ALichuangTest*>(arg);
+        AnimaDisplay* display = board->GetDisplay();
+
+        if (!display) {
+            ESP_LOGE(TAG, "无法获取显示设备");
+            vTaskDelete(NULL);
+            return;
+        }
+        
+        // 获取AudioProcessor实例的事件组 - 从application.h中直接获取
+        auto& app = Application::GetInstance();
+        // 这里使用Application中可用的方法来判断音频状态
+        // 根据编译错误修改为可用的方法
+        
+        // 设置图片显示参数
+        int imgWidth = 320;
+        int imgHeight = 240;
+        int x = 0;
+        int y = 0;
+        
+        // 根据当前情感动态获取图片数组
+        std::string current_emotion = board->GetCurrentEmotion();
+        
+        ESP_LOGI(TAG, "当前情感: %s", current_emotion.c_str());
+        display->ShowAGifByFS(current_emotion);
+        ESP_LOGI(TAG, "初始显示图片");
+        
+        // 持续监控和处理图片显示
+        TickType_t lastUpdateTime = xTaskGetTickCount();
+        TickType_t cycleInterval = pdMS_TO_TICKS(60); // 图片切换间隔，会根据情感动态调整
+        
+        // 定义用于判断是否正在播放音频的变量
+        bool isAudioPlaying = false;
+        
+        // 定义用于检测情感变化的变量
+        std::string lastEmotion = current_emotion;
+        
+        // 定义用于判断是否应该播放情感动画的变量
+        bool shouldPlayAnimation = false;
+        bool wasPlayingAnimation = false;
+        
+        // 定义自动回归neutral的超时机制（10秒无音频播放后自动回到neutral）
+        TickType_t lastAudioTime = xTaskGetTickCount();
+        const TickType_t neutralTimeout = pdMS_TO_TICKS(10000); // 10秒超时
+        
+        while (true) {
+            // 检查情感是否发生变化
+            std::string currentEmotion = board->GetCurrentEmotion();
+            if (currentEmotion != lastEmotion) {
+                ESP_LOGI(TAG, "情感变化检测: %s -> %s", lastEmotion.c_str(), currentEmotion.c_str());
+                    // 测试背光
+                    // app.SetBacKlight(0);
+                    // vTaskDelay(pdMS_TO_TICKS(500));
+                    // app.SetBacKlight(100);
+
+                display->ShowAGifByFS(currentEmotion);
+                ESP_LOGI(TAG, "切换到新情感图片组: %s ", currentEmotion.c_str());
+            }
+            
+            // 检查是否正在播放音频 - 使用应用程序状态判断
+            isAudioPlaying = (app.GetDeviceState() == kDeviceStateSpeaking);
+            
+            // 更新最后一次音频播放时间
+            if (isAudioPlaying) {
+                lastAudioTime = xTaskGetTickCount();
+            }
+            
+            // 检查是否需要自动回归neutral状态
+            TickType_t timeSinceLastAudio = xTaskGetTickCount() - lastAudioTime;
+            if (!isAudioPlaying && currentEmotion != "neutral" && timeSinceLastAudio > neutralTimeout) {
+                ESP_LOGI(TAG, "长时间无音频播放, 自动回归neutral状态");
+                board->SetCurrentEmotion("neutral");
+                // 注意：这里不直接修改currentEmotion, 让下次循环检测情感变化时处理
+            }
+            
+            // 判断是否应该播放情感动画：情绪不为neutral且正在说话
+            bool isEmotionalState = (currentEmotion != "neutral") && (currentEmotion != "sleepy") && (currentEmotion != "");
+            shouldPlayAnimation = isEmotionalState && isAudioPlaying;
+            
+            // 输出调试信息（每10次循环输出一次，避免日志过多）
+            static int debugCount = 0;
+            if (++debugCount >= 10) {
+                ESP_LOGD(TAG, "状态检查 - 情绪: %s, 说话: %s, 播放动画: %s", 
+                    currentEmotion.c_str(), 
+                    isAudioPlaying ? "是" : "否",
+                    shouldPlayAnimation ? "是" : "否");
+                debugCount = 0;
+            }
+            
+            TickType_t currentTime = xTaskGetTickCount();
+            
+            
+            // 更新上一次动画播放状态
+            wasPlayingAnimation = shouldPlayAnimation;
+            
+            // 短暂延时，避免CPU占用过高
+            vTaskDelay(pdMS_TO_TICKS(150));
+        }
+        
+        // 释放资源（实际上不会执行到这里，除非任务被外部终止）
         vTaskDelete(NULL);
     }
 #elif CONFIG_XIAOZHI_DEFAULT_UI
@@ -780,6 +887,15 @@ private:
         //sdhccard->TestFile();
     }
 
+    void InitialAngleSensor() {
+        angle_sensor = new AngleSensor(motion_skill_);
+        set_anglehd(angle_sensor);
+    }
+
+    void InitializeAdcSample() {
+        DRV_AdcInit();
+    }
+
     void InitializeMcpTools() {
         ESP_LOGI(TAG, "Initializing MCP local response tools...");
         
@@ -956,8 +1072,13 @@ private:
 
 public:
     ALichuangTest() : boot_button_(BOOT_BUTTON_GPIO) {
+        InitializeAdcSample();
+        vTaskDelay(pdMS_TO_TICKS(10));
+        InitialSDCard();
+        vTaskDelay(pdMS_TO_TICKS(10));
         InitializeI2c();
         InitializeSpi();
+        vTaskDelay(pdMS_TO_TICKS(10));
         InitializeSt7789Display();
         //InitializeTouch();
         InitializeButtons();
@@ -966,7 +1087,7 @@ public:
         InitializePca9685();  // 初始化PCA9685 PWM控制器
         InitializeVibration();  // 初始化振动技能（使用PCA9685）
         InitializeMotion();  // 初始化直流马达动作控制技能
-        InitialSDCard();
+        InitialAngleSensor();
         InitializeInteractionSystem();  // 初始化交互系统
 
         GetBacklight()->RestoreBrightness();
@@ -1002,7 +1123,7 @@ public:
         return camera_;
     }
 
-#if CONFIG_LINGXI_ANIMA_UI       
+#if CONFIG_LINGXI_ANIMA_UI
     virtual AnimaDisplay* GetDisplay() override {
         return display_;
     }

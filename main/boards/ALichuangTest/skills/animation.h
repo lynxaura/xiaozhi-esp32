@@ -28,7 +28,17 @@ public:
     virtual void CreateCanvas();
     virtual void DestroyCanvas();
     virtual void DrawImageOnCanvas(int x, int y, int width, int height, const uint8_t* img_data);
+    void ShowAGifByFS(const std::string& emotion);
     virtual bool HasCanvas() const { return canvas_ != nullptr; }
+
+private:
+    // 表情映射
+    struct EmotionMap {
+        const std::string& emotion;
+        const char* filepath;
+    };
+    static const EmotionMap emotion_maps_[];
+    lv_obj_t* emotion_gif_;  // GIF表情组件
 
 protected:
     // 重载SetupUI为简化版本，避免复杂UI初始化
