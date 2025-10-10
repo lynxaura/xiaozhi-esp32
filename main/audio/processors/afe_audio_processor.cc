@@ -57,6 +57,9 @@ void AfeAudioProcessor::Initialize(AudioCodec* codec, int frame_duration_ms, srm
     afe_config->afe_perferred_priority = 1;
     afe_config->agc_init = false;
     afe_config->memory_alloc_mode = AFE_MEMORY_ALLOC_MORE_PSRAM;
+#ifdef CONFIG_DOA_CHANNEL_TEST
+    afe_config->afe_ringbuf_size = 100;
+#endif
 
 #ifdef CONFIG_USE_DEVICE_AEC
     afe_config->aec_init = true;

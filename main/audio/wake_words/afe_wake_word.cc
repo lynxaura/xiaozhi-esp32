@@ -1,5 +1,6 @@
 #include "afe_wake_word.h"
 #include "audio_service.h"
+#include "esp_doa.h"
 
 #include <esp_log.h>
 #include <sstream>
@@ -11,7 +12,9 @@
 AfeWakeWord::AfeWakeWord()
     : afe_data_(nullptr),
       wake_word_pcm_(),
-      wake_word_opus_() {
+      wake_word_opus_(),
+      doa_wake_left_pcm_(),
+      doa_wake_right_pcm_() {
 
     event_group_ = xEventGroupCreate();
 }
@@ -142,6 +145,12 @@ void AfeWakeWord::AudioDetectionTask() {
 
             if (wake_word_detected_callback_) {
                 wake_word_detected_callback_(last_detected_wake_word_);
+#ifdef CONFIG_DOA_CHANNEL_TEST
+                doa_handle_t *doa = esp_doa_create(16000, 1.0f, 0.065f, doa_wake_left_pcm_.size());
+                float est_angle = esp_doa_process(doa, &doa_wake_left_pcm_[0], &doa_wake_right_pcm_[0]);
+                ESP_LOGI(TAG, "doa datasize: %d angle: %.1f", doa_wake_left_pcm_.size(), est_angle);
+                esp_doa_destroy(doa);
+#endif
             }
         }
     }
@@ -154,6 +163,18 @@ void AfeWakeWord::StoreWakeWordData(const int16_t* data, size_t samples) {
     while (wake_word_pcm_.size() > 2000 / 30) {
         wake_word_pcm_.pop_front();
     }
+#ifdef CONFIG_DOA_CHANNEL_TEST
+    for (size_t i = 0, j = 0; i < (samples / 2); ++i, j += 2) {
+        doa_wake_left_pcm_.emplace_back(data[j]);
+        doa_wake_right_pcm_.emplace_back(data[j + 1]);
+    }
+    if (doa_wake_left_pcm_.size() < CONFIG_DOA_EACH_CHANNEL_TEST_DATA_NUM) {
+        return;
+    }
+    int erase = doa_wake_left_pcm_.size() - CONFIG_DOA_EACH_CHANNEL_TEST_DATA_NUM;
+    doa_wake_left_pcm_.erase(doa_wake_left_pcm_.begin(), doa_wake_left_pcm_.begin() + erase);
+    doa_wake_right_pcm_.erase(doa_wake_right_pcm_.begin(), doa_wake_right_pcm_.begin() + erase);   
+#endif
 }
 
 void AfeWakeWord::EncodeWakeWordData() {
