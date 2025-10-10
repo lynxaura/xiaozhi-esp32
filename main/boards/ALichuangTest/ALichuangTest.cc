@@ -27,6 +27,10 @@
 #include <esp_timer.h>
 #include <mutex>
 
+// 人脸模型
+#include "skills/human_face_detect.hpp"
+#include "dl_image_jpeg.hpp"
+
 /* SD Card */
 #include "sddata_pro.h"
 /* SD Card End */
@@ -1070,6 +1074,55 @@ private:
                 data.angle_x, data.angle_y, data.angle_z);
     }
 
+    void TestHumanFaceModel() {
+        const char* filepath = "/sdcard/face_dectect_models/test_face.jpg";
+        FILE *f = fopen(filepath, "r");
+        if (f == NULL) {
+            ESP_LOGW(TAG, "TestHumanFaceModel jpg file err: %s", filepath);
+            return;
+        }
+        // 获取文件大小置位到文件起始处
+        fseek(f, 0, SEEK_END);
+        long file_size = ftell(f);
+        ESP_LOGI(TAG, "jpg file size: %ld", file_size);
+        fseek(f, 0, SEEK_SET);
+        char* databuf = (char* )malloc((file_size) * sizeof(char));
+        fread(databuf, 1, file_size, f);
+        fclose(f); // 关闭文件
+
+        dl::image::jpeg_img_t jpeg_img = {.data = static_cast<void*>(databuf),
+                                      .data_len = static_cast<size_t>(file_size)};
+        auto img = dl::image::sw_decode_jpeg(jpeg_img, dl::image::DL_IMAGE_PIX_TYPE_RGB888);
+        HumanFaceDetect *detect = new HumanFaceDetect();
+        auto &detect_results = detect->run(img);
+        for (const auto &res : detect_results) {
+            ESP_LOGI(TAG,
+                    "[score: %f, x1: %d, y1: %d, x2: %d, y2: %d]",
+                    res.score,
+                    res.box[0],
+                    res.box[1],
+                    res.box[2],
+                    res.box[3]);
+            ESP_LOGI(
+                TAG,
+                "left_eye: [%d, %d], left_mouth: [%d, %d], nose: [%d, %d], right_eye: [%d, %d], right_mouth: [%d, %d]]",
+                res.keypoint[0],
+                res.keypoint[1],
+                res.keypoint[2],
+                res.keypoint[3],
+                res.keypoint[4],
+                res.keypoint[5],
+                res.keypoint[6],
+                res.keypoint[7],
+                res.keypoint[8],
+                res.keypoint[9]);
+        }
+        delete detect;
+        heap_caps_free(img.data);
+        
+        free(databuf);
+
+    }
 public:
     ALichuangTest() : boot_button_(BOOT_BUTTON_GPIO) {
         InitializeAdcSample();
@@ -1105,6 +1158,9 @@ public:
 
         // 所有skills初始化完成后，初始化MCP工具
         InitializeMcpTools();
+
+        // 测试人脸检测模型是否工作
+        TestHumanFaceModel();
     }
 
     virtual AudioCodec* GetAudioCodec() override {
