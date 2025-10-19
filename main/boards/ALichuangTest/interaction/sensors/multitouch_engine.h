@@ -153,9 +153,11 @@ private:
     // MPR121相关
     uint16_t left_baseline_;   // 左侧触摸基准值
     uint16_t right_baseline_;  // 右侧触摸基准值
-    uint8_t touch_threshold_;  // 触摸阈值
-    uint8_t release_threshold_; // 释放阈值
-    
+    uint8_t touch_threshold_;  // 触摸阈值（右侧）
+    uint8_t release_threshold_; // 释放阈值（右侧）
+    uint8_t left_touch_threshold_;  // 左侧触摸阈值
+    uint8_t left_release_threshold_; // 左侧释放阈值
+
     // 传感器状态检测
     int stuck_detection_count_;
     static const int STUCK_THRESHOLD = 10; // 连续10次检测到卡死状态
@@ -193,7 +195,7 @@ private:
     
     // 读取基准值
     void ReadBaseline();
-    
+
     // 重置触摸传感器
     void ResetTouchSensor();
     

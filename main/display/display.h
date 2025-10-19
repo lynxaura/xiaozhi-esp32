@@ -33,7 +33,12 @@ public:
     virtual void SetStatus(const char* status);
     virtual void ShowNotification(const char* notification, int duration_ms = 3000);
     virtual void ShowNotification(const std::string &notification, int duration_ms = 3000);
-    virtual void SetEmotion(const char* emotion);
+
+    // 动画/情感显示接口
+    virtual void SetEmotion(const char* emotion);  // 传统接口：用于兼容旧代码,触发动画回调
+    virtual void SetAnima(const std::string& animation);  // 新接口：直接设置动画(默认播放一次)
+    virtual void SetAnima(const std::string& animation, int loop_count);  // 重载：指定播放次数(loop_count<0为无限循环)
+
     virtual void SetChatMessage(const char* role, const char* content);
     virtual void SetTheme(Theme* theme);
     virtual Theme* GetTheme() { return current_theme_; }

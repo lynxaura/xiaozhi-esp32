@@ -7,7 +7,7 @@
 
 #define TAG "MultitouchEngine"
 
-MultitouchEngine::MultitouchEngine() 
+MultitouchEngine::MultitouchEngine()
     : enabled_(false)
     , left_touched_(false)
     , right_touched_(false)
@@ -15,19 +15,21 @@ MultitouchEngine::MultitouchEngine()
     , right_baseline_(0)
     , touch_threshold_(12)
     , release_threshold_(6)
+    , left_touch_threshold_(20)  // 左侧阈值设为20，降低敏感度
+    , left_release_threshold_(10)  // 左侧释放阈值设为10
     , stuck_detection_count_(0)
     , both_touch_start_time_(0)
     , cradled_triggered_(false)
     , task_handle_(nullptr)
     , i2c_bus_(nullptr)
     , mpr121_device_(nullptr) {
-    
+
     // 初始化触摸状态
     left_state_ = {false, false, 0, 0, false, false};
     right_state_ = {false, false, 0, 0, false, false};
 }
 
-MultitouchEngine::MultitouchEngine(i2c_master_bus_handle_t i2c_bus) 
+MultitouchEngine::MultitouchEngine(i2c_master_bus_handle_t i2c_bus)
     : enabled_(false)
     , left_touched_(false)
     , right_touched_(false)
@@ -35,13 +37,15 @@ MultitouchEngine::MultitouchEngine(i2c_master_bus_handle_t i2c_bus)
     , right_baseline_(0)
     , touch_threshold_(12)
     , release_threshold_(6)
+    , left_touch_threshold_(20)  // 左侧阈值设为20，降低敏感度
+    , left_release_threshold_(10)  // 左侧释放阈值设为10
     , stuck_detection_count_(0)
     , both_touch_start_time_(0)
     , cradled_triggered_(false)
     , task_handle_(nullptr)
     , i2c_bus_(i2c_bus)
     , mpr121_device_(nullptr) {
-    
+
     // 初始化触摸状态
     left_state_ = {false, false, 0, 0, false, false};
     right_state_ = {false, false, 0, 0, false, false};
@@ -78,9 +82,9 @@ void MultitouchEngine::Initialize() {
     
     // 5. 读取基准值
     ReadBaseline();
-    
-    // 6. 创建触摸处理任务
-    BaseType_t task_result = xTaskCreate(TouchTask, "multitouch_task", 3072, this, 10, &task_handle_);
+
+    // 6. 创建触摸处理任务（增大栈空间以支持复杂的回调处理）
+    BaseType_t task_result = xTaskCreate(TouchTask, "multitouch_task", 5120, this, 10, &task_handle_);
     if (task_result != pdPASS) {
         ESP_LOGE(TAG, "Failed to create multitouch task");
         return;
@@ -193,17 +197,28 @@ bool MultitouchEngine::InitializeMPR121() {
     
     vTaskDelay(pdMS_TO_TICKS(10));
     
-    // 配置触摸/释放阈值
-    for (uint8_t i = 0; i < NUM_ELECTRODES; i++) {
-        if (!WriteRegister(MPR121_TOUCHTH_0 + 2*i, touch_threshold_)) {
-            ESP_LOGE(TAG, "Failed to set touch threshold for electrode %d", i);
-            return false;
-        }
-        if (!WriteRegister(MPR121_RELEASETH_0 + 2*i, release_threshold_)) {
-            ESP_LOGE(TAG, "Failed to set release threshold for electrode %d", i);
-            return false;
-        }
+    // 配置触摸/释放阈值 - 左右独立设置
+    // 左侧电极（ELECTRODE_LEFT = 0）
+    if (!WriteRegister(MPR121_TOUCHTH_0 + 2 * ELECTRODE_LEFT, left_touch_threshold_)) {
+        ESP_LOGE(TAG, "Failed to set touch threshold for left electrode");
+        return false;
     }
+    if (!WriteRegister(MPR121_RELEASETH_0 + 2 * ELECTRODE_LEFT, left_release_threshold_)) {
+        ESP_LOGE(TAG, "Failed to set release threshold for left electrode");
+        return false;
+    }
+    ESP_LOGI(TAG, "Left electrode thresholds: Touch=%d, Release=%d", left_touch_threshold_, left_release_threshold_);
+
+    // 右侧电极（ELECTRODE_RIGHT = 1）
+    if (!WriteRegister(MPR121_TOUCHTH_0 + 2 * ELECTRODE_RIGHT, touch_threshold_)) {
+        ESP_LOGE(TAG, "Failed to set touch threshold for right electrode");
+        return false;
+    }
+    if (!WriteRegister(MPR121_RELEASETH_0 + 2 * ELECTRODE_RIGHT, release_threshold_)) {
+        ESP_LOGE(TAG, "Failed to set release threshold for right electrode");
+        return false;
+    }
+    ESP_LOGI(TAG, "Right electrode thresholds: Touch=%d, Release=%d", touch_threshold_, release_threshold_);
     
     // 配置滤波器设置
     WriteRegister(MPR121_MHDR, 0x01);
@@ -376,7 +391,7 @@ void MultitouchEngine::ResetTouchSensor() {
     // 3. 重新读取基线
     vTaskDelay(pdMS_TO_TICKS(200));
     ReadBaseline();
-    
+
     ESP_LOGI(TAG, "========== MPR121 SENSOR RESET COMPLETE ==========");
 }
 

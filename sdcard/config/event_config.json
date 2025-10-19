@@ -1,0 +1,190 @@
+{
+  "events": {
+    "MOTION_FREE_FALL": {
+      "detection": {
+        "threshold_g": 0.3,
+        "min_duration_ms": 200
+      },
+      "processing": {
+        "strategy": "IMMEDIATE"
+      },
+      "va_impact": {
+        "valence": -0.8,
+        "arousal": 0.9
+      }
+    },
+    
+    "MOTION_SHAKE_VIOLENTLY": {
+      "detection": {
+        "threshold_g": 3.0
+      },
+      "processing": {
+        "strategy": "IMMEDIATE"
+      },
+      "va_impact": {
+        "valence": -0.3,
+        "arousal": 0.7
+      }
+    },
+    
+    "MOTION_FLIP": {
+      "detection": {
+        "threshold_deg_s": 400.0
+      },
+      "processing": {
+        "strategy": "THROTTLE",
+        "interval_ms": 2000
+      },
+      "va_impact": {
+        "valence": 0.2,
+        "arousal": 0.4
+      }
+    },
+    
+    "MOTION_SHAKE": {
+      "detection": {
+        "normal_threshold_g": 1.5
+      },
+      "processing": {
+        "strategy": "THROTTLE",
+        "interval_ms": 2000
+      },
+      "va_impact": {
+        "valence": 0.1,
+        "arousal": 0.3
+      }
+    },
+    
+    "MOTION_PICKUP": {
+      "detection": {
+        "threshold_g": 0.15,
+        "stable_threshold_g": 0.05,
+        "stable_count": 5,
+        "min_duration_ms": 300
+      },
+      "processing": {
+        "strategy": "THROTTLE",
+        "interval_ms": 1000
+      },
+      "va_impact": {
+        "valence": 0.05,
+        "arousal": 0.2
+      }
+    },
+    
+    "MOTION_UPSIDE_DOWN": {
+      "detection": {
+        "threshold_g": -0.8,
+        "stable_count": 10
+      },
+      "processing": {
+        "strategy": "THROTTLE",
+        "interval_ms": 3000
+      },
+      "va_impact": {
+        "valence": -0.2,
+        "arousal": 0.3
+      }
+    },
+    
+    "TOUCH_TAP": {
+      "detection": {
+        "max_duration_ms": 500,
+        "debounce_time_ms": 30
+      },
+      "processing": {
+        "strategy": "THROTTLE",
+        "interval_ms": 300
+      },
+      "va_impact": {
+        "valence": 0.1,
+        "arousal": 0.1
+      }
+    },
+    
+    "TOUCH_DOUBLE_TAP": {
+      "detection": {
+        "tap_interval_ms": 300
+      },
+      "processing": {
+        "strategy": "COOLDOWN",
+        "interval_ms": 1000
+      },
+      "va_impact": {
+        "valence": 0.15,
+        "arousal": 0.15
+      }
+    },
+    
+    "TOUCH_LONG_PRESS": {
+      "detection": {
+        "min_duration_ms": 600
+      },
+      "processing": {
+        "strategy": "COOLDOWN",
+        "interval_ms": 1000
+      },
+      "va_impact": {
+        "valence": 0.2,
+        "arousal": -0.2
+      }
+    },
+    
+    "TOUCH_CRADLED": {
+      "detection": {
+        "min_duration_ms": 2000
+      },
+      "processing": {
+        "strategy": "THROTTLE",
+        "interval_ms": 5000
+      },
+      "va_impact": {
+        "valence": 0.3,
+        "arousal": -0.4
+      }
+    },
+    
+    "TOUCH_TICKLED": {
+      "detection": {
+        "window_ms": 2000,
+        "min_touches": 4
+      },
+      "processing": {
+        "strategy": "COOLDOWN",
+        "interval_ms": 3000
+      },
+      "va_impact": {
+        "valence": 0.4,
+        "arousal": 0.5
+      }
+    },
+    
+    "IDLE_1MIN": {
+      "detection": {
+        "idle_duration_ms": 60000
+      },
+      "processing": {
+        "strategy": "IMMEDIATE"
+      },
+      "va_impact": {
+        "valence": -0.4,
+        "arousal": -0.3
+      }
+    }
+  },
+  
+  "global_settings": {
+    "batch_upload": {
+      "enabled": true,
+      "window_ms": 500,
+      "max_batch_size": 10
+    },
+    "default_processing": {
+      "strategy": "IMMEDIATE",
+      "interval_ms": 0
+    },
+    "debug": {
+      "motion_debug_enabled": false
+    }
+  }
+}

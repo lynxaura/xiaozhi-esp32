@@ -2,6 +2,8 @@
 #define ANIMA_DISPLAY_H
 #include "display/lcd_display.h"
 #include <functional>
+#include <unordered_map>
+#include <string>
 
 class AnimaDisplay : public LcdDisplay {
 public:
@@ -9,13 +11,17 @@ public:
                   int width, int height, int offset_x, int offset_y,
                   bool mirror_x, bool mirror_y, bool swap_xy);
 
-    // 情感变化回调
-    virtual void OnEmotionChanged(std::function<void(const std::string&)> callback) { 
-        emotion_callback_ = callback; 
+    // 动画变化回调
+    virtual void OnAnimationChanged(std::function<void(const std::string&)> callback) {
+        animation_callback_ = callback;
     }
-    virtual void SetEmotion(const char* emotion) override;
 
-    // UI方法重载为空 - 因为使用canvas替代传统UI
+    // 动画/情感显示接口实现
+    virtual void SetEmotion(const char* emotion) override;  // 兼容接口：触发动画回调
+    virtual void SetAnima(const std::string& animation) override;  // 新接口：直接播放GIF动画(默认播放一次)
+    virtual void SetAnima(const std::string& animation, int loop_count) override;  // 重载：指定播放次数(loop_count<0为无限循环)
+
+    // UI方法重载为空 - 因为使用GIF替代传统UI
     virtual void SetStatus(const char* status) override {}
     virtual void ShowNotification(const char* notification, int duration_ms = 3000) override {}
     virtual void SetChatMessage(const char* role, const char* content) override {}
@@ -24,31 +30,16 @@ public:
     virtual void SetPowerSaveMode(bool on) override {}
     virtual void SetTheme(Theme* theme) override;
 
-    // 画布相关方法 - 用于在UI顶层显示图片
-    virtual void CreateCanvas();
-    virtual void DestroyCanvas();
-    virtual void DrawImageOnCanvas(int x, int y, int width, int height, const uint8_t* img_data);
-    void ShowAGifByFS(const std::string& emotion);
-    virtual bool HasCanvas() const { return canvas_ != nullptr; }
-
 private:
-    // 表情映射
-    struct EmotionMap {
-        const std::string& emotion;
-        const char* filepath;
-    };
-    static const EmotionMap emotion_maps_[];
-    lv_obj_t* emotion_gif_;  // GIF表情组件
+    // 动画名称到文件路径的哈希映射表
+    static const std::unordered_map<std::string, const char*> animation_maps_;
+    lv_obj_t* animation_gif_;  // GIF动画组件
 
 protected:
     // 重载SetupUI为简化版本，避免复杂UI初始化
     void SetupUI();
 
-    // 画布对象 - 用于在顶层显示图片
-    lv_obj_t* canvas_ = nullptr;
-    void* canvas_buffer_ = nullptr;
-            
-    // 情感变化回调函数
-    std::function<void(const std::string&)> emotion_callback_ = nullptr;
+    // 动画变化回调函数
+    std::function<void(const std::string&)> animation_callback_ = nullptr;
 };
 #endif

@@ -112,70 +112,6 @@ void SDdata_Pro::TestFile() {
     }
 }
 
-void SDdata_Pro::ReadImageBin(const char *path, uint8_t *databuf) {
-    FILE* f = fopen(path, "rb");  // 使用二进制模式打开文件
-    if (f) {
-        rewind(f);
-        fread(databuf, 1, 153600, f);
-        fclose(f);
-    } else {
-        ESP_LOGW(TAG, "path %s err", path);
-    }
-}
-
-void SDdata_Pro::SetAngryFlash() {
-    const char *file_1 = ANGRY_PATH"1.bin";
-    ReadImageBin(file_1, &m_image[0][0]);
-    const char *file_2 = ANGRY_PATH"2.bin";
-    ReadImageBin(file_2, &m_image[1][0]);
-    const char *file_3 = ANGRY_PATH"3.bin";
-    ReadImageBin(file_3, &m_image[2][0]);
-    const char *file_4 = ANGRY_PATH"4.bin";
-    ReadImageBin(file_4, &m_image[3][0]);
-}
-
-void SDdata_Pro::SetHappyFlash() {
-    const char *file_1 = HAPPY_PATH"1.bin";
-    ReadImageBin(file_1, &m_image[0][0]);
-    const char *file_2 = HAPPY_PATH"2.bin";
-    ReadImageBin(file_2, &m_image[1][0]);
-    const char *file_3 = HAPPY_PATH"3.bin";
-    ReadImageBin(file_3, &m_image[2][0]);
-}
-
-void SDdata_Pro::SetLaughFlash() {
-    const char *file_1 = LAUGH_PATH"1.bin";
-    ReadImageBin(file_1, &m_image[0][0]);
-}
-
-void SDdata_Pro::SetNeutralFlash() {
-    const char *file_1 = NEUTRAL_PATH"1.bin";
-    ReadImageBin(file_1, &m_image[0][0]);
-}
-
-void SDdata_Pro::SetSadFlash() {
-    const char *file_1 = SAD_PATH"1.bin";
-    ReadImageBin(file_1, &m_image[0][0]);
-    const char *file_2 = SAD_PATH"2.bin";
-    ReadImageBin(file_2, &m_image[1][0]);
-    const char *file_3 = SAD_PATH"3.bin";
-    ReadImageBin(file_3, &m_image[2][0]);
-}
-
-void SDdata_Pro::SetSurpriseFlash() {
-    const char *file_1 = SURPRISE_PATH"1.bin";
-    ReadImageBin(file_1, &m_image[0][0]);
-    const char *file_2 = SURPRISE_PATH"2.bin";
-    ReadImageBin(file_2, &m_image[1][0]);
-    const char *file_3 = SURPRISE_PATH"3.bin";
-    ReadImageBin(file_3, &m_image[2][0]);
-    const char *file_4 = SURPRISE_PATH"4.bin";
-    ReadImageBin(file_4, &m_image[3][0]);
-    const char *file_5 = SURPRISE_PATH"5.bin";
-    ReadImageBin(file_5, &m_image[4][0]);
-    const char *file_6 = SURPRISE_PATH"6.bin";
-    ReadImageBin(file_6, &m_image[5][0]);
-}
 
 int SDdata_Pro::GetVASysConfig(char* databuff) {
     const char *filePath = VASYS_CFG_PATH"vasys_config.json";
@@ -228,22 +164,12 @@ void SDLoadImageTest(void) {
         ESP_LOGI(TAG, "SD handle test err!");
         return;
     }
-    
-    
-    sdcard->SetAngryFlash();
-    sdcard->SetHappyFlash();
-    sdcard->SetLaughFlash();
-    sdcard->SetNeutralFlash();
-    sdcard->SetSadFlash();
-    sdcard->SetSurpriseFlash();
 
-    
     const char *file_t2 = VASYS_CFG_PATH"vasys.txt";
     TestFileOK(file_t2);
-    
+
     const char *file_t3 = VASYS_CFG_PATH"vasys_config.json";
     TestFileOK(file_t3);
-    
 
     ESP_LOGW(TAG, "File Test OK");
     return;

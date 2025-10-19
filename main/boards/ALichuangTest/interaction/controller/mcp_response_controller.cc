@@ -45,10 +45,11 @@ bool McpResponseController::Initialize() {
         ESP_LOGI(TAG, "    * performance_motion: 表演动作(4种)");
         ESP_LOGI(TAG, "    * angle_control: 精确角度控制");
         ESP_LOGI(TAG, "  - Haptic Feedback (1 tool)");
-        ESP_LOGI(TAG, "  - Display Animation (2 tools)");
+        ESP_LOGI(TAG, "  - Speaking Animation (1 tool)");
+        ESP_LOGI(TAG, "    * show_emotion: 8种说话表情(calm/happy/sad/angry/scared/curious/shy/content)");
         ESP_LOGI(TAG, "  - Emotion Expression (8 tools)");
         ESP_LOGI(TAG, "  - Status Query (3 tools)");
-        ESP_LOGI(TAG, "  Total: 19 tools with 23+ motion patterns available");
+        ESP_LOGI(TAG, "  Total: 18 tools with 23+ motion patterns available");
         
         return true;
         
@@ -176,36 +177,24 @@ void McpResponseController::RegisterVibrationTools() {
 
 void McpResponseController::RegisterDisplayTools() {
     auto& mcp_server = McpServer::GetInstance();
-    
-    // 情绪动画控制
+
+    // 情绪动画控制 - 仅限说话时使用的8种表情
     mcp_server.AddTool("self.display.show_emotion",
-        "在屏幕上显示情绪动画。支持情绪：\n"
-        "calm: 平静 - 基础表情\n"
-        "happy: 开心\n" 
-        "sad: 悲伤\n"
-        "angry: 生气\n"
-        "scared: 害怕\n"
-        "curious: 好奇\n"
-        "shy: 害羞\n"
-        "content: 舒服",
+        "在屏幕上显示说话表情动画（仅在TTS语音播放时使用）。\n"
+        "重要：此工具仅用于配合语音播放显示表情，参数名为'emotion'\n\n"
+        "支持的8种说话表情：\n"
+        "calm: 平静说话 - 基础对话表情\n"
+        "happy: 开心说话 - 愉快的语气\n"
+        "sad: 悲伤说话 - 沮丧失落的语气\n"
+        "angry: 生气说话 - 愤怒不满的语气\n"
+        "scared: 害怕说话 - 惊恐担忧的语气\n"
+        "curious: 好奇说话 - 探索思考的语气\n"
+        "shy: 害羞说话 - 腼腆羞涩的语气\n"
+        "content: 满足说话 - 舒适愉快的语气",
         PropertyList({
-            Property("emotion", kPropertyTypeString),
-            Property("duration", kPropertyTypeInteger, 0, 30000) // 可选，持续时间(ms)
+            Property("emotion", kPropertyTypeString)
         }), [this](const PropertyList& properties) -> ReturnValue {
             return ShowEmotionTool(properties);
-        });
-    
-    // 动画播放控制
-    mcp_server.AddTool("self.display.animation_control",
-        "控制屏幕动画播放。支持操作：\n"
-        "start: 开始播放当前情绪动画\n"
-        "stop: 停止动画播放\n"
-        "set_speed: 设置动画播放速度",
-        PropertyList({
-            Property("action", kPropertyTypeString),
-            Property("speed", kPropertyTypeInteger, 10, 500) // 可选，播放间隔(ms)
-        }), [this](const PropertyList& properties) -> ReturnValue {
-            return AnimationControlTool(properties);
         });
 }
 
@@ -471,46 +460,40 @@ ReturnValue McpResponseController::BasicVibrationTool(const PropertyList& proper
 // 显示情绪动画工具实现
 ReturnValue McpResponseController::ShowEmotionTool(const PropertyList& properties) {
     const std::string& emotion = properties["emotion"].value<std::string>();
-    
+
     auto display = get_display_func_();
     if (!display) {
         return ReturnValue("Display system not available");
     }
-    
-    // 设置情绪，触发动画变更
+
+    // 验证是否为允许的8种说话表情之一
+    const std::string valid_emotions[] = {
+        "calm", "happy", "sad", "angry", "scared", "curious", "shy", "content"
+    };
+
+    bool is_valid = false;
+    for (const auto& valid_emotion : valid_emotions) {
+        if (emotion == valid_emotion) {
+            is_valid = true;
+            break;
+        }
+    }
+
+    if (!is_valid) {
+        ESP_LOGW(TAG, "Invalid emotion for speaking: %s (must be one of: calm, happy, sad, angry, scared, curious, shy, content)",
+                 emotion.c_str());
+        return ReturnValue("Invalid emotion: " + emotion +
+                          ". Valid options: calm, happy, sad, angry, scared, curious, shy, content");
+    }
+
+    // 使用SetAnima播放GIF动画（循环播放直到语音结束）
     set_current_emotion_func_(emotion);
-    display->SetEmotion(emotion.c_str());
-    
-    // TODO: 可选的持续时间控制
-    // 由于PropertyList没有find方法，暂时跳过duration参数处理
-    // 需要在MCP框架中添加对可选参数的支持
-    
-    ESP_LOGI(TAG, "Emotion animation: %s", emotion.c_str());
-    return ReturnValue("Emotion " + emotion + " displayed");
+    display->SetAnima(emotion, -1);  // -1 表示无限循环播放
+
+    ESP_LOGI(TAG, "Speaking emotion animation: %s (looping)", emotion.c_str());
+    return ReturnValue("Speaking emotion '" + emotion + "' animation started");
 }
 
-// 动画播放控制工具实现
-ReturnValue McpResponseController::AnimationControlTool(const PropertyList& properties) {
-    const std::string& action = properties["action"].value<std::string>();
-    
-    if (action == "start") {
-        // 开始播放动画（实际上AnimaDisplay一直在播放）
-        ESP_LOGI(TAG, "Animation playback started");
-        return ReturnValue("Animation started");
-    } else if (action == "stop") {
-        // 停止到neutral状态
-        set_current_emotion_func_("neutral");
-        ESP_LOGI(TAG, "Animation playback stopped");
-        return ReturnValue("Animation stopped");
-    } else if (action == "set_speed") {
-        // TODO: 处理可选的speed参数
-        // 由于PropertyList没有find方法，暂时使用默认速度
-        ESP_LOGI(TAG, "Animation speed control not yet implemented");
-        return ReturnValue("Animation speed control not yet implemented");
-    } else {
-        return ReturnValue("Unknown action: " + action);
-    }
-}
 
 // 8种情绪表达工具实现
 
@@ -520,16 +503,15 @@ ReturnValue McpResponseController::CalmExpressionTool(const PropertyList& proper
     if (motion_skill_) {
         motion_skill_->Perform(MOTION_RELAX_COMPLETELY);
     }
-    
+
     // 振动反馈：温和心跳
     if (vibration_skill_) {
         vibration_skill_->Play(VIBRATION_GENTLE_HEARTBEAT);
     }
-    
-    // 屏幕动画：中性表情
-    set_current_emotion_func_("neutral");
-    
-    ESP_LOGI(TAG, "Calm emotion expressed comprehensively");
+
+    // 注意：不设置动画，动画由大模型单独调用 show_emotion 工具控制
+
+    ESP_LOGI(TAG, "Calm emotion expressed (motion + vibration only)");
     return ReturnValue("Calm emotion expressed successfully");
 }
 
@@ -539,16 +521,15 @@ ReturnValue McpResponseController::HappyExpressionTool(const PropertyList& prope
     if (motion_skill_) {
         motion_skill_->Perform(MOTION_HAPPY_WIGGLE);
     }
-    
+
     // 振动反馈：欢快笑声振动
     if (vibration_skill_) {
         vibration_skill_->Play(VIBRATION_GIGGLE_PATTERN);
     }
-    
-    // 屏幕动画：开心表情
-    set_current_emotion_func_("happy");
-    
-    ESP_LOGI(TAG, "Happy emotion expressed comprehensively");
+
+    // 注意：不设置动画，动画由大模型单独调用 show_emotion 工具控制
+
+    ESP_LOGI(TAG, "Happy emotion expressed (motion + vibration only)");
     return ReturnValue("Happy emotion expressed successfully");
 }
 
@@ -558,16 +539,15 @@ ReturnValue McpResponseController::SadExpressionTool(const PropertyList& propert
     if (motion_skill_) {
         motion_skill_->Perform(MOTION_RELAX_COMPLETELY);
     }
-    
+
     // 振动反馈：缓慢沉重心跳
     if (vibration_skill_) {
         vibration_skill_->Play(VIBRATION_GENTLE_HEARTBEAT);
     }
-    
-    // 屏幕动画：悲伤表情
-    set_current_emotion_func_("sad");
-    
-    ESP_LOGI(TAG, "Sad emotion expressed comprehensively");
+
+    // 注意：不设置动画，动画由大模型单独调用 show_emotion 工具控制
+
+    ESP_LOGI(TAG, "Sad emotion expressed (motion + vibration only)");
     return ReturnValue("Sad emotion expressed successfully");
 }
 
@@ -577,16 +557,15 @@ ReturnValue McpResponseController::AngryExpressionTool(const PropertyList& prope
     if (motion_skill_) {
         motion_skill_->Perform(MOTION_SHAKE_HEAD);
     }
-    
+
     // 振动反馈：尖锐强烈振动
     if (vibration_skill_) {
         vibration_skill_->Play(VIBRATION_STRUGGLE_PATTERN);
     }
-    
-    // 屏幕动画：愤怒表情
-    set_current_emotion_func_("angry");
-    
-    ESP_LOGI(TAG, "Angry emotion expressed comprehensively");
+
+    // 注意：不设置动画，动画由大模型单独调用 show_emotion 工具控制
+
+    ESP_LOGI(TAG, "Angry emotion expressed (motion + vibration only)");
     return ReturnValue("Angry emotion expressed successfully");
 }
 
@@ -596,16 +575,15 @@ ReturnValue McpResponseController::ScaredExpressionTool(const PropertyList& prop
     if (motion_skill_) {
         motion_skill_->Perform(MOTION_TENSE_UP);
     }
-    
+
     // 振动反馈：颤抖不安振动
     if (vibration_skill_) {
         vibration_skill_->Play(VIBRATION_TREMBLE_PATTERN);
     }
-    
-    // 屏幕动画：惊恐表情
-    set_current_emotion_func_("surprised");
-    
-    ESP_LOGI(TAG, "Scared emotion expressed comprehensively");
+
+    // 注意：不设置动画，动画由大模型单独调用 show_emotion 工具控制
+
+    ESP_LOGI(TAG, "Scared emotion expressed (motion + vibration only)");
     return ReturnValue("Scared emotion expressed successfully");
 }
 
@@ -615,16 +593,15 @@ ReturnValue McpResponseController::CuriousExpressionTool(const PropertyList& pro
     if (motion_skill_) {
         motion_skill_->Perform(MOTION_CURIOUS_PEEK_LEFT);
     }
-    
+
     // 振动反馈：轻快探索振动
     if (vibration_skill_) {
         vibration_skill_->Play(VIBRATION_SHORT_BUZZ);
     }
-    
-    // 屏幕动画：思考表情
-    set_current_emotion_func_("thinking");
-    
-    ESP_LOGI(TAG, "Curious emotion expressed comprehensively");
+
+    // 注意：不设置动画，动画由大模型单独调用 show_emotion 工具控制
+
+    ESP_LOGI(TAG, "Curious emotion expressed (motion + vibration only)");
     return ReturnValue("Curious emotion expressed successfully");
 }
 
@@ -634,16 +611,15 @@ ReturnValue McpResponseController::ShyExpressionTool(const PropertyList& propert
     if (motion_skill_) {
         motion_skill_->Perform(MOTION_DODGE_SUBTLE);
     }
-    
+
     // 振动反馈：羞涩轻颤
     if (vibration_skill_) {
         vibration_skill_->Play(VIBRATION_PURR_SHORT);
     }
-    
-    // 屏幕动画：害羞表情（使用neutral作为基础）
-    set_current_emotion_func_("neutral");
-    
-    ESP_LOGI(TAG, "Shy emotion expressed comprehensively");
+
+    // 注意：不设置动画，动画由大模型单独调用 show_emotion 工具控制
+
+    ESP_LOGI(TAG, "Shy emotion expressed (motion + vibration only)");
     return ReturnValue("Shy emotion expressed successfully");
 }
 
@@ -653,16 +629,15 @@ ReturnValue McpResponseController::ContentExpressionTool(const PropertyList& pro
     if (motion_skill_) {
         motion_skill_->Perform(MOTION_HAPPY_WIGGLE);
     }
-    
+
     // 振动反馈：满足咕噜声
     if (vibration_skill_) {
         vibration_skill_->Play(VIBRATION_PURR_PATTERN);
     }
-    
-    // 屏幕动画：满足表情
-    set_current_emotion_func_("happy");
-    
-    ESP_LOGI(TAG, "Content emotion expressed comprehensively");
+
+    // 注意：不设置动画，动画由大模型单独调用 show_emotion 工具控制
+
+    ESP_LOGI(TAG, "Content emotion expressed (motion + vibration only)");
     return ReturnValue("Content emotion expressed successfully");
 }
 

@@ -44,7 +44,6 @@ private:
     TaskHandle_t vibration_task_handle_;
     bool initialized_;
     vibration_id_t current_pattern_;
-    std::string current_emotion_;
     bool emotion_based_enabled_;
 
     // 静态任务函数
@@ -108,12 +107,6 @@ public:
      * @return 当前振动模式ID
      */
     vibration_id_t GetCurrentPattern() const { return current_pattern_; }
-
-    /**
-     * @brief 获取当前情绪
-     * @return 当前情绪字符串
-     */
-    const std::string& GetCurrentEmotion() const { return current_emotion_; }
 
     /**
      * @brief 启用按键测试功能

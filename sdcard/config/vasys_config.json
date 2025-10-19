@@ -1,0 +1,295 @@
+{
+    "va_event_impacts": {
+        "Touch_Tap": {
+            "valence": 0.1, 
+            "arousal": 0.1,
+            "comment": "轻拍带来轻微正面刺激"
+        },
+
+        "TOUCH_LONG_PRESS": {
+            "valence": 0.2, 
+            "arousal": -0.2,
+            "comment": "长按表示安抚，增加满足感"
+        },
+
+        "TOUCH_TICKLED": {
+            "valence": 0.4, 
+            "arousal": 0.5,
+            "comment": "挠痒痒带来强烈快乐"
+        },
+
+        "TOUCH_CRADLED": {
+            "valence": 0.3, 
+            "arousal": -0.4,
+            "comment": "抱着带来安全感和平静"
+        },
+
+        "MOTION_SHAKE": {
+            "valence": 0.1, 
+            "arousal": 0.3,
+            "comment": "摇晃带来轻微不适和警觉"
+        },
+
+        "MOTION_SHAKE_VIOLENTLY": {
+            "valence": -0.3, 
+            "arousal": 0.7,
+            "comment": "剧烈摇晃带来恐惧"
+        },
+
+        "MOTION_FREE_FALL": {
+            "valence": -0.8, 
+            "arousal": 0.9,
+            "comment": "跌落带来极度恐惧"
+        },
+
+        "MOTION_PICKUP": {
+            "valence": 0.05, 
+            "arousal": 0.2,
+            "comment": "被拿起带来期待"
+        },
+
+        "MOTION_UPSIDE_DOWN": {
+            "valence": -0.2, 
+            "arousal": 0.3,
+            "comment": "倒置带来困惑不适"
+        },
+
+        "MOTION_FLIP": {
+            "valence": 0.2, 
+            "arousal": 0.4,
+            "comment": "被快速翻转"
+        },
+
+        "IDLE_5MIN": {
+            "valence": -0.1, 
+            "arousal": -0.1,
+            "comment": "无聊感逐渐增加"
+        }
+  },
+
+  "va_templates": {
+        "Emergency": {
+            "free_fall_emergency": {
+                "comment": "自由落体",
+                "priority": 1,
+                "vibration": 9,
+                "motion_id": 19,
+                "emotion": "surprised",
+                "emotion_dur": 1000
+            },
+
+            "violent_shake_emergency": {
+                "comment": "剧烈摇晃",
+                "priority": 1,
+                "vibration": 9,
+                "motion_id": 14,
+                "emotion": "surprised",
+                "emotion_dur": 800
+            },
+
+            "flip_emergency": {
+                "comment": "设备翻转",
+                "priority": 1,
+                "vibration": 5,
+                "motion_id": 6,
+                "emotion": "surprised",
+                "emotion_dur": 600
+            },
+
+            "upside_down_emergency": {
+                "comment": "设备倒置",
+                "priority": 1,
+                "vibration": 4,
+                "motion_id": 20,
+                "emotion": "angry",
+                "emotion_dur": 1500
+            }
+        },
+
+        "Quadrant": {
+            "touch_tap_quadrant": {
+                "comment": "触摸点击",
+                "priority": 2,
+                "Q1": {
+                    "vibration": 0,
+                    "motion_id": 0,
+                    "emotion": "happy",
+                    "emotion_dur": 400
+                },
+
+                "Q2": {
+                    "vibration": 5,
+                    "motion_id": 14,
+                    "emotion": "surprised",
+                    "emotion_dur": 300
+                },
+
+                "Q3": {
+                    "vibration": 1,
+                    "motion_id": 10,
+                    "emotion": "sad",
+                    "emotion_dur": 600
+                },
+
+                "Q4": {
+                    "vibration": 3,
+                    "motion_id": 3,
+                    "emotion": "neutral",
+                    "emotion_dur": 500
+                }
+            },
+
+            "motion_shake_quadrant": {
+                "comment": "摇晃",
+                "priority": 2,
+                "Q1": {
+                    "vibration": 7,
+                    "motion_id": 15,
+                    "emotion": "happy",
+                    "emotion_dur": 800
+                },
+
+                "Q2": {
+                    "vibration": 2,
+                    "motion_id": 0,
+                    "emotion": "happy",
+                    "emotion_dur": 600
+                },
+
+                "Q3": {
+                    "vibration": 6,
+                    "motion_id": 18,
+                    "emotion": "angry",
+                    "emotion_dur": 800
+                },
+
+                "Q4": {
+                    "vibration": 0,
+                    "motion_id": 5,
+                    "emotion": "sad",
+                    "emotion_dur": 600
+                }
+            },
+
+            "motion_pickup_quadrant": {
+                "comment": "被拿起",
+                "priority": 2,
+                "Q1": {
+                    "vibration": 7,
+                    "motion_id": 15,
+                    "emotion": "happy",
+                    "emotion_dur": 600
+                },
+
+                "Q2": {
+                    "vibration": 1,
+                    "motion_id": 8,
+                    "emotion": "neutral",
+                    "emotion_dur": 500
+                },
+
+                "Q3": {
+                    "vibration": 6,
+                    "motion_id": 4,
+                    "emotion": "surprised",
+                    "emotion_dur": 400
+                },
+
+                "Q4": {
+                    "vibration": 0,
+                    "motion_id": 12,
+                    "emotion": "sad",
+                    "emotion_dur": 500
+                }
+            },
+
+            "touch_cradled_quadrant": {
+                "comment": "摇篮模式",
+                "priority": 2,
+                "Q1": {
+                    "vibration": 3,
+                    "motion_id": 21,
+                    "emotion": "neutral",
+                    "emotion_dur": 2000
+                },
+
+                "Q2": {
+                    "vibration": 3,
+                    "motion_id": 16,
+                    "emotion": "happy",
+                    "emotion_dur": 3000
+                },
+
+                "Q3": {
+                    "vibration": 3,
+                    "motion_id": 21,
+                    "emotion": "neutral",
+                    "emotion_dur": 2500
+                },
+
+                "Q4": {
+                    "vibration": 3,
+                    "motion_id": 16,
+                    "emotion": "neutral",
+                    "emotion_dur": 3000
+                }
+            },
+
+            "touch_tickled_quadrant": {
+                "comment": "挠痒模式",
+                "priority": 2,
+                "Q1": {
+                    "emotion": "laughing",
+                    "emotion_dur": 1500
+                },
+
+                "Q2": {
+                    "emotion": "happy",
+                    "emotion_dur": 1200
+                },
+
+                "Q3": {
+                    "emotion": "surprised",
+                    "emotion_dur": 1000
+                },
+
+                "Q4": {
+                    "emotion": "neutral",
+                    "emotion_dur": 800
+                }
+            },
+
+            "touch_long_press_quadrant": {
+                "comment": "长按",
+                "priority": 2,
+                "Q1": {
+                    "vibration": 2,
+                    "motion_id": 0,
+                    "emotion": "happy",
+                    "emotion_dur": 1000
+                },
+
+                "Q2": {
+                    "vibration": 4,
+                    "motion_id": 2,
+                    "emotion": "angry",
+                    "emotion_dur": 800
+                },
+
+                "Q3": {
+                    "vibration": 0,
+                    "motion_id": 11,
+                    "emotion": "sad",
+                    "emotion_dur": 1200
+                },
+
+                "Q4": {
+                    "vibration": 3,
+                    "motion_id": 16,
+                    "emotion": "neutral",
+                    "emotion_dur": 1500
+                }
+            }
+        }
+  }
+}

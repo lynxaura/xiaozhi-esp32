@@ -19,6 +19,43 @@
 
 #define TAG "Application"
 
+// 音频名称到SD卡文件路径的哈希映射表，O(1) 查找时间复杂度
+const std::unordered_map<std::string, const char*> Application::audio_file_maps_ = {
+    {"welcome", "/sdcard/welcome.ogg"},
+    {"motion_flip",    "/sdcard/welcome.ogg"},
+    {"motion_free_fall",    "/sdcard/welcome.ogg"},
+    {"motion_shake_violently",    "/sdcard/welcome.ogg"},
+    {"motion_upside_down",    "/sdcard/welcome.ogg"},
+    {"motion_pickup_q1",    "/sdcard/interaction/motion_pickup_q1/motion_pickup_q1.ogg"},
+    {"motion_pickup_q2",    "/sdcard/interaction/motion_pickup_q2/motion_pickup_q2.ogg"},
+    {"motion_pickup_q3",    "/sdcard/interaction/motion_pickup_q3/motion_pickup_q3.ogg"},
+    {"motion_pickup_q4",    "/sdcard/interaction/motion_pickup_q4/motion_pickup_q4.ogg"},
+    {"motion_shake_q1",    "/sdcard/interaction/motion_shake_q1/motion_shake_q1.ogg"},
+    {"motion_shake_q2",    "/sdcard/interaction/motion_shake_q2/motion_shake_q2.ogg"},
+    {"motion_shake_q3",    "/sdcard/interaction/motion_shake_q3/motion_shake_q3.ogg"},
+    {"motion_shake_q4",    "/sdcard/interaction/motion_shake_q4/motion_shake_q4.ogg"},
+    {"touch_cradled_q1",    "/sdcard/interaction/touch_cradled_q1/touch_cradled_q1.ogg"},
+    {"touch_cradled_q2",    "/sdcard/interaction/touch_cradled_q2/touch_cradled_q2.ogg"},
+    {"touch_cradled_q3",    "/sdcard/interaction/touch_cradled_q3/touch_cradled_q3.ogg"},
+    {"touch_cradled_q4",    "/sdcard/interaction/touch_cradled_q4/touch_cradled_q4.ogg"},
+    {"touch_long_press_q1",    "/sdcard/interaction/touch_long_press_q1/touch_long_press_q1.ogg"},
+    {"touch_long_press_q2",    "/sdcard/interaction/touch_long_press_q2/touch_long_press_q2.ogg"},
+    {"touch_long_press_q3",    "/sdcard/interaction/touch_long_press_q3/touch_long_press_q3.ogg"},
+    {"touch_long_press_q4",    "/sdcard/interaction/touch_long_press_q4/touch_long_press_q4.ogg"},
+    {"touch_tap_q1",    "/sdcard/interaction/touch_tap_q1/touch_tap_q1.ogg"},
+    {"touch_tap_q2",    "/sdcard/interaction/touch_tap_q2/touch_tap_q2.ogg"},
+    {"touch_tap_q3",    "/sdcard/interaction/touch_tap_q3/touch_tap_q3.ogg"},
+    {"touch_tap_q4",    "/sdcard/interaction/touch_tap_q4/touch_tap_q4.ogg"},
+    {"touch_tickled_q1",    "/sdcard/interaction/touch_tickled_q1/touch_tickled_q1.gif"},
+    {"touch_tickled_q2",    "/sdcard/interaction/touch_tickled_q2/touch_tickled_q2.gif"},
+    {"touch_tickled_q3",    "/sdcard/interaction/touch_tickled_q3/touch_tickled_q3.gif"},
+    {"touch_tickled_q4",    "/sdcard/interaction/touch_tickled_q4/touch_tickled_q4.gif"},
+    {"idle_q1", "sdcard/state_expression/idle/idle_q1/idle_q1.ogg"},
+    {"idle_q2", "sdcard/state_expression/idle/idle_q2/idle_q2.ogg"},
+    {"idle_q3", "sdcard/state_expression/idle/idle_q3/idle_q3.ogg"},
+    {"idle_q4", "sdcard/state_expression/idle/idle_q3/idle_q3.ogg"}
+    // 可在此添加更多音频映射
+};
 
 static const char* const STATE_STRINGS[] = {
     "unknown",
@@ -380,8 +417,8 @@ void Application::Start() {
     /* Start the clock timer to update the status bar */
     esp_timer_start_periodic(clock_timer_handle_, 1000000);
 
-    const char* filepath = "/sdcard/welcome.ogg";
-    PlaySoundOGGFile(filepath);
+    // 播放欢迎音频
+    PlaySoundOGGFile("welcome");
 
     /* Wait for the network to be ready */
     board.StartNetwork();
@@ -558,7 +595,7 @@ void Application::Start() {
     xTaskCreate([](void* arg) {
         ((Application*)arg)->MainEventLoop();
         vTaskDelete(NULL);
-    }, "main_event_loop", 2048 * 4, this, 3, &main_event_loop_task_handle_);
+    }, "main_event_loop", 2048 * 5, this, 3, &main_event_loop_task_handle_);
 }
 
 // Add a async task to MainLoop
@@ -926,28 +963,63 @@ void Application::PlaySound(const std::string_view& sound) {
     audio_service_.PlaySound(sound);
 }
 
-void Application::PlaySoundOGGFile(const char *filePath) {
-    FILE *f = fopen(filePath, "r");
-    if (f == NULL) {
-        ESP_LOGW(TAG, "sound file err: %s", filePath);
+void Application::PlaySoundOGGFile(const std::string& audio_name, int volume) {
+    // 音量范围限制：0-100
+    if (volume < 0) {
+        volume = 0;
+        ESP_LOGW(TAG, "音量值低于0，已设为0");
+    } else if (volume > 100) {
+        volume = 100;
+        ESP_LOGW(TAG, "音量值高于100，已设为100");
+    }
+
+    // 使用哈希表快速查找音频文件路径，时间复杂度 O(1)
+    auto it = audio_file_maps_.find(audio_name);
+    if (it == audio_file_maps_.end()) {
+        ESP_LOGW(TAG, "未知音频名称: '%s'", audio_name.c_str());
         return;
     }
-    // 获取文件大小置位到文件起始处
+
+    const char* filePath = it->second;
+    FILE *f = fopen(filePath, "r");
+    if (f == NULL) {
+        ESP_LOGW(TAG, "音频文件打开失败: %s", filePath);
+        return;
+    }
+
+    // 获取文件大小并定位到文件起始处
     fseek(f, 0, SEEK_END);
     long file_size = ftell(f);
-    ESP_LOGI(TAG, "ogg audio size: %ld", file_size);
+    ESP_LOGI(TAG, "播放音频: %s (大小: %ld bytes, 音量: %d)", audio_name.c_str(), file_size, volume);
     fseek(f, 0, SEEK_SET);
 
-    char* databuf = (char* )malloc((file_size) * sizeof(char));
+    char* databuf = (char*)malloc(file_size * sizeof(char));
+    if (databuf == NULL) {
+        ESP_LOGE(TAG, "音频缓冲区分配失败");
+        fclose(f);
+        return;
+    }
 
     fread(databuf, 1, file_size, f);
+
+    // 获取音频编解码器并保存原音量
+    auto& board = Board::GetInstance();
+    auto codec = board.GetAudioCodec();
+    int original_volume = codec->output_volume();
+
+    // 设置播放音量
+    codec->SetOutputVolume(volume);
 
     const std::string_view& ogg = {
         static_cast<const char*>(databuf),
         static_cast<size_t>(file_size)
     };
     audio_service_.PlaySound(ogg);
-    fclose(f); // 关闭文件
+
+    // 恢复原音量
+    codec->SetOutputVolume(original_volume);
+
+    fclose(f);
     free(databuf);
 }
 

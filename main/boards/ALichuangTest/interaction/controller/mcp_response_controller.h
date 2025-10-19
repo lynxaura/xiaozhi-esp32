@@ -75,7 +75,6 @@ private:
 
     // 工具实现方法 - 屏幕动画控制
     ReturnValue ShowEmotionTool(const PropertyList& properties);
-    ReturnValue AnimationControlTool(const PropertyList& properties);
 
     // 工具实现方法 - 8种情绪表达
     ReturnValue CalmExpressionTool(const PropertyList& properties);

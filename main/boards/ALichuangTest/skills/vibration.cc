@@ -133,7 +133,6 @@ Vibration::Vibration(Pca9685* pca9685, uint8_t channel)
       vibration_task_handle_(nullptr),
       initialized_(false),
       current_pattern_(VIBRATION_MAX),
-      current_emotion_("neutral"),
       emotion_based_enabled_(true),
       test_button_pin_(VIBRATION_TEST_BUTTON_GPIO),  // GPIO11测试按键
       button_test_task_handle_(nullptr),

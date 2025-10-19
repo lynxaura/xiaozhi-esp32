@@ -10,6 +10,7 @@
 #include <mutex>
 #include <deque>
 #include <memory>
+#include <unordered_map>
 
 #include "protocol.h"
 #include "ota.h"
@@ -63,7 +64,7 @@ public:
     void SetAecMode(AecMode mode);
     AecMode GetAecMode() const { return aec_mode_; }
     void PlaySound(const std::string_view& sound);
-    void PlaySoundOGGFile(const char *filePath);
+    void PlaySoundOGGFile(const std::string& audio_name, int volume = 100);
     void SetBacKlight(uint8_t brightness);
     AudioService& GetAudioService() { return audio_service_; }
 
@@ -81,6 +82,9 @@ private:
     AecMode aec_mode_ = kAecOff;
     std::string last_error_message_;
     AudioService audio_service_;
+
+    // 音频名称到SD卡文件路径的哈希映射表
+    static const std::unordered_map<std::string, const char*> audio_file_maps_;
 
     bool has_server_time_ = false;
     bool aborted_ = false;

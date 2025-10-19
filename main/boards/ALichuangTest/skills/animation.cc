@@ -11,17 +11,55 @@
 #define TAG "AnimaDisplay"
 
 #define BOOT_GIF_PATH  "/sdcard/system/system_boot_up.gif"
-#define DEFAUULT_GIF_PATH "/sdcard/state_expression/idle/idle_q1/idle_q1.gif"
-// 表情映射表，映射文件系统表情文件到对应表情状态
-const AnimaDisplay::EmotionMap AnimaDisplay::emotion_maps_[] = {
-    // 默认表情 -> idle_q1.gif
-    {"neutral",     "/sdcard/state_expression/idle/idle_q1/idle_q1.gif"},
-    {"angry",       "/sdcard/state_expression/speaking/talk_angry/talk_angry.gif"             },
-    {"happy",       "/sdcard/state_expression/speaking/talk_happy/talk_happy.gif"             },
-    {"laughting",   "/sdcard/state_expression/speaking/talk_happy/talk_happy.gif"             },
-    {"sad",         "/sdcard/state_expression/speaking/talk_sad/motion_shake_violently.gif"   },
-    {"crying",      "/sdcard/state_expression/speaking/talk_sad/motion_shake_violently.gif"   },
-    {"surprised",   "/sdcard/state_expression/speaking/talk_scared/talk_scared.gif"           },
+#define DEFAULT_GIF_PATH "/sdcard/state_expression/idle/idle_q1/idle_q1.gif"
+
+// 动画名称到文件路径的哈希映射表，O(1) 查找时间复杂度
+const std::unordered_map<std::string, const char*> AnimaDisplay::animation_maps_ = {
+    {"motion_flip",    "/sdcard/emergency/motion_upside_down/motion_upside_down.gif"},
+    {"motion_free_fall",    "/sdcard/emergency/motion_shake_violently/motion_shake_violently.gif"},
+    {"motion_shake_violently",    "/sdcard/emergency/motion_shake_violently/motion_shake_violently.gif"},
+    {"motion_upside_down",    "/sdcard/emergency/motion_upside_down/motion_upside_down.gif"},
+    {"motion_pickup_q1",    "/sdcard/interaction/motion_pickup_q1/motion_pickup_q1.gif"},
+    {"motion_pickup_q2",    "/sdcard/interaction/motion_pickup_q2/motion_pickup_q2.gif"},
+    {"motion_pickup_q3",    "/sdcard/interaction/motion_pickup_q2/motion_pickup_q2.gif"},
+    {"motion_pickup_q4",    "/sdcard/interaction/motion_pickup_q2/motion_pickup_q2.gif"},
+    {"motion_shake_q1",    "/sdcard/interaction/motion_shake_q1/motion_shake_q1.gif"},
+    {"motion_shake_q2",    "/sdcard/interaction/motion_shake_q2/motion_shake_q2.gif"},
+    {"motion_shake_q3",    "/sdcard/interaction/motion_shake_q2/motion_shake_q2.gif"},
+    {"motion_shake_q4",    "/sdcard/interaction/motion_shake_q2/motion_shake_q2.gif"},
+    {"touch_cradled_q1",    "/sdcard/interaction/touch_cradled_q1/touch_cradled_q1.gif"},
+    {"touch_cradled_q2",    "/sdcard/interaction/touch_cradled_q1/touch_cradled_q1.gif"},
+    {"touch_cradled_q3",    "/sdcard/interaction/touch_cradled_q1/touch_cradled_q1.gif"},
+    {"touch_cradled_q4",    "/sdcard/interaction/touch_cradled_q1/touch_cradled_q1.gif"},
+    {"touch_long_press_q1",    "/sdcard/interaction/touch_long_press_q1/touch_long_press_q1.gif"},
+    {"touch_long_press_q2",    "/sdcard/interaction/touch_long_press_q1/touch_long_press_q1.gif"},
+    {"touch_long_press_q3",    "/sdcard/interaction/touch_long_press_q1/touch_long_press_q1.gif"},
+    {"touch_long_press_q4",    "/sdcard/interaction/touch_long_press_q1/touch_long_press_q1.gif"},
+    {"touch_tap_q1",    "/sdcard/interaction/touch_tap_q1/touch_tap_q1.gif"},
+    {"touch_tap_q2",    "/sdcard/interaction/touch_tap_q2/touch_tap_q2.gif"},
+    {"touch_tap_q3",    "/sdcard/interaction/touch_tap_q3/touch_tap_q3.gif"},
+    {"touch_tap_q4",    "/sdcard/interaction/touch_tap_q4/touch_tap_q4.gif"},
+    {"touch_tickled_q1",    "/sdcard/interaction/touch_tickled_q1/touch_tickled_q1.gif"},
+    {"touch_tickled_q2",    "/sdcard/interaction/touch_tickled_q1/touch_tickled_q1.gif"},
+    {"touch_tickled_q3",    "/sdcard/interaction/touch_tickled_q1/touch_tickled_q1.gif"},
+    {"touch_tickled_q4",    "/sdcard/interaction/touch_tickled_q1/touch_tickled_q1.gif"},
+    {"idle_q1", "/sdcard/state_expression/idle/idle_q1/idle_q1.gif"},
+    {"idle_q2", "/sdcard/state_expression/idle/idle_q2/idle_q2.gif"},
+    {"idle_q3", "/sdcard/state_expression/idle/idle_q3/idle_q3.gif"},
+    {"idle_q4", "/sdcard/state_expression/idle/idle_q3/idle_q3.gif"},
+    {"listening_q1", "/sdcard/state_expression/listening/listening_q1/listening_q1.gif"},
+    {"listening_q2", "/sdcard/state_expression/listening/listening_q1/listening_q1.gif"},
+    {"listening_q3", "/sdcard/state_expression/listening/listening_q1/listening_q1.gif"},
+    {"listening_q4", "/sdcard/state_expression/listening/listening_q1/listening_q1.gif"},
+    // 8种说话表情动画（与TTS配合使用）
+    {"calm",    "/sdcard/state_expression/speaking/talk_calm/talk_calm.gif"},
+    {"happy",   "/sdcard/state_expression/speaking/talk_happy/talk_happy.gif"},
+    {"sad",     "/sdcard/state_expression/speaking/talk_scared/talk_scared.gif"},
+    {"angry",   "/sdcard/state_expression/speaking/talk_angry/talk_angry.gif"},
+    {"scared",  "/sdcard/state_expression/speaking/talk_scared/talk_scared.gif"},
+    {"curious", "/sdcard/state_expression/speaking/talk_curious/talk_curious.gif"},
+    {"shy",     "/sdcard/state_expression/speaking/talk_shy/talk_shy.gif"},
+    {"content", "/sdcard/state_expression/speaking/talk_content/talk_content.gif"},
 };
 
 AnimaDisplay::AnimaDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
@@ -106,12 +144,12 @@ void AnimaDisplay::SetupUI() {
     emoji_label_ = lv_label_create(container_);
     lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
 
-    emotion_gif_ = lv_gif_create(screen);
-    lv_obj_set_size(emotion_gif_, width_, height_);
-    lv_obj_set_style_border_width(emotion_gif_, 0, 0);
-    lv_obj_set_style_bg_opa(emotion_gif_, LV_OPA_TRANSP, 0);
-    lv_obj_center(emotion_gif_);
-    lv_gif_set_src(emotion_gif_, BOOT_GIF_PATH);
+    animation_gif_ = lv_gif_create(screen);
+    lv_obj_set_size(animation_gif_, width_, height_);
+    lv_obj_set_style_border_width(animation_gif_, 0, 0);
+    lv_obj_set_style_bg_opa(animation_gif_, LV_OPA_TRANSP, 0);
+    lv_obj_center(animation_gif_);
+    lv_gif_set_src(animation_gif_, BOOT_GIF_PATH);
 
     // 其他UI组件设为nullptr，避免系统调用时出错
     status_label_ = nullptr;
@@ -129,142 +167,54 @@ void AnimaDisplay::SetupUI() {
 }
 
 void AnimaDisplay::SetEmotion(const char* emotion) {
-    // 触发情感变化回调
-    if (emotion_callback_) {
-        emotion_callback_(std::string(emotion));
+    // 触发动画变化回调
+    if (animation_callback_) {
+        animation_callback_(std::string(emotion));
     }
 }
 
-void AnimaDisplay::CreateCanvas() {
-    DisplayLockGuard lock(this);
-    
-    // 如果已经有画布，先销毁
-    if (canvas_ != nullptr) {
-        DestroyCanvas();
-    }
-    
-    // 创建画布所需的缓冲区
-    // 每个像素2字节(RGB565)
-    size_t buf_size = width_ * height_ * 2;  // RGB565: 2 bytes per pixel
-    
-    // 分配内存，优先使用PSRAM
-    canvas_buffer_ = heap_caps_malloc(buf_size, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
-    if (canvas_buffer_ == nullptr) {
-        ESP_LOGE("Display", "Failed to allocate canvas buffer");
-        return;
-    }
-    
-    // 获取活动屏幕
-    lv_obj_t* screen = lv_screen_active();
-    
-    // 创建画布对象
-    canvas_ = lv_canvas_create(screen);
-    if (canvas_ == nullptr) {
-        ESP_LOGE("Display", "Failed to create canvas");
-        heap_caps_free(canvas_buffer_);
-        canvas_buffer_ = nullptr;
-        return;
-    }
-    
-    // 初始化画布
-    lv_canvas_set_buffer(canvas_, canvas_buffer_, width_, height_, LV_COLOR_FORMAT_RGB565);
-    
-    // 设置画布位置为全屏
-    // lv_obj_set_pos(canvas_, 0, 25);
-    // lv_obj_set_size(canvas_, width_, height_ - 25);
-    lv_obj_set_pos(canvas_, 0, 0);
-    lv_obj_set_size(canvas_, width_, height_);
-    
-    // 设置画布为透明
-    lv_canvas_fill_bg(canvas_, lv_color_make(0, 0, 0), LV_OPA_TRANSP);
-    
-    // 设置画布为顶层
-    lv_obj_move_foreground(canvas_);
-    
-    ESP_LOGI("Display", "Canvas created successfully");
-}
-
-void AnimaDisplay::DestroyCanvas() {
-    DisplayLockGuard lock(this);
-    
-    if (canvas_ != nullptr) {
-        lv_obj_del(canvas_);
-        canvas_ = nullptr;
-    }
-    
-    if (canvas_buffer_ != nullptr) {
-        heap_caps_free(canvas_buffer_);
-        canvas_buffer_ = nullptr;
-    }
-    
-    ESP_LOGI("Display", "Canvas destroyed");
-}
-
-void AnimaDisplay::DrawImageOnCanvas(int x, int y, int width, int height, const uint8_t* img_data) {
-    DisplayLockGuard lock(this);
-    
-    // 确保有画布
-    if (canvas_ == nullptr) {
-        ESP_LOGE("Display", "Canvas not created");
-        return;
-    }
-    
-    // 创建一个描述器来映射图像数据
-    const lv_image_dsc_t img_dsc = {
-        .header = {
-            .magic = LV_IMAGE_HEADER_MAGIC,
-            .cf = LV_COLOR_FORMAT_RGB565,
-            .flags = 0,
-            .w = (uint32_t)width,
-            .h = (uint32_t)height,
-            .stride = (uint32_t)(width * 2),  // RGB565: 2 bytes per pixel
-            .reserved_2 = 0,
-        },
-        .data_size = (uint32_t)(width * height * 2),  // RGB565: 2 bytes per pixel
-        .data = img_data,
-        .reserved = NULL
-    };
-    
-    // 使用图层绘制图像到画布上
-    lv_layer_t layer;
-    lv_canvas_init_layer(canvas_, &layer);
-    
-    lv_draw_image_dsc_t draw_dsc;
-    lv_draw_image_dsc_init(&draw_dsc);
-    draw_dsc.src = &img_dsc;
-    
-    lv_area_t area;
-    area.x1 = x;
-    area.y1 = y;
-    area.x2 = x + width - 1;
-    area.y2 = y + height - 1;
-
-    lv_draw_image(&layer, &draw_dsc, &area);
-    lv_canvas_finish_layer(canvas_, &layer);
-    
-    // 确保画布在最上层
-    lv_obj_move_foreground(canvas_);
-    
-    // ESP_LOGI("Display", "Image drawn on canvas at x=%d, y=%d, w=%d, h=%d", x, y, width, height);
-}
 
 void AnimaDisplay::SetTheme(Theme* theme) {
-    // AnimaDisplay doesn't use traditional themes since it uses canvas-based rendering
+    // AnimaDisplay doesn't use traditional themes since it uses GIF-based rendering
     // Store the theme but don't apply it to UI elements
     current_theme_ = theme;
 }
 
-void AnimaDisplay::ShowAGifByFS
-(const std::string& emotion) {
+void AnimaDisplay::SetAnima(const std::string& animation) {
+    // 默认播放一次
+    SetAnima(animation, 1);
+}
+
+void AnimaDisplay::SetAnima(const std::string& animation, int loop_count) {
     DisplayLockGuard lock(this);
-    for (const auto& map : emotion_maps_) {
-        if (emotion == map.emotion) {
-            lv_gif_set_src(emotion_gif_, map.filepath);
-            ESP_LOGI(TAG, "设置表情: %s", emotion);
-            return;
-        }
+
+    // 确保至少播放一次
+    if (loop_count == 0) {
+        loop_count = 1;
     }
 
-    lv_gif_set_src(emotion_gif_, DEFAUULT_GIF_PATH);
-    ESP_LOGI(TAG, "未知表情'%s'，使用默认", emotion);
+    // 使用哈希表快速查找，时间复杂度 O(1)
+    auto it = animation_maps_.find(animation);
+    const char* gif_path = nullptr;
+
+    if (it != animation_maps_.end()) {
+        gif_path = it->second;
+        ESP_LOGI(TAG, "设置动画: %s (循环次数: %s)",
+                 animation.c_str(),
+                 loop_count < 0 ? "无限" : std::to_string(loop_count).c_str());
+    } else {
+        gif_path = DEFAULT_GIF_PATH;
+        ESP_LOGW(TAG, "未知动画'%s'，使用默认动画 (循环次数: %s)",
+                 animation.c_str(),
+                 loop_count < 0 ? "无限" : std::to_string(loop_count).c_str());
+    }
+
+    // 设置GIF源
+    lv_gif_set_src(animation_gif_, gif_path);
+
+    // 设置循环次数
+    // loop_count < 0: 无限循环
+    // loop_count = 1: 播放一次
+    // loop_count > 1: 播放指定次数
+    lv_gif_set_loop_count(animation_gif_, loop_count);
 }

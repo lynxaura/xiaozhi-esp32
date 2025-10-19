@@ -1,0 +1,270 @@
+{
+  "version": "1.0",
+
+  "events": {
+    "emergency/motion_shake_violently": {
+      "layer": 1,
+      "can_interrupt": ["all"],
+      "animation": { "name": "motion_shake_violently", "count": 2 },
+      "sound": { "name": "motion_shake_violently", "volume": 90 },
+      "vibration": { "pattern": "VIBRATION_ERRATIC_STRONG" },
+      "motion": { "action": "MOTION_STRUGGLE_TWIST" }
+    },
+    "emergency/motion_upside_down": {
+      "layer": 1,
+      "can_interrupt": ["all"],
+      "animation": { "name": "motion_upside_down", "count": 2 },
+      "sound": { "name": "motion_upside_down", "volume": 85 },
+      "vibration": { "pattern": "VIBRATION_STRUGGLE_PATTERN" },
+      "motion": { "action": "MOTION_BODY_SHIVER" }
+    },
+    "interaction/motion_shake_q1": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "motion_shake_q1", "count": 2 },
+      "sound": { "name": "motion_shake_q1", "volume": 70 },
+      "vibration": { "pattern": "VIBRATION_PURR_SHORT" },
+      "motion": { "action": "MOTION_HAPPY_WIGGLE" }
+    },
+    "interaction/motion_shake_q2": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "motion_shake_q2", "count": 2 },
+      "sound": { "name": "motion_shake_q2", "volume": 70 },
+      "vibration": { "pattern": "VIBRATION_PURR_PATTERN" },
+      "motion": { "action": "MOTION_EXCITED_JIGGLE" }
+    },
+    "interaction/motion_shake_q3": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "motion_shake_q3", "count": 2 },
+      "sound": { "name": "motion_shake_q3", "volume": 70 },
+      "vibration": { "pattern": "VIBRATION_PURR_PATTERN" },
+      "motion": { "action": "MOTION_EXCITED_JIGGLE" }
+    },
+    "interaction/motion_shake_q4": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "motion_shake_q4", "count": 2 },
+      "sound": { "name": "motion_shake_q4", "volume": 70 },
+      "vibration": { "pattern": "VIBRATION_PURR_PATTERN" },
+      "motion": { "action": "MOTION_EXCITED_JIGGLE" }
+    },
+    "interaction/motion_pickup_q1": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "motion_pickup_q1", "count": 2 },
+      "sound": { "name": "motion_pickup_q1", "volume": 65 },
+      "vibration": { "pattern": "VIBRATION_GENTLE_HEARTBEAT" },
+      "motion": { "action": "MOTION_CURIOUS_PEEK_LEFT" }
+    },
+    "interaction/motion_pickup_q2": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "motion_pickup_q2", "count": 2 },
+      "sound": { "name": "motion_pickup_q2", "volume": 65 },
+      "vibration": { "pattern": "VIBRATION_HEARTBEAT_STRONG" },
+      "motion": { "action": "MOTION_CURIOUS_PEEK_RIGHT" }
+    },
+    "interaction/motion_pickup_q3": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "motion_pickup_q3", "count": 2 },
+      "sound": { "name": "motion_pickup_q3", "volume": 65 },
+      "vibration": { "pattern": "VIBRATION_HEARTBEAT_STRONG" },
+      "motion": { "action": "MOTION_CURIOUS_PEEK_RIGHT" }
+    },
+    "interaction/motion_pickup_q4": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "motion_pickup_q4", "count": 2 },
+      "sound": { "name": "motion_pickup_q4", "volume": 65 },
+      "vibration": { "pattern": "VIBRATION_HEARTBEAT_STRONG" },
+      "motion": { "action": "MOTION_CURIOUS_PEEK_RIGHT" }
+    },
+    "interaction/touch_tap_q1": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_tap_q1", "count": 2 },
+      "sound": { "name": "touch_tap_q1", "volume": 60 },
+      "vibration": { "pattern": "VIBRATION_SHORT_BUZZ" },
+      "motion": { "action": "MOTION_NUZZLE_FORWARD" }
+    },
+    "interaction/touch_tap_q2": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_tap_q2", "count": 2 },
+      "sound": { "name": "touch_tap_q2", "volume": 60 },
+      "vibration": { "pattern": "VIBRATION_PURR_SHORT" },
+      "motion": { "action": "MOTION_SHAKE_HEAD" }
+    },
+    "interaction/touch_tap_q3": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_tap_q3", "count": 2 },
+      "sound": { "name": "touch_tap_q3", "volume": 60 },
+      "vibration": { "pattern": "VIBRATION_PURR_SHORT" },
+      "motion": { "action": "MOTION_SHAKE_HEAD" }
+    },
+    "interaction/touch_tap_q4": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_tap_q4", "count": 2 },
+      "sound": { "name": "touch_tap_q4", "volume": 60 },
+      "vibration": { "pattern": "VIBRATION_PURR_SHORT" },
+      "motion": { "action": "MOTION_SHAKE_HEAD" }
+    },
+    "interaction/touch_long_press_q1": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_long_press_q1", "count": 2 },
+      "sound": { "name": "touch_long_press_q1", "volume": 55 },
+      "vibration": { "pattern": "VIBRATION_GENTLE_HEARTBEAT" },
+      "motion": { "action": "MOTION_RELAX_COMPLETELY" }
+    },
+    "interaction/touch_long_press_q2": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_long_press_q2", "count": 2 },
+      "sound": { "name": "touch_long_press_q2", "volume": 55 },
+      "vibration": { "pattern": "VIBRATION_GENTLE_HEARTBEAT" },
+      "motion": { "action": "MOTION_RELAX_COMPLETELY" }
+    },
+    "interaction/touch_long_press_q3": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_long_press_q3", "count": 2 },
+      "sound": { "name": "touch_long_press_q3", "volume": 55 },
+      "vibration": { "pattern": "VIBRATION_GENTLE_HEARTBEAT" },
+      "motion": { "action": "MOTION_RELAX_COMPLETELY" }
+    },
+    "interaction/touch_long_press_q4": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_long_press_q4", "count": 2 },
+      "sound": { "name": "touch_long_press_q4", "volume": 55 },
+      "vibration": { "pattern": "VIBRATION_GENTLE_HEARTBEAT" },
+      "motion": { "action": "MOTION_RELAX_COMPLETELY" }
+    },
+    "interaction/touch_cradled_q1": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_cradled_q1", "count": 2 },
+      "sound": { "name": "touch_cradled_q1", "volume": 50 },
+      "vibration": { "pattern": "VIBRATION_PURR_PATTERN" },
+      "motion": { "action": "MOTION_RELAX_COMPLETELY" }
+    },
+    "interaction/touch_cradled_q2": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_cradled_q2", "count": 2 },
+      "sound": { "name": "touch_cradled_q2", "volume": 50 },
+      "vibration": { "pattern": "VIBRATION_PURR_PATTERN" },
+      "motion": { "action": "MOTION_RELAX_COMPLETELY" }
+    },
+    "interaction/touch_cradled_q3": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_cradled_q3", "count": 2 },
+      "sound": { "name": "touch_cradled_q3", "volume": 50 },
+      "vibration": { "pattern": "VIBRATION_PURR_PATTERN" },
+      "motion": { "action": "MOTION_RELAX_COMPLETELY" }
+    },
+    "interaction/touch_cradled_q4": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_cradled_q4", "count": 2 },
+      "sound": { "name": "touch_cradled_q4", "volume": 50 },
+      "vibration": { "pattern": "VIBRATION_PURR_PATTERN" },
+      "motion": { "action": "MOTION_RELAX_COMPLETELY" }
+    },
+    "interaction/touch_tickled_q1": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_tickled_q1", "count": 2 },
+      "sound": { "name": "touch_tickled_q1", "volume": 75 },
+      "vibration": { "pattern": "VIBRATION_GIGGLE_PATTERN" },
+      "motion": { "action": "MOTION_TICKLE_TWIST_DANCE" }
+    },
+    "interaction/touch_tickled_q2": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_tickled_q2", "count": 2 },
+      "sound": { "name": "touch_tickled_q2", "volume": 75 },
+      "vibration": { "pattern": "VIBRATION_GIGGLE_PATTERN" },
+      "motion": { "action": "MOTION_TICKLE_TWIST_DANCE" }
+    },
+    "interaction/touch_tickled_q3": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_tickled_q3", "count": 2 },
+      "sound": { "name": "touch_tickled_q3", "volume": 75 },
+      "vibration": { "pattern": "VIBRATION_GIGGLE_PATTERN" },
+      "motion": { "action": "MOTION_TICKLE_TWIST_DANCE" }
+    },
+    "interaction/touch_tickled_q4": {
+      "layer": 2,
+      "can_interrupt": ["idle", "listening"],
+      "animation": { "name": "touch_tickled_q4", "count": 2 },
+      "sound": { "name": "touch_tickled_q4", "volume": 75 },
+      "vibration": { "pattern": "VIBRATION_GIGGLE_PATTERN" },
+      "motion": { "action": "MOTION_TICKLE_TWIST_DANCE" }
+    },
+    "state_expression/idle/idle_q1": {
+      "layer": 4,
+      "animation": { "name": "idle_q1", "count": -1 },
+      "sound": { "name": "idle_q1", "volume": 40, "interrupt": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    },
+    "state_expression/idle/idle_q2": {
+      "layer": 4,
+      "animation": { "name": "idle_q2", "count": -1 },
+      "sound": { "name": "idle_q2", "volume": 40, "interrupt": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    },
+    "state_expression/idle/idle_q3": {
+      "layer": 4,
+      "animation": { "name": "idle_q3", "count": -1 },
+      "sound": { "name": "idle_q3", "volume": 40, "interrupt": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    },
+    "state_expression/idle/idle_q4": {
+      "layer": 4,
+      "animation": { "name": "idle_q4", "count": -1 },
+      "sound": { "name": "idle_q4", "volume": 40, "interrupt": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    },
+    "state_expression/listening/listening_q1": {
+      "layer": 5,
+      "animation": { "name": "listening_q1", "count": -1 },
+      "sound": { "enabled": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    },
+    "state_expression/listening/listening_q2": {
+      "layer": 5,
+      "animation": { "name": "listening_q2", "count": -1 },
+      "sound": { "enabled": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    },
+    "state_expression/listening/listening_q3": {
+      "layer": 5,
+      "animation": { "name": "listening_q3", "count": -1 },
+      "sound": { "enabled": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    },
+    "state_expression/listening/listening_q4": {
+      "layer": 5,
+      "animation": { "name": "listening_q4", "count": -1 },
+      "sound": { "enabled": false },
+      "vibration": { "enabled": false },
+      "motion": { "enabled": false }
+    }
+  }
+}
