@@ -69,12 +69,23 @@ void EventEngine::LoadEventConfiguration() {
     }
     
     // SD卡已初始化，尝试从SD卡加载配置
-    const char* config_path = "/sdcard/event_config.json";
+    const char* primary_path = "/sdcard/config/event_config.json";
+    const char* legacy_path = "/sdcard/event_config.json";
+    ESP_LOGI(TAG, "Attempting to load event config from %s", primary_path);
     
-    bool loaded = EventConfigLoader::LoadFromFile(config_path, this);
+    bool loaded = EventConfigLoader::LoadFromFile(primary_path, this);
+    if (!loaded) {
+        ESP_LOGW(TAG, "Failed to load event config from %s", primary_path);
+        loaded = EventConfigLoader::LoadFromFile(legacy_path, this);
+        if (loaded) {
+            ESP_LOGW(TAG, "Loaded event config from legacy path %s; migrate to %s",
+                     legacy_path, primary_path);
+        }
+    }
     
     if (!loaded) {
         // 如果文件不存在或加载失败，使用嵌入的默认配置
+        ESP_LOGW(TAG, "Falling back to embedded default event config");
         EventConfigLoader::LoadFromEmbedded(this);
     }
 }

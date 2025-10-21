@@ -114,7 +114,7 @@ struct TouchEventData {
 ### 2.4 配置系统
 
 #### 2.4.1 配置文件支持
-- **文件位置**: `/spiffs/event_config.json`或嵌入式默认配置
+- **文件位置**: `/sdcard/config/event_config.json`（默认）；兼容旧版 `/sdcard/event_config.json`；加载失败时回退到嵌入式默认配置
 - **热重载**: 支持运行时配置更新
 - **参数分类**: 触摸检测参数、运动检测参数、事件处理策略
 
@@ -188,7 +188,7 @@ T+1500ms : 云端分析 → VA修正 → 精确情感表达
 
 #### 3.2.4 EventConfigLoader (配置加载器)
 - **职责**: 配置文件解析和加载
-- **文件支持**: 支持SPIFFS文件系统和嵌入式配置
+- **文件支持**: 支持SD卡(`/sdcard`)文件系统与嵌入式默认配置
 - **动态更新**: 支持运行时配置参数更新
 - **默认配置**: 提供完整的默认配置作为备份
 
@@ -445,7 +445,7 @@ ESP_LOGI(TAG, "Current VA: (%.2f, %.2f)", current_va.valence, current_va.arousal
 ## 8. 部署和运维
 
 ### 8.1 配置部署
-1. 将`event_config.json`部署到设备的`/spiffs/`目录
+1. 将`event_config.json`部署到设备的`/sdcard/config/`目录（旧版可暂留`/sdcard/`根目录备用，日志会提示迁移）
 2. 根据硬件特性调整检测阈值参数
 3. 根据应用场景配置处理策略
 4. 设置合适的调试输出级别

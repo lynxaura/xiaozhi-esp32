@@ -7,6 +7,12 @@
 
 #define TAG "TouchEngine"
 
+namespace {
+constexpr const char* kDefaultEventConfigPath = "/sdcard/config/event_config.json";
+constexpr const char* kLegacyEventConfigPath = "/sdcard/event_config.json";
+constexpr const char* kSpiffsEventConfigPath = "/spiffs/event_config.json";
+}
+
 // ESP32-S3: GPIO1-14支持触摸
 // 我们使用GPIO10和GPIO11
 
@@ -69,11 +75,29 @@ void TouchEngine::Initialize() {
 
 void TouchEngine::LoadConfiguration(const char* config_path) {
     // 如果没有指定路径，使用默认路径
-    const char* path = config_path ? config_path : "/spiffs/event_config.json";
+    const char* path = config_path ? config_path : kDefaultEventConfigPath;
+    ESP_LOGI(TAG, "Loading touch detection config from %s", path);
     
     // 尝试从文件加载配置
     if (!TouchConfigLoader::LoadFromFile(path, config_)) {
+        if (!config_path) {
+            // 兼容旧路径，便于线上设备迁移
+            if (TouchConfigLoader::LoadFromFile(kLegacyEventConfigPath, config_)) {
+                ESP_LOGW(TAG, "Loaded touch config from legacy path %s; migrate to %s", 
+                         kLegacyEventConfigPath, kDefaultEventConfigPath);
+                return;
+            }
+            
+            // 兼容仍在使用SPIFFS路径的老固件
+            if (TouchConfigLoader::LoadFromFile(kSpiffsEventConfigPath, config_)) {
+                ESP_LOGW(TAG, "Loaded touch config from SPIFFS path %s; migrate to %s", 
+                         kSpiffsEventConfigPath, kDefaultEventConfigPath);
+                return;
+            }
+        }
+        
         // 如果失败，使用默认配置
+        ESP_LOGW(TAG, "Failed to load touch config from %s; using defaults", path);
         config_ = TouchConfigLoader::LoadDefaults();
     }
     

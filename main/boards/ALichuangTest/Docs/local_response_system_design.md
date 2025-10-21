@@ -667,7 +667,7 @@ public:
     ALichuangTest() {
         // 初始化反应系统
         reaction_manager_ = std::make_unique<ReactionSystemManager>();
-        reaction_manager_->Initialize("/spiffs/reaction_config.json");
+        reaction_manager_->Initialize("/sdcard/config/response_config.json");
         
         // 注册事件回调
         if (event_engine_) {
@@ -708,7 +708,7 @@ public:
         dummy_engine.SetVA(GetQuadrantVA(quadrant));
         
         LocalReactionExecutor executor;
-        executor.LoadReactionConfig("/spiffs/reaction_config.json");
+        executor.LoadReactionConfig("/sdcard/config/response_config.json");
         executor.ProcessEvent(test_event, DeviceState::kDeviceStateIdle);
     }
     

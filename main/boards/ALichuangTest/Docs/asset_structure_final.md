@@ -6,8 +6,11 @@
 
 ```
 /sdcard/
-├── event_config.json              # 事件检测和处理配置文件
-├── response_config.json           # 响应配置文件
+├── config/                        # 配置集中目录
+│   ├── event_config.json          # 事件检测和处理配置文件
+│   ├── response_config.json       # 响应配置文件
+│   ├── vasys_config.json          # VA 系统参数
+│   └── vasys.txt
 ├── manifest.json                  # 资源清单和版本信息
 │
 ├── emergency/                     # 紧急响应层
@@ -361,7 +364,7 @@ public:
     
 private:
     void LoadResponseConfig() {
-        FILE* f = fopen("/sdcard/response_config.json", "r");
+        FILE* f = fopen("/sdcard/config/response_config.json", "r");
         if (!f) {
             ESP_LOGE(TAG, "Failed to open response_config.json");
             return;

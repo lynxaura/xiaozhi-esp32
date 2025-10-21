@@ -54,9 +54,11 @@
 
 ## 配置文件与加载
 - 事件检测与处理配置（EventConfig）
-  - 代码期望路径：`/sdcard/event_config.json`
+  - 代码默认路径：`/sdcard/config/event_config.json`
+  - 兼容迁移：缺失时自动尝试旧版 `/sdcard/event_config.json`
   - 失败回退：编译内置默认 JSON（`main/boards/ALichuangTest/interaction/config/event_config.json`）
-  - 加载逻辑：main/boards/ALichuangTest/interaction/core/event_engine.cc:63,72,74,78
+  - 加载逻辑：main/boards/ALichuangTest/interaction/core/event_engine.cc:63-88
+  - 日志提示：加载前打印目标路径；命中旧路径或默认配置时输出 WARNING，提醒迁移
   - 作用：为 EventProcessor 写策略、为 Motion/Multitouch 写 detection 参数、为 EmotionEngine 写 VA 影响、为批量上传写窗口与上限等。
 - 本地响应模板（ResponseConfig）
   - 实际路径：`/sdcard/config/response_config.json`
@@ -77,11 +79,11 @@
   - 设备状态变化由 `Application::SetDeviceState()` 统一触发（通知状态响应）
 
 ## 已知问题与风险（需要修复/统一）
-1) EventConfig 路径不一致
-- 代码读取 `/sdcard/event_config.json`（event_engine.cc:72），而仓库资源在 `sdcard/config/event_config.json`。
-- 现象：SD 存在配置但加载失败，回退到内置默认，导致阈值/策略/VA 影响与资源包不一致。
-- 影响：实机调参无效、事件频率与预期不符、情感状态偏差。
-- 建议：统一为 `/sdcard/config/event_config.json` 或调整资源位置为 `/sdcard/` 根目录；同时更新文档与日志提示。
+1) EventConfig 路径不一致（已修复）
+- 现状：代码默认读取 `/sdcard/config/event_config.json`，缺失时兼容旧版 `/sdcard/event_config.json`，否则回退到嵌入默认并给出 WARNING。
+- 资源：仓库配置位于 `sdcard/config/event_config.json`，与运行时路径保持一致。
+- 结果：SD 配置可直接生效，避免误回退导致阈值/策略/VA 偏差。
+- 后续：固件升级说明需同步提醒迁移旧路径，避免长期依赖兼容逻辑。
 
 2) 音频映射表错误
 - `touch_tickled_q1-4` 指向 `.gif` 而非 `.ogg`；`idle_q1-4` 缺少路径前缀斜杠、`idle_q4` 复用 `idle_q3` 路径。
@@ -95,10 +97,10 @@
 - 现象：播放与表情不匹配，影响体验与调试。
 - 建议：按 `sdcard/` 实际资源修正映射，或从命名规则自动拼路径，减少人工表维护。
 
-4) 文档路径与实现不一致（SPIFFS vs SD）
-- `event_engine.md`、`TEST_GUIDE.md` 等提到 `/spiffs/event_config.json`，而代码使用 `/sdcard` 并且 `response_config.json` 位于 `/sdcard/config/`。
-- 影响：集成/操作人员易被误导，造成配置文件放错位置。
-- 建议：统一文档为 `/sdcard` 路径，并明确 `response_config.json` 位于 `sdcard/config/`，EventConfig 建议 `sdcard/config/`。
+4) 文档路径与实现不一致（已修复）
+- 现状：`event_engine.md`、`TEST_GUIDE.md`、`local_response_system_design.md` 等文档已统一指向 `/sdcard/config/event_config.json` 与 `/sdcard/config/response_config.json`，并保留旧路径兼容说明。
+- 风险：历史资料可能仍引用 `/spiffs` 路径，部署时需确认采用最新文档。
+- 建议：在固件发布说明中提醒使用统一的 `/sdcard/config/` 目录，避免回退到兼容逻辑。
 
 5) LocalResponse 字符串池容量限制
 - 名称池大小 100、单名最长 32 字符，超限时会被丢弃或截断。
@@ -111,17 +113,15 @@
 - 参考：main/boards/ALichuangTest/interaction/core/event_engine.cc（空闲检测）
 - 建议：若需基于 IDLE_1MIN 做响应，需在 `response_config.json` 补充对应事件，或在 LocalResponseController 中增加专用映射。
 
-7) 事件上传设备 ID 固定值
-- `EventUploader::GenerateDeviceId()` 返回固定字符串 `alichuang_test_device`。
-- 参考：main/boards/ALichuangTest/interaction/upload/event_uploader.cc:28-32
-- 风险：多设备环境上报混淆、追踪困难。
-- 建议：使用 MAC/UUID（系统已有 `SystemInfo::GetMacAddress()` 与 `Board::GetUuid()` 可复用）。
+7) 事件上传设备 ID 固定值（已修复）
+- `EventUploader::GenerateDeviceId()` 现优先使用 `SystemInfo::GetMacAddress()`（规范化为大写并用 `-` 分隔），若 MAC 不可用则回退到 `Board::GetUuid()`，再次失败才使用默认 ID。
+- 提交后多设备部署可按硬件标识区分上报日志。若仍看到默认 ID，请检查底层 MAC/UUID 获取是否异常。
 
 8) 初始化与线程安全注意
 - 触摸任务（优先级 10）、运动定时器回调、动画任务与 LVGL 端口需保持线程安全；当前 `DisplayLockGuard` 已在 `SetAnima()` 内使用，整体风险可控，但仍需避免在高频回调内做重 IO。
 
 ## 建议与下一步
-- 统一配置与资源路径：将 EventConfig 路径调整为 `/sdcard/config/event_config.json` 并修正文档；或将资源文件移动到代码期望位置。
+- （已完成）统一配置与资源路径：EventConfig 默认从 `/sdcard/config/event_config.json` 加载，并在旧路径/回退时输出迁移提示。
 - 修正全部映射表：批量核对 `animation_maps_` 与 `audio_file_maps_` 与 `sdcard/` 实际一致。
 - 降低人工表维护：按命名规则自动拼路径（`/sdcard/<layer>/<event>/<event>.gif/.ogg`），仅在少数例外条目使用覆盖表。
 - 增强本地响应健壮性：扩大字符串池或切换为动态字符串；对加载失败计数/报警。
@@ -130,11 +130,10 @@
 ## 关键代码参考（便于交叉核对）
 - 音频映射表起始：main/application.cc:23
 - 动画映射表起始：main/boards/ALichuangTest/skills/animation.cc:17
-- EventConfig 加载路径：main/boards/ALichuangTest/interaction/core/event_engine.cc:72
+- EventConfig 加载路径：main/boards/ALichuangTest/interaction/core/event_engine.cc:68
 - ResponseConfig 加载路径：main/boards/ALichuangTest/interaction/controller/local_response_controller.cc:342
 - 事件批量上传参数：main/boards/ALichuangTest/interaction/core/event_engine.cc（`LoadUploadConfig`）
 - 事件处理策略实现：main/boards/ALichuangTest/interaction/core/event_processor.{h,cc}
 - 情感引擎集成与事件驱动：main/boards/ALichuangTest/interaction/core/event_engine.cc:220 及后续
 - 设备状态变更派发：main/application.cc（`SetDeviceState()` 内）+ main/device_state_event.{h,cc}
 - 分区表：partitions/v2/16m.csv:6
-

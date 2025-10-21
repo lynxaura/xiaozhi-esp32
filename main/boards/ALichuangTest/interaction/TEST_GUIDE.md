@@ -142,7 +142,7 @@ event_engine_->ConfigureEventProcessing(EventType::TOUCH_TAP, config);
 ```
 
 ### 通过配置文件调整
-修改 `/spiffs/event_config.json` 或 `event_config.json` 文件，重启后生效。
+修改 `/sdcard/config/event_config.json` 文件（兼容旧版 `/sdcard/event_config.json`），重启后生效。
 
 ## 问题排查
 

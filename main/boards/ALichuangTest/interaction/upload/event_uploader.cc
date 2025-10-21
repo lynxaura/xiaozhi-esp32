@@ -1,10 +1,13 @@
 #include "event_uploader.h"
 #include "application.h"     // for Application::GetInstance()
+#include "system_info.h"
+#include "board.h"
 #include <esp_log.h>
 #include <esp_timer.h>
 // Removed sys/time.h - using esp_timer_get_time() for unified timeline
 #include <cinttypes>         // for PRIu32, PRId64 in C++
 #include <algorithm>         // for std::min, std::remove_if
+#include <cctype>
 
 EventUploader::EventUploader() 
     : enabled_(false),
@@ -26,8 +29,26 @@ EventUploader::~EventUploader() {
 }
 
 std::string EventUploader::GenerateDeviceId() {
-    // 简化版：使用固定的设备ID，或者可以从其他地方获取
-    // 在实际项目中，这个ID可以从配置文件、NVRAM等获取
+    std::string mac = SystemInfo::GetMacAddress();
+    if (!mac.empty()) {
+        std::string normalized;
+        normalized.reserve(mac.size());
+        for (char ch : mac) {
+            if (ch == ':') {
+                normalized.push_back('-');
+            } else {
+                normalized.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
+            }
+        }
+        return normalized;
+    }
+    
+    std::string uuid = Board::GetInstance().GetUuid();
+    if (!uuid.empty()) {
+        return uuid;
+    }
+    
+    ESP_LOGW(TAG_EVENT_UPLOADER, "Failed to obtain hardware identifiers, falling back to default device ID");
     return "alichuang_test_device";
 }
 
