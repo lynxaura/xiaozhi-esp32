@@ -24,7 +24,7 @@ const std::unordered_map<std::string, const char*> Application::audio_file_maps_
     {"welcome", "/sdcard/welcome.ogg"},
     {"motion_flip",    "/sdcard/welcome.ogg"},
     {"motion_free_fall",    "/sdcard/welcome.ogg"},
-    {"motion_shake_violently",    "/sdcard/welcome.ogg"},
+    {"motion_shake_violently",    "/sdcard/emergency/motion_shake_violently/motion_shake_violently.ogg"},
     {"motion_upside_down",    "/sdcard/welcome.ogg"},
     {"motion_pickup_q1",    "/sdcard/interaction/motion_pickup_q1/motion_pickup_q1.ogg"},
     {"motion_pickup_q2",    "/sdcard/interaction/motion_pickup_q2/motion_pickup_q2.ogg"},

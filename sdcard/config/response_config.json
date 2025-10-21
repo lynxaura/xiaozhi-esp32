@@ -5,7 +5,7 @@
     "emergency/motion_shake_violently": {
       "layer": 1,
       "can_interrupt": ["all"],
-      "animation": { "name": "motion_shake_violently", "count": 2 },
+      "animation": { "name": "motion_shake_violently", "count": 1 },
       "sound": { "name": "motion_shake_violently", "volume": 90 },
       "vibration": { "pattern": "VIBRATION_ERRATIC_STRONG" },
       "motion": { "action": "MOTION_STRUGGLE_TWIST" }
