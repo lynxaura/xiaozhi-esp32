@@ -265,6 +265,14 @@
       "sound": { "enabled": false },
       "vibration": { "enabled": false },
       "motion": { "enabled": false }
+    },
+    "system/idle_1min": {
+      "layer": 3,
+      "can_interrupt": ["idle"],
+      "animation": { "name": "idle_q1", "count": 1 },
+      "sound": { "name": "idle_q1", "volume": 60, "interrupt": true },
+      "vibration": { "pattern": "VIBRATION_GENTLE_PULSE" },
+      "motion": { "enabled": false }
     }
   }
 }

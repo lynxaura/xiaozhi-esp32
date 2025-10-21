@@ -416,6 +416,7 @@ EventType LocalResponseController::ParseEventName(const char* event_name) {
     if (strstr(event_id, "touch_long_press")) return EventType::TOUCH_LONG_PRESS;
     if (strstr(event_id, "touch_cradled")) return EventType::TOUCH_CRADLED;
     if (strstr(event_id, "touch_tickled")) return EventType::TOUCH_TICKLED;
+    if (strstr(event_id, "idle_1min")) return EventType::IDLE_1MIN;
 
     // state_expression 事件不映射到 EventType（它们通过状态名称处理）
     if (strstr(event_name, "state_expression/")) {

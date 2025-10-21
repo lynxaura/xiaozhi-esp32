@@ -46,14 +46,14 @@ const std::unordered_map<std::string, const char*> Application::audio_file_maps_
     {"touch_tap_q2",    "/sdcard/interaction/touch_tap_q2/touch_tap_q2.ogg"},
     {"touch_tap_q3",    "/sdcard/interaction/touch_tap_q3/touch_tap_q3.ogg"},
     {"touch_tap_q4",    "/sdcard/interaction/touch_tap_q4/touch_tap_q4.ogg"},
-    {"touch_tickled_q1",    "/sdcard/interaction/touch_tickled_q1/touch_tickled_q1.gif"},
-    {"touch_tickled_q2",    "/sdcard/interaction/touch_tickled_q2/touch_tickled_q2.gif"},
-    {"touch_tickled_q3",    "/sdcard/interaction/touch_tickled_q3/touch_tickled_q3.gif"},
-    {"touch_tickled_q4",    "/sdcard/interaction/touch_tickled_q4/touch_tickled_q4.gif"},
-    {"idle_q1", "sdcard/state_expression/idle/idle_q1/idle_q1.ogg"},
-    {"idle_q2", "sdcard/state_expression/idle/idle_q2/idle_q2.ogg"},
-    {"idle_q3", "sdcard/state_expression/idle/idle_q3/idle_q3.ogg"},
-    {"idle_q4", "sdcard/state_expression/idle/idle_q3/idle_q3.ogg"}
+    {"touch_tickled_q1",    "/sdcard/interaction/touch_tickled_q1/touch_tickled_q1.ogg"},
+    {"touch_tickled_q2",    "/sdcard/interaction/touch_tickled_q2/touch_tickled_q2.ogg"},
+    {"touch_tickled_q3",    "/sdcard/interaction/touch_tickled_q3/touch_tickled_q3.ogg"},
+    {"touch_tickled_q4",    "/sdcard/interaction/touch_tickled_q4/touch_tickled_q4.ogg"},
+    {"idle_q1", "/sdcard/state_expression/idle/idle_q1/idle_q1.ogg"},
+    {"idle_q2", "/sdcard/state_expression/idle/idle_q2/idle_q2.ogg"},
+    {"idle_q3", "/sdcard/state_expression/idle/idle_q3/idle_q3.ogg"},
+    {"idle_q4", "/sdcard/state_expression/idle/idle_q4/idle_q4.ogg"}
     // 可在此添加更多音频映射
 };
 
