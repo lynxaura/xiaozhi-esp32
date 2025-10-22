@@ -549,6 +549,13 @@ if(CONFIG_BOARD_TYPE_ALICHUANGTEST)
         ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/interaction/controller/*.c
         ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/i2c_bus_manager.cc
     )
+    if(CONFIG_ENABLE_BLUETOOTH_PROVISIONING)
+        file(GLOB ALICHUANGTEST_BLUFI_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/bluetooth_provisioning/*.cc
+            ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/bluetooth_provisioning/*.c
+        )
+        list(APPEND ALICHUANGTEST_EXTRA_SOURCES ${ALICHUANGTEST_BLUFI_SOURCES})
+    endif()
     list(APPEND BOARD_SOURCES ${ALICHUANGTEST_EXTRA_SOURCES})
 endif()
 

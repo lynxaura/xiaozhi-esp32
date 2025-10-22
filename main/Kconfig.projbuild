@@ -570,6 +570,45 @@ config USE_ACOUSTIC_WIFI_PROVISIONING
     help
         启用声波配网功能，使用音频信号传输 WiFi 配置数据
 
+menu "Bluetooth Provisioning (BluFi)"
+    depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3 || IDF_TARGET_ESP32C6
+
+    config ENABLE_BLUETOOTH_PROVISIONING
+        bool "Enable Bluetooth Provisioning (BluFi)"
+        default n
+        help
+            通过 BLE (BluFi) 进行 WiFi 配网
+        select BT_ENABLED
+        select MBEDTLS_DHM_C
+        select MBEDTLS_AES_C
+        select MBEDTLS_MD5_C
+        # Enable BLUFI for the selected host stack
+        select BT_NIMBLE_BLUFI_ENABLE if BT_NIMBLE_ENABLED
+        select BT_BLE_BLUFI_ENABLE if BT_BLUEDROID_ENABLED
+
+    config BLUETOOTH_PROVISIONING_ALWAYS_ON_BOOT
+        bool "Always start BluFi provisioning on boot (testing)"
+        depends on ENABLE_BLUETOOTH_PROVISIONING
+        default n
+        help
+            便于测试，每次开机都进入 BluFi 配网流程
+
+    config BLUETOOTH_PROVISIONING_TIMEOUT
+        int "BluFi provisioning timeout (seconds)"
+        depends on ENABLE_BLUETOOTH_PROVISIONING
+        range 30 1800
+        default 300
+        help
+            配网等待超时时间，默认 300 秒
+
+    config BLUFI_FALLBACK_TO_WEB_CONFIG
+        bool "Fallback to Web AP config when timeout"
+        depends on ENABLE_BLUETOOTH_PROVISIONING
+        default y
+        help
+            BluFi 配网超时后，回退到 WiFi 配置 AP 模式
+endmenu
+
 config AUDIO_DEBUG_UDP_SERVER
     string "Audio Debug UDP Server Address"
     default "192.168.2.100:8000"

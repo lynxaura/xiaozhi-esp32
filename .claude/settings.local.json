@@ -35,7 +35,8 @@
       "Bash(find:*)",
       "Bash(for dir in */)",
       "Bash(do basename \"$dir\")",
-      "Bash(done)"
+      "Bash(done)",
+      "Read(//c/Users/Administrator/Downloads/blufi/**)"
     ],
     "deny": []
   }

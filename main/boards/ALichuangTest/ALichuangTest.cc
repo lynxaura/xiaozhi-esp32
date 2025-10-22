@@ -17,6 +17,10 @@
 #include "analog.h"
 #include "device_state_event.h"
 
+#if CONFIG_ENABLE_BLUETOOTH_PROVISIONING
+#include "boards/ALichuangTest/bluetooth_provisioning/blufi_provisioning.h"
+#endif
+
 #include <esp_log.h>
 #include <esp_lcd_panel_vendor.h>
 #include <driver/i2c_master.h>
@@ -1001,6 +1005,44 @@ public:
         return local_response_controller_;
     }
 
+#if CONFIG_ENABLE_BLUETOOTH_PROVISIONING
+public:
+    virtual void StartNetwork() override {
+        // If configured to always start BluFi on boot (testing convenience)
+        if (CONFIG_BLUETOOTH_PROVISIONING_ALWAYS_ON_BOOT) {
+            auto& app = Application::GetInstance();
+            // Free RAM before enabling BT: stop audio processing temporarily
+            app.GetAudioService().Stop();
+            app.SetDeviceState(kDeviceStateWifiConfiguring);
+
+            auto& blufi = BlufiProvisioning::GetInstance();
+
+            blufi.OnConfigured([&](const std::string& ssid, const std::string& password){
+                ESP_LOGI(TAG, "BluFi configured: SSID=%s", ssid.c_str());
+                vTaskDelay(pdMS_TO_TICKS(1500));
+                esp_restart();
+            });
+
+            blufi.Start();
+
+            int timeout_sec = CONFIG_BLUETOOTH_PROVISIONING_TIMEOUT;
+            if (!blufi.WaitForConfigured(timeout_sec * 1000)) {
+                ESP_LOGW(TAG, "BluFi provisioning timeout, stopping");
+                blufi.Stop();
+                // Resume audio on fallback
+                app.GetAudioService().Start();
+#if CONFIG_BLUFI_FALLBACK_TO_WEB_CONFIG
+                WifiBoard::StartNetwork();
+                return;
+#endif
+            }
+            return;
+        }
+
+        // Default behavior
+        WifiBoard::StartNetwork();
+    }
+#endif
     
 };
 
