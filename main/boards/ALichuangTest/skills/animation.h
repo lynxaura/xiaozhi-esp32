@@ -5,6 +5,9 @@
 #include <unordered_map>
 #include <string>
 
+// 前向声明
+enum class EmotionQuadrant;
+
 class AnimaDisplay : public LcdDisplay {
 public:
     AnimaDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
@@ -29,6 +32,9 @@ public:
     virtual void UpdateStatusBar(bool update_all = false) override {}
     virtual void SetPowerSaveMode(bool on) override {}
     virtual void SetTheme(Theme* theme) override;
+
+    // 静态工具函数：根据情感象限获取对应的idle动画名称
+    static std::string GetIdleAnimationByQuadrant(EmotionQuadrant quadrant);
 
 private:
     // 动画名称到文件路径的哈希映射表

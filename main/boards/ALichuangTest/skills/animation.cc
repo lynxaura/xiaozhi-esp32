@@ -7,6 +7,8 @@
 #include <cstring>
 
 #include "board.h"
+// Use correct relative path to emotion engine header
+#include "../interaction/core/emotion_engine.h"
 
 #define TAG "AnimaDisplay"
 
@@ -54,13 +56,29 @@ const std::unordered_map<std::string, const char*> AnimaDisplay::animation_maps_
     // 8种说话表情动画（与TTS配合使用）
     {"calm",    "/sdcard/state_expression/speaking/talk_calm/talk_calm.gif"},
     {"happy",   "/sdcard/state_expression/speaking/talk_happy/talk_happy.gif"},
-    {"sad",     "/sdcard/state_expression/speaking/talk_scared/talk_scared.gif"},
+    {"sad",     "/sdcard/state_expression/speaking/talk_sad/talk_sad.gif"},
     {"angry",   "/sdcard/state_expression/speaking/talk_angry/talk_angry.gif"},
     {"scared",  "/sdcard/state_expression/speaking/talk_scared/talk_scared.gif"},
     {"curious", "/sdcard/state_expression/speaking/talk_curious/talk_curious.gif"},
     {"shy",     "/sdcard/state_expression/speaking/talk_shy/talk_shy.gif"},
     {"content", "/sdcard/state_expression/speaking/talk_content/talk_content.gif"},
 };
+
+// 根据情感象限获取对应的idle动画名称
+std::string AnimaDisplay::GetIdleAnimationByQuadrant(EmotionQuadrant quadrant) {
+    switch (quadrant) {
+        case EmotionQuadrant::POSITIVE_HIGH_AROUSAL:
+            return "idle_q1";  // 积极高激活
+        case EmotionQuadrant::NEGATIVE_HIGH_AROUSAL:
+            return "idle_q2";  // 消极高激活
+        case EmotionQuadrant::NEGATIVE_LOW_AROUSAL:
+            return "idle_q3";  // 消极低激活
+        case EmotionQuadrant::POSITIVE_LOW_AROUSAL:
+            return "idle_q4";  // 积极低激活
+        default:
+            return "idle_q1";  // 默认返回Q1
+    }
+}
 
 AnimaDisplay::AnimaDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
                            int width, int height, int offset_x, int offset_y, bool mirror_x, bool mirror_y, bool swap_xy)
@@ -188,10 +206,9 @@ void AnimaDisplay::SetAnima(const std::string& animation) {
 void AnimaDisplay::SetAnima(const std::string& animation, int loop_count) {
     DisplayLockGuard lock(this);
 
-    // 确保至少播放一次
-    if (loop_count == 0) {
-        loop_count = 1;
-    }
+    // 计算实际循环次数：LVGL中0通常表示无限循环
+    // 兼容调用方传入的-1 或 0 代表无限循环
+    int effective_loops = (loop_count <= 0) ? 0 : loop_count;
 
     // 使用哈希表快速查找，时间复杂度 O(1)
     auto it = animation_maps_.find(animation);
@@ -201,20 +218,20 @@ void AnimaDisplay::SetAnima(const std::string& animation, int loop_count) {
         gif_path = it->second;
         ESP_LOGI(TAG, "设置动画: %s (循环次数: %s)",
                  animation.c_str(),
-                 loop_count < 0 ? "无限" : std::to_string(loop_count).c_str());
+                 loop_count <= 0 ? "无限" : std::to_string(loop_count).c_str());
     } else {
         gif_path = DEFAULT_GIF_PATH;
         ESP_LOGW(TAG, "未知动画'%s'，使用默认动画 (循环次数: %s)",
                  animation.c_str(),
-                 loop_count < 0 ? "无限" : std::to_string(loop_count).c_str());
+                 loop_count <= 0 ? "无限" : std::to_string(loop_count).c_str());
     }
 
     // 设置GIF源
     lv_gif_set_src(animation_gif_, gif_path);
 
-    // 设置循环次数
-    // loop_count < 0: 无限循环
-    // loop_count = 1: 播放一次
-    // loop_count > 1: 播放指定次数
-    lv_gif_set_loop_count(animation_gif_, loop_count);
+    // 设置循环次数（0 表示无限循环）
+    // effective_loops = 0: 无限循环
+    // effective_loops = 1: 播放一次
+    // effective_loops > 1: 播放指定次数
+    lv_gif_set_loop_count(animation_gif_, effective_loops);
 }

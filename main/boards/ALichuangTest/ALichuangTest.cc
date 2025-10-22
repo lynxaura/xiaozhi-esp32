@@ -114,7 +114,7 @@ private:
 
 #if CONFIG_LINGXI_ANIMA_UI
     // 动画相关成员变量
-    std::string current_animation_ = "neutral";
+    std::string current_animation_ = "idle_q1";  // 默认使用idle_q1，启动后会根据情感状态调整
     mutable std::mutex animation_mutex_;
     AnimaDisplay* display_;
     TaskHandle_t animation_task_handle_ = nullptr; // 动画播放任务句柄
@@ -125,6 +125,32 @@ private:
         if (display) {
             display->OnAnimationChanged([this](const std::string& animation) {
                 ESP_LOGI(TAG, "接收到动画变化回调: %s", animation.c_str());
+
+                // 将通用情绪指令映射为具体动画，避免出现未知动画日志
+                if (animation == "neutral") {
+                    auto& app = Application::GetInstance();
+                    auto state = app.GetDeviceState();
+
+                    // 仅在待机状态下进行映射，监听状态交由本地响应系统处理
+                    if (state == kDeviceStateIdle) {
+                        auto& emotion_engine = EmotionEngine::GetInstance();
+                        EmotionQuadrant quadrant = emotion_engine.GetQuadrant();
+
+                        std::string mapped_animation;
+                        // 待机状态：根据象限选择 idle_q1~q4
+                        mapped_animation = AnimaDisplay::GetIdleAnimationByQuadrant(quadrant);
+                        ESP_LOGI(TAG, "映射 neutral -> %s (idle)", mapped_animation.c_str());
+
+                        SetCurrentAnimation(mapped_animation);
+                        return; // 已处理
+                    }
+
+                    // 非 idle 状态忽略 neutral，保持当前动画，由各自流程处理（例如 listening 由 LocalResponse 控制）
+                    ESP_LOGI(TAG, "忽略 neutral 于当前状态: %d", static_cast<int>(state));
+                    return;
+                }
+
+                // 默认行为：按收到的名称设置
                 SetCurrentAnimation(animation);
             });
         }
@@ -157,19 +183,30 @@ private:
         // 获取AudioProcessor实例的事件组 - 从application.h中直接获取
         auto& app = Application::GetInstance();
 
-        // 根据当前动画显示对应的GIF
-        std::string current_animation = board->GetCurrentAnimation();
+        // 根据当前情感象限选择初始idle动画
+        auto& emotion_engine = EmotionEngine::GetInstance();
+        EmotionQuadrant quadrant = emotion_engine.GetQuadrant();
+        std::string initial_idle = AnimaDisplay::GetIdleAnimationByQuadrant(quadrant);
 
-        ESP_LOGI(TAG, "当前动画: %s", current_animation.c_str());
-        display->SetAnima(current_animation);
-        ESP_LOGI(TAG, "初始GIF动画已加载");
+        ESP_LOGI(TAG, "初始化动画: %s (V=%.2f, A=%.2f, 象限=%d)",
+                initial_idle.c_str(),
+                emotion_engine.GetValence(),
+                emotion_engine.GetArousal(),
+                static_cast<int>(quadrant));
+
+        // 设置当前动画为选择的idle动画
+        board->SetCurrentAnimation(initial_idle);
+
+        // 播放idle动画（无限循环）
+        display->SetAnima(initial_idle, -1);
+        ESP_LOGI(TAG, "初始idle动画已加载（无限循环）");
 
         // 持续监控和处理GIF动画播放
         // 定义用于判断是否正在播放音频的变量
         bool isAudioPlaying = false;
 
         // 定义用于检测动画变化的变量
-        std::string lastAnimation = current_animation;
+        std::string lastAnimation = board->GetCurrentAnimation();
 
         // 定义用于判断是否应该播放情感动画的变量
         bool shouldPlayAnimation = false;
@@ -184,8 +221,17 @@ private:
             if (currentAnimation != lastAnimation) {
                 ESP_LOGI(TAG, "动画变化检测: %s -> %s", lastAnimation.c_str(), currentAnimation.c_str());
 
-                display->SetAnima(currentAnimation);
-                ESP_LOGI(TAG, "已切换到新GIF动画: %s", currentAnimation.c_str());
+                // 判断是否是idle动画，如果是则无限循环
+                bool isNewIdleAnimation = (currentAnimation == "idle_q1" || currentAnimation == "idle_q2" ||
+                                          currentAnimation == "idle_q3" || currentAnimation == "idle_q4");
+
+                if (isNewIdleAnimation) {
+                    display->SetAnima(currentAnimation, -1);  // 无限循环
+                    ESP_LOGI(TAG, "已切换到idle动画: %s（无限循环）", currentAnimation.c_str());
+                } else {
+                    display->SetAnima(currentAnimation);  // 使用默认播放次数
+                    ESP_LOGI(TAG, "已切换到新GIF动画: %s", currentAnimation.c_str());
+                }
                 lastAnimation = currentAnimation;
             }
 
@@ -197,17 +243,28 @@ private:
                 lastAudioTime = xTaskGetTickCount();
             }
 
-            // 检查是否需要自动回归neutral状态
+            // 检查是否需要自动回归idle状态
             TickType_t timeSinceLastAudio = xTaskGetTickCount() - lastAudioTime;
-            if (!isAudioPlaying && currentAnimation != "neutral" && timeSinceLastAudio > neutralTimeout) {
-                ESP_LOGI(TAG, "长时间无音频播放, 自动回归neutral状态");
-                board->SetCurrentAnimation("neutral");
+            // 判断是否是idle动画（idle_q1~q4）
+            bool isIdleAnimation = (currentAnimation == "idle_q1" || currentAnimation == "idle_q2" ||
+                                   currentAnimation == "idle_q3" || currentAnimation == "idle_q4");
+
+            if (!isAudioPlaying && !isIdleAnimation && timeSinceLastAudio > neutralTimeout) {
+                // 根据当前情感象限获取对应的idle动画
+                auto& emotion_engine = EmotionEngine::GetInstance();
+                EmotionQuadrant quadrant = emotion_engine.GetQuadrant();
+                std::string idle_animation = AnimaDisplay::GetIdleAnimationByQuadrant(quadrant);
+
+                ESP_LOGI(TAG, "长时间无音频播放, 自动回归idle状态: %s (V=%.2f, A=%.2f)",
+                        idle_animation.c_str(),
+                        emotion_engine.GetValence(),
+                        emotion_engine.GetArousal());
+                board->SetCurrentAnimation(idle_animation);
                 // 注意：这里不直接修改currentAnimation, 让下次循环检测动画变化时处理
             }
 
-            // 判断是否应该播放情感动画：情绪不为neutral且正在说话
-            bool isEmotionalState = (currentAnimation != "neutral") && (currentAnimation != "sleepy") && (currentAnimation != "");
-            shouldPlayAnimation = isEmotionalState && isAudioPlaying;
+            // 判断是否应该播放情感动画：非idle状态且正在说话
+            shouldPlayAnimation = !isIdleAnimation && isAudioPlaying;
 
             // 输出调试信息（每10次循环输出一次，避免日志过多）
             static int debugCount = 0;
