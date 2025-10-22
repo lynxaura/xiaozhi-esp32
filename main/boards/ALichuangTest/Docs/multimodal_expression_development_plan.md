@@ -24,8 +24,8 @@ EventEngine 情感状态机    硬件执行层
 
 #### ✅ 动画系统 (基础完成)
 - **现状**: Anima UI模式已实现基本情感动画
-- **支持情感**: neutral, happy, sad, angry, surprised, laughing
-- **技术实现**: 基于LVGL的图片序列播放
+- **支持情感**: calm, happy, sad, angry, scared, curious, shy, content (8种说话表情)
+- **技术实现**: 基于LVGL的GIF动画播放
 - **播放逻辑**: TTS期间播放情感动画，静默时显示静态图片
 - **代码位置**: `ALichuangTest.cc:GetEmotionImageArray()`
 

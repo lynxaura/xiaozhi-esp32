@@ -84,7 +84,7 @@
     },
     "interaction/touch_tap_q1": {
       "layer": 2,
-      "can_interrupt": ["idle", "listening"],
+      "can_interrupt": ["idle", "listening", "activating"],
       "animation": { "name": "touch_tap_q1", "count": 2 },
       "sound": { "name": "touch_tap_q1", "volume": 60 },
       "vibration": { "pattern": "VIBRATION_SHORT_BUZZ" },
@@ -92,7 +92,7 @@
     },
     "interaction/touch_tap_q2": {
       "layer": 2,
-      "can_interrupt": ["idle", "listening"],
+      "can_interrupt": ["idle", "listening", "activating"],
       "animation": { "name": "touch_tap_q2", "count": 2 },
       "sound": { "name": "touch_tap_q2", "volume": 60 },
       "vibration": { "pattern": "VIBRATION_PURR_SHORT" },
@@ -100,7 +100,7 @@
     },
     "interaction/touch_tap_q3": {
       "layer": 2,
-      "can_interrupt": ["idle", "listening"],
+      "can_interrupt": ["idle", "listening", "activating"],
       "animation": { "name": "touch_tap_q3", "count": 2 },
       "sound": { "name": "touch_tap_q3", "volume": 60 },
       "vibration": { "pattern": "VIBRATION_PURR_SHORT" },
@@ -108,7 +108,7 @@
     },
     "interaction/touch_tap_q4": {
       "layer": 2,
-      "can_interrupt": ["idle", "listening"],
+      "can_interrupt": ["idle", "listening", "activating"],
       "animation": { "name": "touch_tap_q4", "count": 2 },
       "sound": { "name": "touch_tap_q4", "volume": 60 },
       "vibration": { "pattern": "VIBRATION_PURR_SHORT" },

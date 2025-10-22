@@ -7,11 +7,7 @@
 
 #include "driver/sdmmc_host.h"
 
-/* CONFIG PATH */
-#define VASYS_CFG_PATH    "/sdcard/config/"
-
-/* SOUND PATH */
-#define TEST_OGG_PATH    "/sdcard/welcome.ogg"
+/* CONFIG PATHS REMOVED: vasys deprecated */
 
 class SDdata_Pro {
 public:
@@ -21,7 +17,6 @@ public:
     sdmmc_card_t *m_card;
 
     void TestFile(); // 测试读写
-    int GetVASysConfig(char* databuff);
 private:
     esp_err_t TWriteFile(const char *path, char *data);
     esp_err_t TReadFile(const char *path);

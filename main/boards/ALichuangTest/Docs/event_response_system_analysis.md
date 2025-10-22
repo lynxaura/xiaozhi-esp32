@@ -65,7 +65,7 @@
   - 加载逻辑：main/boards/ALichuangTest/interaction/controller/local_response_controller.cc:342
   - 作用：将事件（含象限）映射到组件列表：动画名称+循环次数、音频名称+音量、振动模式、动作 ID，以及 can_interrupt 规则。
 - 其他
-  - `sdcard/config/vasys_config.json`（VA 影响）存在于资源包中，但 VA 实际由 EventConfigLoader 读入。
+  - `sdcard/config/vasys_config.json` 已移除（deprecated）。VA 影响从 `event_config.json` 加载；声音/动画/动作反馈以 `response_config.json` 为准。
 
 ## 生效时机（初始化顺序）
 - 板卡构造 `ALichuangTest`

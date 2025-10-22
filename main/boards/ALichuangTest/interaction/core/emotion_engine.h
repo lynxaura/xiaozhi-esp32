@@ -102,8 +102,6 @@ private:
     void ClampValues();
     void ProcessDecay();
     void InitializeEventImpactMap();
-    void InitializeEventImpactMapFromSD();
-    void VAImpactCfgByItem(cJSON* root, EventType item);
     
     // 静态回调函数（用于ESP定时器）
     static void DecayTimerCallback(void* arg);

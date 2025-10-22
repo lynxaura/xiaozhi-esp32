@@ -242,7 +242,7 @@ The robot uses a sophisticated event engine (`EventEngine`) that coordinates mul
    ```
 
 #### Emotion System
-- **Emotion States**: neutral, happy, sad, angry, surprised, laughing, thinking
+- **Speaking Emotion Animations** (8 types): calm, happy, sad, angry, scared, curious, shy, content
 - **Emotion-Driven Responses**:
   - Dynamic display animations based on current emotion
   - Synchronized vibration patterns matching emotional state

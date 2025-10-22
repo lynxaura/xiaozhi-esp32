@@ -32,7 +32,10 @@
       "Bash(where:*)",
       "Bash(dir \"C:\\Users\\Administrator\\Downloads\\sound_effect_ogg\")",
       "Bash(dir:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(for dir in */)",
+      "Bash(do basename \"$dir\")",
+      "Bash(done)"
     ],
     "deny": []
   }

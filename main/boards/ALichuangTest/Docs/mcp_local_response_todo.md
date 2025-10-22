@@ -267,9 +267,9 @@ mcp_server.AddTool("self.haptic.emotion_vibration",
 ## Phase 4: 屏幕情绪动画控制接口 [⏱️ 1小时15分钟]
 
 ### 4.1 实现情绪动画控制
-- [ ] 注册`self.display.show_emotion` - 显示情绪动画
-- [ ] 支持情绪：neutral, happy, angry, sad, surprised, laughing
-- [ ] 集成现有的AnimaDisplay和情绪图片系统
+- [x] 注册`self.display.show_emotion` - 显示情绪动画
+- [x] 支持情绪：calm, happy, sad, angry, scared, curious, shy, content (8种说话表情)
+- [x] 集成现有的AnimaDisplay和GIF动画系统
 
 ### 4.2 实现动画播放控制
 - [ ] 注册`self.display.animation_control` - 动画播放控制
@@ -283,14 +283,15 @@ mcp_server.AddTool("self.haptic.emotion_vibration",
 ```cpp
 // 情绪动画控制
 mcp_server.AddTool("self.display.show_emotion",
-    "在屏幕上显示情绪动画。支持情绪：\n"
-    "neutral: 中性表情\n"
-    "happy: 开心表情\n" 
-    "angry: 愤怒表情\n"
-    "sad: 悲伤表情\n"
-    "surprised: 惊讶表情\n"
-    "laughing: 大笑表情\n"
-    "thinking: 思考表情",
+    "在屏幕上显示说话表情动画（仅在TTS语音播放时使用）。支持的8种说话表情：\n"
+    "calm: 平静说话\n"
+    "happy: 开心说话\n"
+    "sad: 悲伤说话\n"
+    "angry: 生气说话\n"
+    "scared: 害怕说话\n"
+    "curious: 好奇说话\n"
+    "shy: 害羞说话\n"
+    "content: 满足说话",
     PropertyList({
         Property("emotion", kPropertyTypeString),
         Property("duration", kPropertyTypeInteger, 0, 30000) // 可选，持续时间(ms)
@@ -419,10 +420,10 @@ mcp_server.AddTool("self.express.emotion",
             if (motion_skill_) motion_skill_->Perform(MOTION_SHAKE_HEAD);
             if (vibration_skill_) vibration_skill_->Play(VIBRATION_SHARP_BUZZ);
             SetCurrentEmotion("angry");
-        } else if (emotion == "surprise") {
-            if (motion_skill_) motion_skill_->Perform(MOTION_QUICK_TURN_LEFT);
-            if (vibration_skill_) vibration_skill_->Play(VIBRATION_SHORT_BUZZ);
-            SetCurrentEmotion("surprised");
+        } else if (emotion == "scared") {
+            if (motion_skill_) motion_skill_->Perform(MOTION_BODY_SHIVER);
+            if (vibration_skill_) vibration_skill_->Play(VIBRATION_TREMBLE_PATTERN);
+            SetCurrentEmotion("scared");
         } else if (emotion == "affection") {
             if (motion_skill_) motion_skill_->Perform(MOTION_NUZZLE_FORWARD);
             if (vibration_skill_) vibration_skill_->Play(VIBRATION_PURR_PATTERN);
@@ -893,10 +894,11 @@ mcp_server.AddTool("self.mode.set",
   "enabled": true
 }}
 
-// 配置设备被拿起时显示惊讶表情
+// 注意：事件响应配置现在通过 response_config.json 文件管理，不再通过MCP动态配置
+// 以下示例仅供参考（已废弃）
 {"tool": "self.events.configure_response", "params": {
   "event_type": "motion_pickup",
-  "response_emotion": "surprised",
+  "response_animation": "motion_pickup_q1",  // 使用事件反馈动画
   "enabled": true
 }}
 ```

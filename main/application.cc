@@ -21,11 +21,7 @@
 
 // 音频名称到SD卡文件路径的哈希映射表，O(1) 查找时间复杂度
 const std::unordered_map<std::string, const char*> Application::audio_file_maps_ = {
-    {"welcome", "/sdcard/welcome.ogg"},
-    {"motion_flip",    "/sdcard/welcome.ogg"},
-    {"motion_free_fall",    "/sdcard/welcome.ogg"},
     {"motion_shake_violently",    "/sdcard/emergency/motion_shake_violently/motion_shake_violently.ogg"},
-    {"motion_upside_down",    "/sdcard/welcome.ogg"},
     {"motion_pickup_q1",    "/sdcard/interaction/motion_pickup_q1/motion_pickup_q1.ogg"},
     {"motion_pickup_q2",    "/sdcard/interaction/motion_pickup_q2/motion_pickup_q2.ogg"},
     {"motion_pickup_q3",    "/sdcard/interaction/motion_pickup_q3/motion_pickup_q3.ogg"},
@@ -417,8 +413,7 @@ void Application::Start() {
     /* Start the clock timer to update the status bar */
     esp_timer_start_periodic(clock_timer_handle_, 1000000);
 
-    // 播放欢迎音频
-    PlaySoundOGGFile("welcome");
+    // 开机不再播放欢迎音频
 
     /* Wait for the network to be ready */
     board.StartNetwork();
@@ -745,12 +740,10 @@ void Application::SetDeviceState(DeviceState state) {
             break;
         case kDeviceStateConnecting:
             display->SetStatus(Lang::Strings::CONNECTING);
-            display->SetEmotion("neutral");
             display->SetChatMessage("system", "");
             break;
         case kDeviceStateListening:
             display->SetStatus(Lang::Strings::LISTENING);
-            display->SetEmotion("neutral");
 
             // Make sure the audio processor is running
             if (!audio_service_.IsAudioProcessorRunning()) {

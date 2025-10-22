@@ -417,9 +417,9 @@ EventResponse EventConfigLoader::GetResponseForEvent(EventType type, const Event
             return it->second;
         }
     }
-    
-    // 返回默认响应
-    return EventResponse("", "", "neutral");
+
+    // 返回默认响应（空字符串表示保持当前状态，由调用者根据情感引擎决定idle动画）
+    return EventResponse("", "", "");
 }
 
 EventResponse EventConfigLoader::GetMultiTapResponse(int tap_count) {
@@ -428,9 +428,9 @@ EventResponse EventConfigLoader::GetMultiTapResponse(int tap_count) {
     if (it != response_map_.end()) {
         return it->second;
     }
-    
-    // 返回默认响应
-    return EventResponse("", "", "neutral");
+
+    // 返回默认响应（空字符串表示保持当前状态，由调用者根据情感引擎决定idle动画）
+    return EventResponse("", "", "");
 }
 
 bool EventConfigLoader::CheckSpecialPattern(const std::vector<Event>& recent_events) {

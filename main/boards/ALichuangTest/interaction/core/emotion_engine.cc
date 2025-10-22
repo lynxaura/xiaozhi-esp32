@@ -70,10 +70,8 @@ void EmotionEngine::Initialize() {
     }
     
     ESP_LOGI(TAG, "Initializing Emotion Engine");
-    
-    // 初始化事件影响映射表
-    // InitializeEventImpactMap();
-    InitializeEventImpactMapFromSD();
+
+    // 事件影响映射表通过EventConfigLoader从event_config.json加载
     
     // 创建衰减定时器（10秒间隔）
     esp_timer_create_args_t timer_args = {
@@ -127,36 +125,6 @@ void EmotionEngine::InitializeEventImpactMap() {
     event_impact_map_[EventType::AUDIO_WAKE_WORD] = EventImpact(+0.1f, +0.3f);      // 被唤醒
     event_impact_map_[EventType::AUDIO_SPEAKING] = EventImpact(0.0f, +0.2f);        // 表达中
     event_impact_map_[EventType::AUDIO_LISTENING] = EventImpact(0.0f, -0.1f);       // 倾听中
-}
-
-void EmotionEngine::VAImpactCfgByItem(cJSON* root, EventType item) {
-    cJSON* vaEvent = cJSON_GetObjectItem(root, va_jsoncfg_item[item]);
-    if (!vaEvent) {
-        ESP_LOGW(TAG, "vacfg %s err", va_jsoncfg_item[item]);
-        return;
-    }
-    float fvalence = 0;
-    float farousal = 0;
-
-    cJSON* valence = cJSON_GetObjectItem(vaEvent, "valence");
-    if (valence) {
-        fvalence = (float)valence->valuedouble;
-    }
-    
-    cJSON* arousal = cJSON_GetObjectItem(vaEvent, "arousal");
-    if (arousal) {
-        farousal = (float)arousal->valuedouble;
-    }
-    ESP_LOGI(TAG, "%s v=%0.2f a=%0.2f", va_jsoncfg_item[item], fvalence, farousal);
-
-    event_impact_map_[item] = EventImpact(fvalence, farousal); 
-
-}
-
-void EmotionEngine::InitializeEventImpactMapFromSD() {
-    // VA影响值现在通过EventConfigLoader统一从event_config.json加载
-    // 这个函数不再需要，因为所有VA影响值都通过SetEventImpact方法设置
-    ESP_LOGI(TAG, "VA impact values loaded from event_config.json via EventConfigLoader");
 }
 
 void EmotionEngine::OnEvent(const Event& event) {

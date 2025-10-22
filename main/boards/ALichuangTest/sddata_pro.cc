@@ -113,25 +113,7 @@ void SDdata_Pro::TestFile() {
 }
 
 
-int SDdata_Pro::GetVASysConfig(char* databuff) {
-    const char *filePath = VASYS_CFG_PATH"vasys_config.json";
-    FILE *f = fopen(filePath, "r");
-    if (f == NULL) {
-        ESP_LOGW(TAG, "file err: %s ,use default", filePath);
-        // InitializeEventImpactMap();
-        return -1;
-    }
-    // 获取文件大小置位到文件起始处
-    fseek(f, 0, SEEK_END);
-    long file_size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-
-    databuff = (char* )malloc((file_size + 1) * sizeof(char)); //new char[file_size + 1];
-    fread(databuff, 1, file_size, f);
-    databuff[file_size] = '\0';
-    fclose(f); // 关闭文件
-    return 0;
-}
+// Deprecated: GetVASysConfig removed (VA now from event_config.json)
 
 SDdata_Pro* SDmoduleInit(void) {
     m_sdCardPro = new SDdata_Pro();
@@ -165,11 +147,9 @@ void SDLoadImageTest(void) {
         return;
     }
 
-    const char *file_t2 = VASYS_CFG_PATH"vasys.txt";
-    TestFileOK(file_t2);
-
-    const char *file_t3 = VASYS_CFG_PATH"vasys_config.json";
-    TestFileOK(file_t3);
+    // Sanity-check current config files
+    TestFileOK("/sdcard/config/event_config.json");
+    TestFileOK("/sdcard/config/response_config.json");
 
     ESP_LOGW(TAG, "File Test OK");
     return;

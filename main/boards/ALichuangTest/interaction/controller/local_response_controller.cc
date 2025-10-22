@@ -446,9 +446,10 @@ void LocalResponseController::LoadEventTemplate(const char* event_name, cJSON* e
         return;  // 未识别的事件，跳过
     }
 
-    // 创建模板
+    // 创建模板（复制事件名到字符串池，避免cJSON释放后指针失效）
     int priority = 2;  // 默认优先级
-    ResponseTemplate& tmpl = templates_[template_count_++] = ResponseTemplate(event_name, event_type, priority);
+    const char* persistent_name = AllocateString(event_name);
+    ResponseTemplate& tmpl = templates_[template_count_++] = ResponseTemplate(persistent_name, event_type, priority);
 
     ESP_LOGI(TAG, "Loading template[%d]: %s", template_count_ - 1, event_name);
 

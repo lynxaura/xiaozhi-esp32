@@ -354,6 +354,12 @@ private:
             app.ToggleChatState();
         });
 
+        // Long press 4 seconds -> enter Wi-Fi configuration (re-provision)
+        boot_button_.OnLongPress([this]() {
+            ESP_LOGI(TAG, "Long press detected, entering Wi-Fi config mode (re-provisioning)");
+            ResetWifiConfiguration();
+        });
+
 #if CONFIG_USE_DEVICE_AEC
         boot_button_.OnDoubleClick([this]() {
             auto& app = Application::GetInstance();
@@ -896,7 +902,7 @@ private:
 
     }
 public:
-    ALichuangTest() : boot_button_(BOOT_BUTTON_GPIO) {
+    ALichuangTest() : boot_button_(BOOT_BUTTON_GPIO, false, 4000 /* ms */) {
         InitializeAdcSample();
         vTaskDelay(pdMS_TO_TICKS(10));
         InitialSDCard();
@@ -995,10 +1001,7 @@ public:
         return local_response_controller_;
     }
 
-    void TestPlayOggSound() {
-        auto& app = Application::GetInstance();
-        app.PlaySoundOGGFile("welcome");
-    }
+    
 };
 
 DECLARE_BOARD(ALichuangTest);
