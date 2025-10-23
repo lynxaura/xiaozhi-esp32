@@ -133,10 +133,9 @@ void BlufiProvisioning::StartScan() {
     scan_cfg.ssid = NULL;
     scan_cfg.bssid = NULL;
     scan_cfg.channel = 0; // all channels
-    scan_cfg.show_hidden = true;
-    scan_cfg.scan_type = WIFI_SCAN_TYPE_ACTIVE;
-    scan_cfg.scan_time.active.min = 100;
-    scan_cfg.scan_time.active.max = 150;
+    scan_cfg.show_hidden = false;
+    // Do NOT set scan_time when Bluetooth is enabled!
+    // Let the system use default scan time for proper BT/WiFi coexistence
     esp_err_t err = esp_wifi_scan_start(&scan_cfg, false);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_wifi_scan_start failed: %s", esp_err_to_name(err));

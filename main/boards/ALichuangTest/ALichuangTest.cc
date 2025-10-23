@@ -941,8 +941,14 @@ public:
         // 所有skills初始化完成后，初始化MCP工具
         InitializeMcpTools();
 
+#if !CONFIG_DISABLE_BOOT_FACE_DETECTION_TEST
         // 测试人脸检测模型是否工作
+        // 注意: 此测试会增加启动时间(~2s)和峰值内存(~800KB)
+        // 建议在生产环境中通过 menuconfig 禁用此选项
         TestHumanFaceModel();
+#else
+        ESP_LOGI(TAG, "Boot face detection test disabled (saves ~2s startup + ~800KB peak memory)");
+#endif
     }
 
     virtual AudioCodec* GetAudioCodec() override {
@@ -1008,39 +1014,39 @@ public:
 #if CONFIG_ENABLE_BLUETOOTH_PROVISIONING
 public:
     virtual void StartNetwork() override {
-        // If configured to always start BluFi on boot (testing convenience)
-        if (CONFIG_BLUETOOTH_PROVISIONING_ALWAYS_ON_BOOT) {
-            auto& app = Application::GetInstance();
-            // Free RAM before enabling BT: stop audio processing temporarily
-            app.GetAudioService().Stop();
-            app.SetDeviceState(kDeviceStateWifiConfiguring);
+#ifdef CONFIG_BLUETOOTH_PROVISIONING_ALWAYS_ON_BOOT
+        // Testing mode: always start BluFi provisioning on boot
+        auto& app = Application::GetInstance();
+        // Free RAM before enabling BT: stop audio processing temporarily
+        app.GetAudioService().Stop();
+        app.SetDeviceState(kDeviceStateWifiConfiguring);
 
-            auto& blufi = BlufiProvisioning::GetInstance();
+        auto& blufi = BlufiProvisioning::GetInstance();
 
-            blufi.OnConfigured([&](const std::string& ssid, const std::string& password){
-                ESP_LOGI(TAG, "BluFi configured: SSID=%s", ssid.c_str());
-                vTaskDelay(pdMS_TO_TICKS(1500));
-                esp_restart();
-            });
+        blufi.OnConfigured([&](const std::string& ssid, const std::string& password){
+            ESP_LOGI(TAG, "BluFi configured: SSID=%s", ssid.c_str());
+            vTaskDelay(pdMS_TO_TICKS(1500));
+            esp_restart();
+        });
 
-            blufi.Start();
+        blufi.Start();
 
-            int timeout_sec = CONFIG_BLUETOOTH_PROVISIONING_TIMEOUT;
-            if (!blufi.WaitForConfigured(timeout_sec * 1000)) {
-                ESP_LOGW(TAG, "BluFi provisioning timeout, stopping");
-                blufi.Stop();
-                // Resume audio on fallback
-                app.GetAudioService().Start();
+        int timeout_sec = CONFIG_BLUETOOTH_PROVISIONING_TIMEOUT;
+        if (!blufi.WaitForConfigured(timeout_sec * 1000)) {
+            ESP_LOGW(TAG, "BluFi provisioning timeout, stopping");
+            blufi.Stop();
+            // Resume audio on fallback
+            app.GetAudioService().Start();
 #if CONFIG_BLUFI_FALLBACK_TO_WEB_CONFIG
-                WifiBoard::StartNetwork();
-                return;
-#endif
-            }
+            WifiBoard::StartNetwork();
             return;
+#endif
         }
-
-        // Default behavior
+        return;
+#else
+        // Default behavior: use standard WiFi connection flow
         WifiBoard::StartNetwork();
+#endif
     }
 #endif
     

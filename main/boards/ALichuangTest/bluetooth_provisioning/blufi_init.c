@@ -21,10 +21,11 @@
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
+#include "host/util/util.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
 #include "console/console.h"
-// For ble_store_config_init
+// For ble_store_config_init and ble_store_util_status_rr
 #include "store/config/ble_store_config.h"
 // Some IDF setups may not expose the header in include paths; provide extern as fallback.
 extern void ble_store_config_init(void);
@@ -120,14 +121,9 @@ static void blufi_on_reset(int reason)
 
 static void blufi_on_sync(void)
 {
-    int rc;
-    uint8_t addr_val[6] = {0};
-    rc = ble_hs_id_infer_auto(0, &addr_val[0]);
-    assert(rc == 0);
-    rc = ble_hs_id_copy_addr(0, addr_val, NULL);
-    assert(rc == 0);
-    ble_svc_gap_init();
-    ble_svc_gatt_init();
+    // Initialize BluFi GATT profile after BLE stack is synced
+    // This will trigger ESP_BLUFI_EVENT_INIT_FINISH event
+    esp_blufi_profile_init();
 }
 
 void bleprph_host_task(void *param)
@@ -139,25 +135,42 @@ void bleprph_host_task(void *param)
 esp_err_t esp_blufi_host_init(void)
 {
     esp_err_t err = esp_nimble_init();
-    if (err) return ESP_FAIL;
+    if (err) {
+        ESP_LOGE("BLUFI_INIT", "esp_nimble_init failed: %s", esp_err_to_name(err));
+        return ESP_FAIL;
+    }
 
+    // Configure NimBLE host callbacks
     ble_hs_cfg.reset_cb = blufi_on_reset;
     ble_hs_cfg.sync_cb = blufi_on_sync;
     ble_hs_cfg.gatts_register_cb = esp_blufi_gatt_svr_register_cb;
+    ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
+
+    // Configure security parameters
+    ble_hs_cfg.sm_io_cap = 4;  // No input/output capability
+
+    // Initialize BluFi GATT services BEFORE enabling the host
+    int rc = esp_blufi_gatt_svr_init();
+    assert(rc == 0);
 
 #if CONFIG_BT_NIMBLE_GAP_SERVICE
-    int rc = ble_svc_gap_device_name_set(BLUFI_DEVICE_NAME);
+    rc = ble_svc_gap_device_name_set(BLUFI_DEVICE_NAME);
     assert(rc == 0);
 #endif
+
+    // Initialize BLE storage configuration
     ble_store_config_init();
-    // Register BLUFI GATT services before enabling the host
-    rc = esp_blufi_gatt_svr_init();
-    if (rc) {
+
+    // Initialize BluFi Bluetooth Controller integration
+    esp_blufi_btc_init();
+
+    // Enable NimBLE host (creates host task and runs event loop)
+    err = esp_nimble_enable(bleprph_host_task);
+    if (err) {
+        ESP_LOGE("BLUFI_INIT", "esp_nimble_enable failed: %s", esp_err_to_name(err));
         return ESP_FAIL;
     }
-    esp_blufi_btc_init();
-    err = esp_nimble_enable(bleprph_host_task);
-    if (err) return ESP_FAIL;
+
     return ESP_OK;
 }
 
