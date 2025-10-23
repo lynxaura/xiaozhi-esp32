@@ -649,6 +649,33 @@ config DOA_EACH_CHANNEL_TEST_DATA_NUM
 
 endmenu
 
+menu "Memory Optimization Options"
+    config DISABLE_BOOT_FACE_DETECTION_TEST
+        bool "Disable face detection test at boot"
+        default y
+        depends on BOARD_TYPE_ALICHUANGTEST
+        help
+            Skip face detection model test during boot.
+            This optimization saves ~2s startup time and ~800KB peak memory usage.
+            Face detection can still be triggered via MCP tools when needed.
+
+    config OPTIMIZE_CAMERA_LAZY_INIT
+        bool "Enable lazy camera initialization"
+        default n
+        depends on BOARD_TYPE_ALICHUANGTEST
+        help
+            Initialize camera only when first used, saving 307KB PSRAM.
+            Camera will be initialized on first GetCamera() call.
+
+    config OPTIMIZE_SPI_BUFFER_SIZE
+        bool "Optimize SPI transfer buffer size"
+        default n
+        depends on BOARD_TYPE_ALICHUANGTEST
+        help
+            Reduce SPI buffer from 154KB to 26KB to match LVGL buffer requirements.
+            This saves ~128KB without affecting display performance.
+endmenu
+
 menu "models: human_face_detect"
     config FLASH_HUMAN_FACE_DETECT_MSRMNP_S8_V1
         bool "flash human_face_detect_msrmnp_s8_v1"
