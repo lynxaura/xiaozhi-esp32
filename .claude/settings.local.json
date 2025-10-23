@@ -36,7 +36,9 @@
       "Bash(for dir in */)",
       "Bash(do basename \"$dir\")",
       "Bash(done)",
-      "Read(//c/Users/Administrator/Downloads/blufi/**)"
+      "Read(//c/Users/Administrator/Downloads/blufi/**)",
+      "Read(//c/Users/xiaot/Downloads/blufi/blufi/**)",
+      "Bash(wc:*)"
     ],
     "deny": []
   }
