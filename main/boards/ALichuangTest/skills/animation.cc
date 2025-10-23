@@ -82,7 +82,7 @@ std::string AnimaDisplay::GetIdleAnimationByQuadrant(EmotionQuadrant quadrant) {
 
 AnimaDisplay::AnimaDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
                            int width, int height, int offset_x, int offset_y, bool mirror_x, bool mirror_y, bool swap_xy)
-    : LcdDisplay(panel_io, panel, width, height) {
+    : LcdDisplay(panel_io, panel, width, height), animation_gif_(nullptr) {
 
     // draw white
     std::vector<uint16_t> buffer(width_, 0xFFFF);
@@ -91,19 +91,19 @@ AnimaDisplay::AnimaDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_han
     }
 
     // Set the display to on
-    ESP_LOGI(TAG, "Turning display on");
+    ESP_LOGD(TAG, "Turning display on");
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_, true));
 
-    ESP_LOGI(TAG, "Initialize LVGL library");
+    ESP_LOGD(TAG, "Initialize LVGL library");
     lv_init();
 
-    ESP_LOGI(TAG, "Initialize LVGL port");
+    ESP_LOGD(TAG, "Initialize LVGL port");
     lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
     port_cfg.task_priority = 1;
     port_cfg.timer_period_ms = 50;
     lvgl_port_init(&port_cfg);
 
-    ESP_LOGI(TAG, "Adding LCD display");
+    ESP_LOGD(TAG, "Adding LCD display");
     const lvgl_port_display_cfg_t display_cfg = {
         .io_handle = panel_io_,
         .panel_handle = panel_,
@@ -145,6 +145,16 @@ AnimaDisplay::AnimaDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_han
     SetupUI();
 }
 
+AnimaDisplay::~AnimaDisplay() {
+    // 在析构前先暂停GIF动画,防止timer回调访问已释放的对象
+    if (animation_gif_ != nullptr) {
+        DisplayLockGuard lock(this);
+        lv_gif_pause(animation_gif_);
+        lv_obj_delete(animation_gif_);
+        animation_gif_ = nullptr;
+    }
+}
+
 void AnimaDisplay::SetupUI() {
     DisplayLockGuard lock(this);
     
@@ -181,7 +191,7 @@ void AnimaDisplay::SetupUI() {
     status_bar_ = nullptr;
     content_ = nullptr;
     
-    ESP_LOGI(TAG, "Simplified UI setup completed");
+    ESP_LOGD(TAG, "Simplified UI setup completed");
 }
 
 void AnimaDisplay::SetEmotion(const char* emotion) {
@@ -226,12 +236,40 @@ void AnimaDisplay::SetAnima(const std::string& animation, int loop_count) {
                  loop_count <= 0 ? "无限" : std::to_string(loop_count).c_str());
     }
 
+    // 完全重建GIF对象以避免timer竞态条件
+    // 删除旧GIF对象(包括其内部timer)
+    if (animation_gif_ != nullptr) {
+        lv_obj_delete(animation_gif_);
+        animation_gif_ = nullptr;
+    }
+
+    // 创建新的GIF对象
+    auto screen = lv_screen_active();
+    animation_gif_ = lv_gif_create(screen);
+    if (animation_gif_ == nullptr) {
+        ESP_LOGE(TAG, "Failed to create new GIF object");
+        return;
+    }
+
+    // 配置GIF对象
+    lv_obj_set_size(animation_gif_, width_, height_);
+    lv_obj_set_style_border_width(animation_gif_, 0, 0);
+    lv_obj_set_style_bg_opa(animation_gif_, LV_OPA_TRANSP, 0);
+    lv_obj_center(animation_gif_);
+
     // 设置GIF源
     lv_gif_set_src(animation_gif_, gif_path);
 
+    // 检查GIF是否加载成功
+    if (!lv_gif_is_loaded(animation_gif_)) {
+        ESP_LOGE(TAG, "Failed to load GIF from path: %s", gif_path);
+        // 即使失败也不删除对象，保持一个空的GIF对象
+        return;
+    }
+
     // 设置循环次数（0 表示无限循环）
-    // effective_loops = 0: 无限循环
-    // effective_loops = 1: 播放一次
-    // effective_loops > 1: 播放指定次数
     lv_gif_set_loop_count(animation_gif_, effective_loops);
+
+    // GIF创建后会自动开始播放，不需要额外调用restart
+    ESP_LOGD(TAG, "Animation set successfully: %s", animation.c_str());
 }

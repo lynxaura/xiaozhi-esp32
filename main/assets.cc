@@ -4,6 +4,7 @@
 #include "application.h"
 #include "lvgl_theme.h"
 
+#define LOG_LOCAL_LEVEL ESP_LOG_WARN
 #include <esp_log.h>
 #include <spi_flash_mmap.h>
 #include <esp_timer.h>
@@ -53,14 +54,14 @@ bool Assets::InitializePartition() {
 
     partition_ = esp_partition_find_first(ESP_PARTITION_TYPE_ANY, ESP_PARTITION_SUBTYPE_ANY, "assets");
     if (partition_ == nullptr) {
-        ESP_LOGI(TAG, "No assets partition found");
+        ESP_LOGD(TAG, "No assets partition found");
         return false;
     }
 
     int free_pages = spi_flash_mmap_get_free_pages(SPI_FLASH_MMAP_DATA);
     uint32_t storage_size = free_pages * 64 * 1024;
-    ESP_LOGI(TAG, "The storage free size is %ld KB", storage_size / 1024);
-    ESP_LOGI(TAG, "The partition size is %ld KB", partition_->size / 1024);
+    ESP_LOGD(TAG, "The storage free size is %ld KB", storage_size / 1024);
+    ESP_LOGD(TAG, "The partition size is %ld KB", partition_->size / 1024);
     if (storage_size < partition_->size) {
         ESP_LOGE(TAG, "The free size %ld KB is less than assets partition required %ld KB", storage_size / 1024, partition_->size / 1024);
         return false;
@@ -86,7 +87,7 @@ bool Assets::InitializePartition() {
     auto start_time = esp_timer_get_time();
     uint32_t calculated_checksum = CalculateChecksum(mmap_root_ + 12, stored_len);
     auto end_time = esp_timer_get_time();
-    ESP_LOGI(TAG, "The checksum calculation time is %d ms", int((end_time - start_time) / 1000));
+    ESP_LOGD(TAG, "The checksum calculation time is %d ms", int((end_time - start_time) / 1000));
 
     if (calculated_checksum != stored_chksum) {
         ESP_LOGE(TAG, "The calculated checksum (0x%lx) does not match the stored checksum (0x%lx)", calculated_checksum, stored_chksum);
@@ -246,7 +247,7 @@ bool Assets::Apply() {
 #endif
 
     auto display = Board::GetInstance().GetDisplay();
-    ESP_LOGI(TAG, "Refreshing display theme...");
+    ESP_LOGD(TAG, "Refreshing display theme...");
 
     auto current_theme = display->GetTheme();
     if (current_theme != nullptr) {
@@ -300,7 +301,7 @@ bool Assets::Download(std::string url, std::function<void(int progress, size_t s
     size_t sectors_to_erase = (content_length + SECTOR_SIZE - 1) / SECTOR_SIZE; // 向上取整
     size_t total_erase_size = sectors_to_erase * SECTOR_SIZE;
     
-    ESP_LOGI(TAG, "Sector size: %u, content length: %u, sectors to erase: %u, total erase size: %u", 
+    ESP_LOGD(TAG, "Sector size: %u, content length: %u, sectors to erase: %u, total erase size: %u", 
              SECTOR_SIZE, content_length, sectors_to_erase, total_erase_size);
     
     // 写入新的资源文件到分区，一边erase一边写入

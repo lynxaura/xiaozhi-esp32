@@ -1,5 +1,6 @@
 #include "event_config_loader.h"
 #include "../core/emotion_engine.h"
+#define LOG_LOCAL_LEVEL ESP_LOG_WARN
 #include <esp_log.h>
 #include <cJSON.h>
 #include <fstream>
@@ -331,7 +332,7 @@ bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engi
                     cJSON* idle_duration = cJSON_GetObjectItem(detection, "idle_duration_ms");
                     if (idle_duration && cJSON_IsNumber(idle_duration)) {
                         engine->SetIdleThreshold(idle_duration->valueint);
-                        ESP_LOGI(TAG, "Idle threshold configured: %dms", idle_duration->valueint);
+                        ESP_LOGD(TAG, "Idle threshold configured: %dms", idle_duration->valueint);
                     }
                 }
             }
@@ -346,7 +347,7 @@ bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engi
                     emotion_engine.SetEventImpact(event_type, 
                                                   valence->valuedouble, 
                                                   arousal->valuedouble);
-                    ESP_LOGI(TAG, "VA impact configured for %s: V=%.2f, A=%.2f", 
+                    ESP_LOGD(TAG, "VA impact configured for %s: V=%.2f, A=%.2f", 
                              event_name, valence->valuedouble, arousal->valuedouble);
                 }
             }
