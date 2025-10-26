@@ -12,7 +12,7 @@ const static char *TAG = "analog-adc";
 // 测试定义宏
 //#define ANGLE_USE_ADC2 
 #define SWAP_BODY_ANGLE_CHAN
-#define DEBUG_SAMPLE (0) 
+#define DEBUG_SAMPLE (1) 
 #define LOG_PRINT_CONT (10) // 200ms * LOG_PRINT_CONT 
 
 #define BATTERY_ADC2_CHAN       (ADC_CHANNEL_8) // IO19
@@ -310,10 +310,13 @@ void AdcSampleTimerHandle(void) {
 
     backcenter++;
     if (backcenter == 50) {
+        // 10秒：顺时针转45度
         m_angleSensor_->SetRotate(CW_LEFT, 45);
-    } else if (backcenter == 70) {
-        m_angleSensor_->SetRotate(CCW_RIGHT, 30);
-    } else if (backcenter == 90) {
+    } else if (backcenter == 75) {
+        // 15秒：逆时针转55度
+        m_angleSensor_->SetRotate(CCW_RIGHT, 55);
+    } else if (backcenter == 100) {
+        // 20秒：回到中心位置
         m_angleSensor_->BackToCenter();
         backcenter = 0;
     }
@@ -384,10 +387,13 @@ void AngleSensor::FreshAngle(void) {
 }
 
 void AngleSensor::SetRotate(rotate_dir dir, int angle) {
+    // 按照齿比将“玩具角度”转换为“马达相对角度”
+    // transAngle 单位为 0.1°（马达），ftransAngle 为 0.1°（带符号）
     int transAngle = (angle * 10 * m_bigCircle) / m_smallCircle;
     float ftransAngle = (dir == CW_LEFT) ? ((float)(transAngle)) : (-(float)(transAngle));
-    ESP_LOGW(TAG, "SetRotate big:%d° - %f°/10!", angle, ftransAngle);
-    m_motion->MotorTurnToAngle((ftransAngle / 10), MOTION_SPEED_FAST);
+    ESP_LOGW(TAG, "SetRotate big:%d° - %f°/10 (relative)", angle, ftransAngle);
+    // 使用相对角度接口，单位：度（马达）
+    m_motion->MotorTurnByAngle((ftransAngle / 10), MOTION_SPEED_FAST);
     m_motion->StopMotor();
 }
 
@@ -397,22 +403,26 @@ void AngleSensor::BackToCenter(void) {
     int transAngle = 0;
     float ftransAngle = 0;
     if ((m_angleNow >= 0) && (m_angleNow <= (m_centerPosAng + m_toleranceAng - 3600))) {
+        // 靠近0度一侧，最短路径应为负向回正
         bigangle = m_angleNow + 3600 - m_centerPosAng;
         transAngle = (bigangle * m_bigCircle) / m_smallCircle;
-        ftransAngle = (float)(transAngle);
+        ftransAngle = -(float)(transAngle);
     } else if ((m_angleNow >= m_centerPosAng) && (m_angleNow <= 3600)) {
+        // 在中心右侧，应为负向回正
         bigangle = (m_angleNow - m_centerPosAng);
         transAngle = (bigangle * m_bigCircle) / m_smallCircle;
-        ftransAngle = (float)(transAngle);
+        ftransAngle = -(float)(transAngle);
     } else if ((m_angleNow >= (m_centerPosAng - m_toleranceAng)) && (m_angleNow <= m_centerPosAng)) {
+        // 在中心左侧，应为正向回正
         bigangle = (m_centerPosAng - m_angleNow);
         transAngle = (bigangle * m_bigCircle) / m_smallCircle;
-        ftransAngle = -(float)(transAngle);
+        ftransAngle = +(float)(transAngle);
     } else {
         ESP_LOGW(TAG, "BackToCenter INVALID Angle!");
         return;
     }
-    ESP_LOGW(TAG, "BackToCenter big:%d - %f°/10!", bigangle, ftransAngle);
-    m_motion->MotorTurnToAngle((ftransAngle / 10), MOTION_SPEED_MEDIUM);
+    ESP_LOGW(TAG, "BackToCenter big:%d - %f°/10 (relative)", bigangle, ftransAngle);
+    // 使用相对角度接口，单位：度（马达）
+    m_motion->MotorTurnByAngle((ftransAngle / 10), MOTION_SPEED_MEDIUM);
     m_motion->StopMotor();
 }

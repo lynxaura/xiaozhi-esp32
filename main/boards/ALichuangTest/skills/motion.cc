@@ -286,6 +286,12 @@ void Motion::MotorTurnToAngle(float target_angle, motion_speed_t speed) {
     ESP_LOGI(TAG, "转动完成: 当前角度=%.1f°", current_angle_);
 }
 
+void Motion::MotorTurnByAngle(float delta_angle, motion_speed_t speed) {
+    // 基于当前角度做相对偏转
+    float target = current_angle_ + delta_angle;
+    MotorTurnToAngle(target, speed);
+}
+
 void Motion::ExecuteMotionSequence(motion_id_t motion_id) {
     ESP_LOGI(TAG, "Executing motion sequence: %s", motion_pattern_names[motion_id]);
 

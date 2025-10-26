@@ -114,6 +114,13 @@ public:
      * @param speed 转动速度
      */
     void MotorTurnToAngle(float target_angle, motion_speed_t speed);
+
+    /**
+     * @brief 按相对角度转动马达（在当前角度基础上偏转）
+     * @param delta_angle 相对角度差值（度，正为正转，负为反转）
+     * @param speed 转动速度
+     */
+    void MotorTurnByAngle(float delta_angle, motion_speed_t speed);
     /**
      * @brief 停止马达
      */
