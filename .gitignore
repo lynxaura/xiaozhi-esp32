@@ -15,6 +15,9 @@ main/mmap_generate_emoji.h
 *.pyc
 *.bin
 mmap_generate_*.h
+
+# Do not track local SD backups
+sdcard-backups/
  
 # Local Python virtual envs and converter outputs
 scripts/ogg_converter/venv/
