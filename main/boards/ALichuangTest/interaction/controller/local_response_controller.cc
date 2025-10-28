@@ -271,7 +271,7 @@ void LocalResponseController::ProcessStateChange(DeviceState new_state) {
 }
 
 bool LocalResponseController::LoadDefaultConfig() {
-    ESP_LOGI(TAG, "Loading response configuration from SD card...");
+    ESP_LOGD(TAG, "Loading response configuration from embedded blob...");
 
     try {
         CreateDefaultTemplatesFromSD();
@@ -333,35 +333,22 @@ void LocalResponseController::ExecuteComponents(ResponseComponent** components,
 // 旧的默认模板函数已删除 - 现在完全使用SD卡配置
 
 void LocalResponseController::CreateDefaultTemplatesFromSD() {
-    SDdata_Pro* sdcard = GetSDHandle();
-    if (sdcard == nullptr) {
-        ESP_LOGE(TAG, "❌ SD Card not found - response system requires SD card configuration");
+    // Load embedded response_config.json from firmware (EMBED_TXTFILES)
+    extern const char response_config_json_start[] asm("_binary_response_config_json_start");
+    extern const char response_config_json_end[]   asm("_binary_response_config_json_end");
+    size_t file_size = (size_t)(response_config_json_end - response_config_json_start);
+    if (file_size == 0) {
+        ESP_LOGE(TAG, "❌ Embedded response_config.json not found");
         return;
     }
 
-    const char *filePath = "/sdcard/config/response_config.json";
-    FILE *f = fopen(filePath, "r");
-    if (f == NULL) {
-        ESP_LOGE(TAG, "❌ Failed to open config file: %s", filePath);
-        return;
-    }
-
-    // 获取文件大小置位到文件起始处
-    fseek(f, 0, SEEK_END);
-    long file_size = ftell(f);
-    ESP_LOGI(TAG, "response_config.json file size: %ld bytes", file_size);
-    fseek(f, 0, SEEK_SET);
-
-    char* json_data = (char*)malloc((file_size + 1) * sizeof(char));
+    char* json_data = (char*)malloc(file_size + 1);
     if (!json_data) {
-        ESP_LOGE(TAG, "❌ Failed to allocate memory for config file");
-        fclose(f);
+        ESP_LOGE(TAG, "❌ Failed to allocate memory for embedded response_config.json");
         return;
     }
-
-    fread(json_data, 1, file_size, f);
+    memcpy(json_data, response_config_json_start, file_size);
     json_data[file_size] = '\0';
-    fclose(f);
 
     cJSON* root = cJSON_Parse(json_data);
     if (!root) {
@@ -393,9 +380,9 @@ void LocalResponseController::CreateDefaultTemplatesFromSD() {
     free(json_data);
 
     if (template_count_ == 0) {
-        ESP_LOGW(TAG, "⚠️ No valid templates loaded from config file");
+        ESP_LOGW(TAG, "⚠️ No valid templates loaded from embedded response_config.json");
     } else {
-        ESP_LOGI(TAG, "✅ Successfully loaded %u response templates from response_config.json", template_count_);
+        ESP_LOGI(TAG, "✅ Loaded %u response templates from embedded response_config.json", template_count_);
     }
 }
 
@@ -451,7 +438,7 @@ void LocalResponseController::LoadEventTemplate(const char* event_name, cJSON* e
     const char* persistent_name = AllocateString(event_name);
     ResponseTemplate& tmpl = templates_[template_count_++] = ResponseTemplate(persistent_name, event_type, priority);
 
-    ESP_LOGI(TAG, "Loading template[%d]: %s", template_count_ - 1, event_name);
+    ESP_LOGD(TAG, "Loading template[%d]: %s", template_count_ - 1, event_name);
 
     // 加载can_interrupt配置
     LoadCanInterruptStates(event_config, tmpl);
@@ -471,7 +458,7 @@ void LocalResponseController::LoadResponseComponents(cJSON* event_config, const 
             if (pattern && cJSON_IsString(pattern)) {
                 vibration_id_t vib_id = ParseVibrationPattern(pattern->valuestring);
                 tmpl.AddBaseComponent(ResponseComponent::CreateVibration(vib_id));
-                ESP_LOGI(TAG, "  + Vibration: %s", pattern->valuestring);
+                ESP_LOGD(TAG, "  + Vibration: %s", pattern->valuestring);
             }
         }
     }
@@ -485,7 +472,7 @@ void LocalResponseController::LoadResponseComponents(cJSON* event_config, const 
             if (action && cJSON_IsString(action)) {
                 motion_id_t motion_id = ParseMotionAction(action->valuestring);
                 tmpl.AddBaseComponent(ResponseComponent::CreateMotion(motion_id));
-                ESP_LOGI(TAG, "  + Motion: %s", action->valuestring);
+                ESP_LOGD(TAG, "  + Motion: %s", action->valuestring);
             }
         }
     }
@@ -747,7 +734,7 @@ void LocalResponseController::LoadStateTemplate(const char* event_name, cJSON* e
     EmotionQuadrant quadrant = static_cast<EmotionQuadrant>(quadrant_num - 1);
     int quadrant_idx = static_cast<int>(quadrant);
 
-    ESP_LOGI(TAG, "Loading state template: %s (state=%d, quadrant=%d)",
+    ESP_LOGD(TAG, "Loading state template: %s (state=%d, quadrant=%d)",
              event_name, static_cast<int>(state), quadrant_idx);
 
     // 查找或创建状态模板
@@ -778,7 +765,7 @@ void LocalResponseController::LoadStateTemplate(const char* event_name, cJSON* e
                 state_tmpl->quadrant_responses[quadrant_idx] =
                     ResponseComponent::CreateAnimation(animation_name, loop_count);
                 state_tmpl->has_response[quadrant_idx] = true;
-                ESP_LOGI(TAG, "  + State animation: %s (loop=%d)", animation_name, loop_count);
+                ESP_LOGD(TAG, "  + State animation: %s (loop=%d)", animation_name, loop_count);
             }
         }
     }
@@ -797,7 +784,7 @@ void LocalResponseController::LoadStateTemplate(const char* event_name, cJSON* e
                 if (audio_name) {
                     // 注意：如果同时有动画和音频，这里会覆盖动画
                     // 实际使用中可以考虑支持多个组件
-                    ESP_LOGI(TAG, "  + State audio: %s (volume=%d) [Note: overrides animation]",
+                    ESP_LOGD(TAG, "  + State audio: %s (volume=%d) [Note: overrides animation]",
                              audio_name, vol);
                     // 暂时不覆盖，只打印日志
                 }

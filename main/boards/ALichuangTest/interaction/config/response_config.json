@@ -120,7 +120,7 @@
       "animation": { "name": "touch_long_press_q1", "count": 2 },
       "sound": { "name": "touch_long_press_q1", "volume": 55 },
       "vibration": { "pattern": "VIBRATION_GENTLE_HEARTBEAT" },
-      "motion": { "action": "MOTION_RELAX_COMPLETELY" }
+      "motion": { "action": "MOTION_RELAX_TO_CENTER" }
     },
     "interaction/touch_long_press_q2": {
       "layer": 2,
@@ -128,7 +128,7 @@
       "animation": { "name": "touch_long_press_q2", "count": 2 },
       "sound": { "name": "touch_long_press_q2", "volume": 55 },
       "vibration": { "pattern": "VIBRATION_GENTLE_HEARTBEAT" },
-      "motion": { "action": "MOTION_RELAX_COMPLETELY" }
+      "motion": { "action": "MOTION_RELAX_TO_CENTER" }
     },
     "interaction/touch_long_press_q3": {
       "layer": 2,
@@ -136,7 +136,7 @@
       "animation": { "name": "touch_long_press_q3", "count": 2 },
       "sound": { "name": "touch_long_press_q3", "volume": 55 },
       "vibration": { "pattern": "VIBRATION_GENTLE_HEARTBEAT" },
-      "motion": { "action": "MOTION_RELAX_COMPLETELY" }
+      "motion": { "action": "MOTION_RELAX_TO_CENTER" }
     },
     "interaction/touch_long_press_q4": {
       "layer": 2,
@@ -144,7 +144,7 @@
       "animation": { "name": "touch_long_press_q4", "count": 2 },
       "sound": { "name": "touch_long_press_q4", "volume": 55 },
       "vibration": { "pattern": "VIBRATION_GENTLE_HEARTBEAT" },
-      "motion": { "action": "MOTION_RELAX_COMPLETELY" }
+      "motion": { "action": "MOTION_RELAX_TO_CENTER" }
     },
     "interaction/touch_cradled_q1": {
       "layer": 2,

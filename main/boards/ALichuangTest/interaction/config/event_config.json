@@ -63,8 +63,8 @@
         "min_duration_ms": 300
       },
       "processing": {
-        "strategy": "DEBOUNCE",
-        "interval_ms": 500
+        "strategy": "THROTTLE",
+        "interval_ms": 1000
       },
       "va_impact": {
         "valence": 0.05,
@@ -93,9 +93,8 @@
         "debounce_time_ms": 30
       },
       "processing": {
-        "strategy": "MERGE",
-        "merge_window_ms": 1500,
-        "interval_ms": 500
+        "strategy": "THROTTLE",
+        "interval_ms": 300
       },
       "va_impact": {
         "valence": 0.1,
@@ -162,7 +161,7 @@
     
     "IDLE_1MIN": {
       "detection": {
-        "idle_duration_ms": 60000
+        "idle_duration_ms": 180000
       },
       "processing": {
         "strategy": "IMMEDIATE"
@@ -187,20 +186,6 @@
     "debug": {
       "motion_debug_enabled": false
     }
-  },
-  
-  "special_patterns": {
-    "rapid_tap_sequence": {
-      "description": "连续快速点击转换为特殊动作",
-      "min_taps": 3,
-      "window_ms": 2000,
-      "action": "tickle_response"
-    },
-    "left_right_alternating": {
-      "description": "左右交替点击模式",
-      "pattern": ["LEFT", "RIGHT", "LEFT", "RIGHT"],
-      "window_ms": 3000,
-      "action": "dance_mode"
-    }
   }
 }
+

@@ -48,6 +48,7 @@ const std::unordered_map<std::string, const char*> AnimaDisplay::animation_maps_
     {"idle_q1", "/sdcard/state_expression/idle/idle_q1/idle_q1.gif"},
     {"idle_q2", "/sdcard/state_expression/idle/idle_q2/idle_q2.gif"},
     {"idle_q3", "/sdcard/state_expression/idle/idle_q3/idle_q3.gif"},
+    {"sleepy", "/sdcard/state_expression/idle/idle_q3/idle_q3.gif"},
     {"idle_q4", "/sdcard/state_expression/idle/idle_q4/idle_q4.gif"},
     {"listening_q1", "/sdcard/state_expression/listening/listening_q1/listening_q1.gif"},
     {"listening_q2", "/sdcard/state_expression/listening/listening_q2/listening_q2.gif"},

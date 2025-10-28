@@ -61,33 +61,38 @@ void EventEngine::Initialize() {
 }
 
 void EventEngine::LoadEventConfiguration() {
-    // 检查SD卡是否已初始化
+    // 先加载内置默认配置（保证有可用配置）
+    EventConfigLoader::LoadFromEmbedded(this);
+
+    /*
+    // 再尝试用SD卡上的配置进行覆盖（已禁用，仅保留代码以备将来启用）
     SDdata_Pro* sd_handle = GetSDHandle();
     if (!sd_handle) {
-        EventConfigLoader::LoadFromEmbedded(this);
+        ESP_LOGI(TAG, "SD card not available; using embedded event config");
         return;
     }
-    
-    // SD卡已初始化，尝试从SD卡加载配置
+
     const char* primary_path = "/sdcard/config/event_config.json";
     const char* legacy_path = "/sdcard/event_config.json";
-    ESP_LOGI(TAG, "Attempting to load event config from %s", primary_path);
-    
+    ESP_LOGI(TAG, "Attempting to overlay event config from %s", primary_path);
+
     bool loaded = EventConfigLoader::LoadFromFile(primary_path, this);
     if (!loaded) {
-        ESP_LOGW(TAG, "Failed to load event config from %s", primary_path);
+        ESP_LOGW(TAG, "Failed to overlay event config from %s", primary_path);
+        ESP_LOGI(TAG, "Trying legacy path %s", legacy_path);
         loaded = EventConfigLoader::LoadFromFile(legacy_path, this);
         if (loaded) {
-            ESP_LOGW(TAG, "Loaded event config from legacy path %s; migrate to %s",
+            ESP_LOGW(TAG, "Loaded overlay from legacy path %s; consider migrating to %s",
                      legacy_path, primary_path);
         }
     }
-    
-    if (!loaded) {
-        // 如果文件不存在或加载失败，使用嵌入的默认配置
-        ESP_LOGW(TAG, "Falling back to embedded default event config");
-        EventConfigLoader::LoadFromEmbedded(this);
+
+    if (loaded) {
+        ESP_LOGI(TAG, "SD event config overlay applied");
+    } else {
+        ESP_LOGI(TAG, "No SD event config found; retaining embedded defaults");
     }
+    */
 }
 
 void EventEngine::ConfigureDefaultEventProcessing() {

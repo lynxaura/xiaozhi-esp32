@@ -1,10 +1,13 @@
-#include "event_config_loader.h"
-#include "../core/emotion_engine.h"
+// Set local log level before any esp_log.h inclusion
 #define LOG_LOCAL_LEVEL ESP_LOG_WARN
 #include <esp_log.h>
+
+#include "event_config_loader.h"
+#include "../core/emotion_engine.h"
 #include <cJSON.h>
 #include <fstream>
 #include <sstream>
+// Embedded default JSON is provided via EMBED_TXTFILES in CMakeLists.
 
 #define TAG "EventConfigLoader"
 
@@ -211,14 +214,7 @@ bool EventConfigLoader::LoadFromFile(const std::string& filepath, EventEngine* e
     return true;
 }
 
-bool EventConfigLoader::LoadFromEmbedded(EventEngine* engine) {
-    const char* default_config = DefaultEventConfig::GetDefaultConfig();
-    bool result = ParseJsonConfig(default_config, engine);
-    if (result) {
-        ESP_LOGI(TAG, "Event config loaded from embedded defaults");
-    }
-    return result;
-}
+// Removed duplicate LoadFromEmbedded; see the unified implementation later in file.
 
 bool EventConfigLoader::ParseJsonConfig(const char* json_data, EventEngine* engine) {
     cJSON* root = cJSON_Parse(json_data);
@@ -438,4 +434,23 @@ bool EventConfigLoader::CheckSpecialPattern(const std::vector<Event>& recent_eve
     // TODO: 实现特殊模式检测
     // 例如：检查是否是左右交替点击等
     return false;
+}
+
+bool EventConfigLoader::LoadFromEmbedded(EventEngine* engine) {
+    // Prefer embedded file blob (EMBED_TXTFILES)
+    extern const char event_config_json_start[] asm("_binary_event_config_json_start");
+    extern const char event_config_json_end[]   asm("_binary_event_config_json_end");
+    const size_t len = (size_t)(event_config_json_end - event_config_json_start);
+    if (len > 0) {
+        std::string json(event_config_json_start, len);
+        return ParseJsonConfig(json.c_str(), engine);
+    }
+
+    // Fallback to legacy default config embedded as C++ string
+    const char* legacy = DefaultEventConfig::GetDefaultConfig();
+    if (!legacy) {
+        ESP_LOGE(TAG, "No embedded event config available");
+        return false;
+    }
+    return ParseJsonConfig(legacy, engine);
 }

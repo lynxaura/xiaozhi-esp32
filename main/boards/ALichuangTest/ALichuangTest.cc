@@ -717,11 +717,10 @@ private:
             // 初始化本地响应系统
             if (local_response_controller_->Initialize()) {
                 ESP_LOGI(TAG, "✅ Local Response System initialized successfully");
-                local_response_controller_->ListTemplates();
-
                 // 注册设备状态变化监听器，用于状态响应
                 DeviceStateEventManager::GetInstance().RegisterStateChangeCallback(
                     [this](DeviceState previous_state, DeviceState current_state) {
+                        (void)previous_state;
                         if (local_response_controller_) {
                             local_response_controller_->ProcessStateChange(current_state);
                         }

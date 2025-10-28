@@ -12,7 +12,7 @@ const static char *TAG = "analog-adc";
 // 测试定义宏
 //#define ANGLE_USE_ADC2 
 #define SWAP_BODY_ANGLE_CHAN
-#define DEBUG_SAMPLE (1) 
+#define DEBUG_SAMPLE (0) 
 #define LOG_PRINT_CONT (10) // 200ms * LOG_PRINT_CONT 
 
 #define BATTERY_ADC2_CHAN       (ADC_CHANNEL_8) // IO19
