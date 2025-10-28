@@ -208,7 +208,8 @@ private:
 
     // 字符串缓冲区池（用于存储从JSON读取的动画/音频名称）
     // 原因：cJSON_Delete()后指针会失效，需要持久化存储
-    static constexpr size_t MAX_NAME_LENGTH = 32;
+    // Increase name buffer to reduce truncation of event/asset names
+    static constexpr size_t MAX_NAME_LENGTH = 64;
     static constexpr size_t MAX_NAME_POOL_SIZE = 100;  // 50 templates * 2 (animation+audio per template)
     char name_pool_[MAX_NAME_POOL_SIZE][MAX_NAME_LENGTH];
     size_t name_pool_index_ = 0;

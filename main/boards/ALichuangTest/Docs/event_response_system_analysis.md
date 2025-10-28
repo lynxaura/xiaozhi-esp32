@@ -103,8 +103,8 @@
 - 建议：在固件发布说明中提醒使用统一的 `/sdcard/config/` 目录，避免回退到兼容逻辑。
 
 5) LocalResponse 字符串池容量限制
-- 名称池大小 100、单名最长 32 字符，超限时会被丢弃或截断。
-- 参考：main/boards/ALichuangTest/interaction/controller/local_response_controller.h（`MAX_NAME_POOL_SIZE=100`, `MAX_NAME_LENGTH=32`）
+- 名称池大小 100、单名最长 64 字符，超限时会被丢弃或截断。
+- 参考：main/boards/ALichuangTest/interaction/controller/local_response_controller.h（`MAX_NAME_POOL_SIZE=100`, `MAX_NAME_LENGTH=64`）
 - 风险：当事件模板多或名称较长时，后续条目无法加载，出现“无响应模板”现象。
 - 建议：扩大池容量或改为 `std::string` 管理；或在加载时做容量告警并统计。
 
