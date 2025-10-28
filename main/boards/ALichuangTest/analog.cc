@@ -310,14 +310,24 @@ void AdcSampleTimerHandle(void) {
 
     backcenter++;
     if (backcenter == 50) {
-        // 10秒：顺时针转45度
-        m_angleSensor_->SetRotate(CW_LEFT, 45);
-    } else if (backcenter == 75) {
-        // 15秒：逆时针转55度
-        m_angleSensor_->SetRotate(CCW_RIGHT, 55);
-    } else if (backcenter == 100) {
-        // 20秒：回到中心位置
+        // 10秒：先回到中心位置
+        ESP_LOGI(TAG, "Test Step 1: BackToCenter");
         m_angleSensor_->BackToCenter();
+    } else if (backcenter == 75) {
+        // 15秒：第一次顺时针转45度
+        ESP_LOGI(TAG, "Test Step 2: CW 45°");
+        m_angleSensor_->SetRotate(CW_LEFT, 45);
+    } else if (backcenter == 100) {
+        // 20秒：第二次顺时针转45度（累计90度）
+        ESP_LOGI(TAG, "Test Step 3: CW 45° again (total 90°)");
+        m_angleSensor_->SetRotate(CW_LEFT, 45);
+    } else if (backcenter == 125) {
+        // 25秒：逆时针转90度回到中心
+        ESP_LOGI(TAG, "Test Step 4: CCW 90° back to center");
+        m_angleSensor_->SetRotate(CCW_RIGHT, 90);
+    } else if (backcenter == 150) {
+        // 30秒：重新开始循环
+        ESP_LOGI(TAG, "Test cycle completed, restarting...");
         backcenter = 0;
     }
 
@@ -392,9 +402,11 @@ void AngleSensor::SetRotate(rotate_dir dir, int angle) {
     int transAngle = (angle * 10 * m_bigCircle) / m_smallCircle;
     float ftransAngle = (dir == CW_LEFT) ? ((float)(transAngle)) : (-(float)(transAngle));
     ESP_LOGW(TAG, "SetRotate big:%d° - %f°/10 (relative)", angle, ftransAngle);
-    // 使用相对角度接口，单位：度（马达）
-    m_motion->MotorTurnByAngle((ftransAngle / 10), MOTION_SPEED_FAST);
-    m_motion->StopMotor();
+    // 通过队列在马达任务中执行，避免在esp_timer回调里阻塞
+    // 将相对角度累加为绝对目标角度，再用 SetAngle 下发到马达任务
+    float delta_deg = (ftransAngle / 10.0f);
+    m_expectedMotorAngle += delta_deg;
+    m_motion->SetAngle(m_expectedMotorAngle, MOTION_SPEED_FAST);
 }
 
 void AngleSensor::BackToCenter(void) {
@@ -422,7 +434,8 @@ void AngleSensor::BackToCenter(void) {
         return;
     }
     ESP_LOGW(TAG, "BackToCenter big:%d - %f°/10 (relative)", bigangle, ftransAngle);
-    // 使用相对角度接口，单位：度（马达）
-    m_motion->MotorTurnByAngle((ftransAngle / 10), MOTION_SPEED_MEDIUM);
-    m_motion->StopMotor();
+    // 通过队列在马达任务中执行，避免在esp_timer回调里阻塞
+    float delta_deg = (ftransAngle / 10.0f);
+    m_expectedMotorAngle += delta_deg;
+    m_motion->SetAngle(m_expectedMotorAngle, MOTION_SPEED_MEDIUM);
 }

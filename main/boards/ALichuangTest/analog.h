@@ -90,6 +90,9 @@ private:
     int m_angleNow;
     int m_smallCircle = 10;
     int m_bigCircle = 64;
+    // 记录已经下发给马达任务的“期望马达角度”（单位：度，马达轴角度）
+    // 仅用于通过队列(异步任务)发相对转动时累加为绝对角度目标
+    float m_expectedMotorAngle = 0.0f;
 
     void FreshAngle(void);
 };
