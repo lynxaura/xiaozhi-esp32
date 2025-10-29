@@ -118,7 +118,7 @@ esp_err_t Motion::StartTask() {
     }
 
     task_running_ = true;
-    ESP_LOGI(TAG, "Motion task started");
+    // ESP_LOGI(TAG, "Motion task started");
     
     return ESP_OK;
 }

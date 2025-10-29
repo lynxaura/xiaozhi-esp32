@@ -38,7 +38,8 @@
       "Bash(done)",
       "Read(//c/Users/Administrator/Downloads/blufi/**)",
       "Read(//c/Users/xiaot/Downloads/blufi/blufi/**)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "WebSearch"
     ],
     "deny": []
   }

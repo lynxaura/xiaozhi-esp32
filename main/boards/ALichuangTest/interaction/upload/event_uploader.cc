@@ -1,55 +1,24 @@
 #include "event_uploader.h"
 #include "application.h"     // for Application::GetInstance()
-#include "system_info.h"
-#include "board.h"
 #include <esp_log.h>
 #include <esp_timer.h>
 // Removed sys/time.h - using esp_timer_get_time() for unified timeline
 #include <cinttypes>         // for PRIu32, PRId64 in C++
 #include <algorithm>         // for std::min, std::remove_if
-#include <cctype>
 
-EventUploader::EventUploader() 
+EventUploader::EventUploader()
     : enabled_(false),
       current_has_emotion_state_(false),
       current_valence_(0.0f),
       current_arousal_(0.0f) {
-    
-    // 生成设备ID
-    device_id_ = GenerateDeviceId();
-    
+
     ESP_LOGI(TAG_EVENT_UPLOADER, "EventUploader created");
-    ESP_LOGI(TAG_EVENT_UPLOADER, "Device ID: %s", device_id_.c_str());
 }
 
 EventUploader::~EventUploader() {
     std::lock_guard<std::mutex> lock(cache_mutex_);
     event_cache_.clear();
     ESP_LOGI(TAG_EVENT_UPLOADER, "EventUploader destroyed");
-}
-
-std::string EventUploader::GenerateDeviceId() {
-    std::string mac = SystemInfo::GetMacAddress();
-    if (!mac.empty()) {
-        std::string normalized;
-        normalized.reserve(mac.size());
-        for (char ch : mac) {
-            if (ch == ':') {
-                normalized.push_back('-');
-            } else {
-                normalized.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
-            }
-        }
-        return normalized;
-    }
-    
-    std::string uuid = Board::GetInstance().GetUuid();
-    if (!uuid.empty()) {
-        return uuid;
-    }
-    
-    ESP_LOGW(TAG_EVENT_UPLOADER, "Failed to obtain hardware identifiers, falling back to default device ID");
-    return "alichuang_test_device";
 }
 
 void EventUploader::SetCurrentEmotionState(float valence, float arousal) {

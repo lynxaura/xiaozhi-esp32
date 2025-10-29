@@ -24,7 +24,7 @@ McpResponseController::~McpResponseController() {
 }
 
 bool McpResponseController::Initialize() {
-    ESP_LOGI(TAG, "Initializing MCP local response tools...");
+    // ESP_LOGI(TAG, "Initializing MCP local response tools...");
     
     try {
         // 注册所有工具
@@ -34,22 +34,22 @@ bool McpResponseController::Initialize() {
         RegisterComplexExpressionTools();
         RegisterStatusTools();
         
-        ESP_LOGI(TAG, "✅ All MCP tools registered successfully");
+        // ESP_LOGI(TAG, "✅ All MCP tools registered successfully");
         
         // 记录已注册的工具数量
-        ESP_LOGI(TAG, "MCP Response System Ready - Available Tools:");
-        ESP_LOGI(TAG, "  - Body Motion Control (5 tools)");
-        ESP_LOGI(TAG, "    * basic_motion: 基础动作(6种)");
-        ESP_LOGI(TAG, "    * explore_motion: 探索动作(6种)");
-        ESP_LOGI(TAG, "    * reaction_motion: 反应动作(7种)");
-        ESP_LOGI(TAG, "    * performance_motion: 表演动作(4种)");
-        ESP_LOGI(TAG, "    * angle_control: 精确角度控制");
-        ESP_LOGI(TAG, "  - Haptic Feedback (1 tool)");
-        ESP_LOGI(TAG, "  - Speaking Animation (1 tool)");
-        ESP_LOGI(TAG, "    * show_emotion: 8种说话表情(calm/happy/sad/angry/scared/curious/shy/content)");
-        ESP_LOGI(TAG, "  - Emotion Expression (8 tools)");
-        ESP_LOGI(TAG, "  - Status Query (3 tools)");
-        ESP_LOGI(TAG, "  Total: 18 tools with 23+ motion patterns available");
+        // ESP_LOGI(TAG, "MCP Response System Ready - Available Tools:");
+        // ESP_LOGI(TAG, "  - Body Motion Control (5 tools)");
+        // ESP_LOGI(TAG, "    * basic_motion: 基础动作(6种)");
+        // ESP_LOGI(TAG, "    * explore_motion: 探索动作(6种)");
+        // ESP_LOGI(TAG, "    * reaction_motion: 反应动作(7种)");
+        // ESP_LOGI(TAG, "    * performance_motion: 表演动作(4种)");
+        // ESP_LOGI(TAG, "    * angle_control: 精确角度控制");
+        // ESP_LOGI(TAG, "  - Haptic Feedback (1 tool)");
+        // ESP_LOGI(TAG, "  - Speaking Animation (1 tool)");
+        // ESP_LOGI(TAG, "    * show_emotion: 8种说话表情(calm/happy/sad/angry/scared/curious/shy/content)");
+        // ESP_LOGI(TAG, "  - Emotion Expression (8 tools)");
+        // ESP_LOGI(TAG, "  - Status Query (3 tools)");
+        // ESP_LOGI(TAG, "  Total: 18 tools with 23+ motion patterns available");
         
         return true;
         

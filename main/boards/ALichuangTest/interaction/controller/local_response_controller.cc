@@ -142,7 +142,7 @@ bool LocalResponseController::Initialize() {
         return true;
     }
     
-    ESP_LOGI(TAG, "Initializing Local Response Controller...");
+    // ESP_LOGI(TAG, "Initializing Local Response Controller...");
     
     // 加载默认配置
     if (!LoadDefaultConfig()) {
@@ -151,8 +151,8 @@ bool LocalResponseController::Initialize() {
     }
     
     initialized_ = true;
-    ESP_LOGI(TAG, "✅ Local Response Controller initialized successfully");
-    ESP_LOGI(TAG, "Loaded %u response templates", template_count_);
+    // ESP_LOGI(TAG, "✅ Local Response Controller initialized successfully");
+    // ESP_LOGI(TAG, "Loaded %u response templates", template_count_);
     
     return true;
 }
@@ -382,7 +382,7 @@ void LocalResponseController::CreateDefaultTemplatesFromSD() {
     if (template_count_ == 0) {
         ESP_LOGW(TAG, "⚠️ No valid templates loaded from embedded response_config.json");
     } else {
-        ESP_LOGI(TAG, "✅ Loaded %u response templates from embedded response_config.json", template_count_);
+        // ESP_LOGI(TAG, "✅ Loaded %u response templates from embedded response_config.json", template_count_);
     }
 }
 
@@ -490,18 +490,18 @@ void LocalResponseController::LoadResponseComponents(cJSON* event_config, const 
             const char* animation_name_src;
             if (name && cJSON_IsString(name)) {
                 animation_name_src = name->valuestring;
-                ESP_LOGI(TAG, "  [DEBUG] Animation name from JSON: '%s' (cJSON ptr=%p)", animation_name_src, (void*)animation_name_src);
+                // ESP_LOGI(TAG, "  [DEBUG] Animation name from JSON: '%s' (cJSON ptr=%p)", animation_name_src, (void*)animation_name_src);
             } else {
                 const char* last_slash = strrchr(event_name, '/');
                 animation_name_src = last_slash ? (last_slash + 1) : event_name;
-                ESP_LOGI(TAG, "  [DEBUG] Animation name from event path: '%s' (ptr=%p)", animation_name_src, (void*)animation_name_src);
+                // ESP_LOGI(TAG, "  [DEBUG] Animation name from event path: '%s' (ptr=%p)", animation_name_src, (void*)animation_name_src);
             }
 
             // 分配持久化字符串存储（避免cJSON_Delete后指针失效）
             const char* animation_name = AllocateString(animation_name_src);
             if (animation_name) {
                 tmpl.AddBaseComponent(ResponseComponent::CreateAnimation(animation_name, loop_count));
-                ESP_LOGI(TAG, "  + Animation: %s (loop=%d, pool ptr=%p)", animation_name, loop_count, (void*)animation_name);
+                // ESP_LOGI(TAG, "  + Animation: %s (loop=%d, pool ptr=%p)", animation_name, loop_count, (void*)animation_name);
             }
         }
     }
@@ -519,18 +519,18 @@ void LocalResponseController::LoadResponseComponents(cJSON* event_config, const 
             const char* audio_name_src;
             if (name && cJSON_IsString(name)) {
                 audio_name_src = name->valuestring;
-                ESP_LOGI(TAG, "  [DEBUG] Audio name from JSON: '%s' (cJSON ptr=%p)", audio_name_src, (void*)audio_name_src);
+                // ESP_LOGI(TAG, "  [DEBUG] Audio name from JSON: '%s' (cJSON ptr=%p)", audio_name_src, (void*)audio_name_src);
             } else {
                 const char* last_slash = strrchr(event_name, '/');
                 audio_name_src = last_slash ? (last_slash + 1) : event_name;
-                ESP_LOGI(TAG, "  [DEBUG] Audio name from event path: '%s' (ptr=%p)", audio_name_src, (void*)audio_name_src);
+                // ESP_LOGI(TAG, "  [DEBUG] Audio name from event path: '%s' (ptr=%p)", audio_name_src, (void*)audio_name_src);
             }
 
             // 分配持久化字符串存储（避免cJSON_Delete后指针失效）
             const char* audio_name = AllocateString(audio_name_src);
             if (audio_name) {
                 tmpl.AddBaseComponent(ResponseComponent::CreateAudio(audio_name, vol));
-                ESP_LOGI(TAG, "  + Audio: %s (volume=%d, pool ptr=%p)", audio_name, vol, (void*)audio_name);
+                // ESP_LOGI(TAG, "  + Audio: %s (volume=%d, pool ptr=%p)", audio_name, vol, (void*)audio_name);
             }
         }
     }
@@ -598,7 +598,7 @@ void LocalResponseController::LoadCanInterruptStates(cJSON* event_config, Respon
     }
 
     int array_size = cJSON_GetArraySize(can_interrupt);
-    ESP_LOGI(TAG, "  + can_interrupt: %d states", array_size);
+    // ESP_LOGI(TAG, "  + can_interrupt: %d states", array_size);
 
     for (int i = 0; i < array_size; ++i) {
         cJSON* state_item = cJSON_GetArrayItem(can_interrupt, i);
@@ -609,7 +609,7 @@ void LocalResponseController::LoadCanInterruptStates(cJSON* event_config, Respon
         // 特殊处理 "all"
         if (strcmp(state_str, "all") == 0) {
             tmpl.can_interrupt_all = true;
-            ESP_LOGI(TAG, "    - all (can interrupt any state)");
+            // ESP_LOGI(TAG, "    - all (can interrupt any state)");
             return;  // 设置了all就不需要继续解析
         }
 
@@ -617,7 +617,7 @@ void LocalResponseController::LoadCanInterruptStates(cJSON* event_config, Respon
         DeviceState state = ParseDeviceState(state_str);
         if (tmpl.can_interrupt_count < ResponseTemplate::MAX_INTERRUPT_STATES) {
             tmpl.can_interrupt_states[tmpl.can_interrupt_count++] = state;
-            ESP_LOGI(TAG, "    - %s (state=%d)", state_str, static_cast<int>(state));
+            // ESP_LOGI(TAG, "    - %s (state=%d)", state_str, static_cast<int>(state));
         } else {
             ESP_LOGW(TAG, "    - %s: interrupt states array full!", state_str);
         }

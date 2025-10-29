@@ -506,7 +506,7 @@ private:
         imu_ = new Qmi8658(i2c_bus_);
         
         if (imu_->Initialize() == ESP_OK) {
-            ESP_LOGI(TAG, "IMU initialized successfully");
+            // ESP_LOGI(TAG, "IMU initialized successfully");
         } else {
             ESP_LOGW(TAG, "Failed to initialize IMU");
             delete imu_;
@@ -516,7 +516,7 @@ private:
 
     void InitializePca9685() {
         IsDevicePresent(PCA9685_DEFAULT_ADDR);
-        ESP_LOGI(TAG, "Initializing PCA9685 at address 0x40...");
+        // ESP_LOGI(TAG, "Initializing PCA9685 at address 0x40...");
         pca9685_ = new Pca9685(i2c_bus_, PCA9685_DEFAULT_ADDR);
         
         ESP_LOGI(TAG, "🔧 设置PCA9685 PWM频率为200Hz (适配DRV8837直流马达驱动)");
@@ -569,13 +569,13 @@ private:
         if (vibration_skill_) {
             esp_err_t ret = vibration_skill_->StartTask();
             if (ret == ESP_OK) {
-                ESP_LOGI(TAG, "Vibration task started successfully");
+                // ESP_LOGI(TAG, "Vibration task started successfully");
             } else {
                 ESP_LOGE(TAG, "Failed to start vibration task: %s", esp_err_to_name(ret));
             }
             // 如有振动效果测试需要再启用
             // vibration_skill_->EnableButtonTest(VIBRATION_SHORT_BUZZ, true); 
-            ESP_LOGI(TAG, "Button cycle test enabled - press GPIO11 to test all patterns");
+            // ESP_LOGI(TAG, "Button cycle test enabled - press GPIO11 to test all patterns");
         }
     }
     
@@ -583,7 +583,7 @@ private:
         if (motion_skill_) {
             esp_err_t ret = motion_skill_->StartTask();
             if (ret == ESP_OK) {
-                ESP_LOGI(TAG, "Motion task started successfully");
+                // ESP_LOGI(TAG, "Motion task started successfully");
             } else {
                 ESP_LOGE(TAG, "Failed to start motion task: %s", esp_err_to_name(ret));
             }
@@ -682,7 +682,7 @@ private:
     }
 
     void InitializeMcpTools() {
-        ESP_LOGI(TAG, "Initializing MCP local response tools...");
+        // ESP_LOGI(TAG, "Initializing MCP local response tools...");
         
         try {
             // 创建McpResponseController实例
@@ -713,7 +713,7 @@ private:
     }
     
     void InitializeLocalResponseSystem() {
-        ESP_LOGI(TAG, "Initializing Local Response System...");
+        // ESP_LOGI(TAG, "Initializing Local Response System...");
         
         try {
             // 创建本地响应控制器
@@ -725,7 +725,7 @@ private:
             
             // 初始化本地响应系统
             if (local_response_controller_->Initialize()) {
-                ESP_LOGI(TAG, "✅ Local Response System initialized successfully");
+                // ESP_LOGI(TAG, "✅ Local Response System initialized successfully");
                 // 注册设备状态变化监听器，用于状态响应
                 DeviceStateEventManager::GetInstance().RegisterStateChangeCallback(
                     [this](DeviceState previous_state, DeviceState current_state) {
@@ -735,7 +735,7 @@ private:
                         }
                     }
                 );
-                ESP_LOGI(TAG, "✅ Device state change listener registered");
+                // ESP_LOGI(TAG, "✅ Device state change listener registered");
             } else {
                 ESP_LOGE(TAG, "❌ Failed to initialize Local Response System");
                 delete local_response_controller_;

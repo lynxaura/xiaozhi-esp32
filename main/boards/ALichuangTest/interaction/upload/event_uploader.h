@@ -82,8 +82,7 @@ public:
 private:
     // 基础成员变量
     bool enabled_;
-    std::string device_id_;  // 设备唯一标识
-    
+
     // 事件缓存相关
     std::vector<CachedEvent> event_cache_;
     mutable std::mutex cache_mutex_;
@@ -96,10 +95,7 @@ private:
     bool current_has_emotion_state_;
     float current_valence_;
     float current_arousal_;
-    
-    // 获取设备ID的方法
-    std::string GenerateDeviceId();
-    
+
     // 事件转换方法
     CachedEvent ConvertEvent(const Event& event);
     std::string GetEventTypeString(const Event& event);

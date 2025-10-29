@@ -313,7 +313,7 @@ void McpServer::AddTool(McpTool* tool) {
         return;
     }
 
-    ESP_LOGI(TAG, "Add tool: %s%s", tool->name().c_str(), tool->user_only() ? " [user]" : "");
+    // ESP_LOGI(TAG, "Add tool: %s%s", tool->name().c_str(), tool->user_only() ? " [user]" : "");
     tools_.push_back(tool);
 }
 

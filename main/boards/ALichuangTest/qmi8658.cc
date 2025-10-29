@@ -14,7 +14,7 @@ Qmi8658::Qmi8658(i2c_master_bus_handle_t i2c_bus)
 bool Qmi8658::IsPresent() {
     try {
         uint8_t who_am_i = ReadReg(QMI8658_WHO_AM_I);
-        ESP_LOGI(TAG, "WHO_AM_I: 0x%02X", who_am_i);
+        // ESP_LOGI(TAG, "WHO_AM_I: 0x%02X", who_am_i);
         return (who_am_i == 0x05);  // QMI8658的WHO_AM_I值
     } catch (...) {
         return false;
@@ -27,7 +27,7 @@ esp_err_t Qmi8658::Initialize() {
         return ESP_ERR_NOT_FOUND;
     }
     
-    ESP_LOGI(TAG, "QMI8658 detected, initializing...");
+    // ESP_LOGI(TAG, "QMI8658 detected, initializing...");
 
     // 软复位
     WriteReg(QMI8658_RESET, 0xB0);
@@ -45,7 +45,7 @@ esp_err_t Qmi8658::Initialize() {
     // CTRL3 设置GYR ±512dps 250Hz
     WriteReg(QMI8658_CTRL3, 0xD5);
 
-    ESP_LOGI(TAG, "QMI8658 initialized successfully");
+    // ESP_LOGI(TAG, "QMI8658 initialized successfully");
     return ESP_OK;
 }
 

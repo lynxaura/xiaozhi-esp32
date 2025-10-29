@@ -222,7 +222,7 @@ esp_err_t Vibration::StartTask() {
         return ESP_ERR_NO_MEM;
     }
     
-    ESP_LOGI(TAG, "Vibration task started successfully on PCA9685 channel %d", vibration_channel_);
+    // ESP_LOGI(TAG, "Vibration task started successfully on PCA9685 channel %d", vibration_channel_);
     return ESP_OK;
 }
 
@@ -352,7 +352,7 @@ void Vibration::VibrationTask(void* parameter) {
     }
     
     Vibration* skill = static_cast<Vibration*>(parameter);
-    ESP_LOGI(TAG, "Vibration task started");
+    // ESP_LOGI(TAG, "Vibration task started");
     
     vibration_id_t pattern_id;
     
@@ -511,7 +511,7 @@ void Vibration::EnableButtonTest(vibration_id_t pattern_id, bool cycle_test) {
     }
     
     if (cycle_test) {
-        ESP_LOGI(TAG, "Button cycle test enabled - press button to test all %d patterns", VIBRATION_MAX);
+        // ESP_LOGI(TAG, "Button cycle test enabled - press button to test all %d patterns", VIBRATION_MAX);
     } else {
         ESP_LOGI(TAG, "Button test enabled with pattern: %s", vibration_pattern_names[pattern_id]);
     }
