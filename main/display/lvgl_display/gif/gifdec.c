@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdbool.h>
 #include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #define TAG "GIF"
 
@@ -681,6 +683,11 @@ render_frame_rect(gd_GIF * gif, uint8_t * buffer)
             }
         }
         i += gif->width;
+
+        // Yield CPU every 16 rows to prevent watchdog timeout
+        if ((j & 0x0F) == 0x0F) {
+            taskYIELD();
+        }
     }
 #endif
 }
@@ -710,6 +717,11 @@ dispose(gd_GIF * gif)
                     gif->canvas[(i + k) * 4 + 3] = opa;
                 }
                 i += gif->width;
+
+                // Yield CPU every 16 rows to prevent watchdog timeout
+                if ((j & 0x0F) == 0x0F) {
+                    taskYIELD();
+                }
             }
 #endif
             break;

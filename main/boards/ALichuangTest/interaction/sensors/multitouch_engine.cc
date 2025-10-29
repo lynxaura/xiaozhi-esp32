@@ -66,7 +66,7 @@ MultitouchEngine::~MultitouchEngine() {
 }
 
 void MultitouchEngine::Initialize() {
-    ESP_LOGI(TAG, "Initializing MPR121 multitouch engine");
+    // ESP_LOGI(TAG, "Initializing MPR121 multitouch engine");
     
     // 1. 使用默认配置（配置将由EventEngine统一管理和更新）
     config_ = TouchDetectionConfig();  // 使用硬编码默认值
@@ -91,7 +91,7 @@ void MultitouchEngine::Initialize() {
     }
     
     enabled_ = true;
-    ESP_LOGI(TAG, "Multitouch engine initialized - MPR121 @ 0x%02X (polling mode)", MPR121_I2C_ADDR);
+    // ESP_LOGI(TAG, "Multitouch engine initialized - MPR121 @ 0x%02X (polling mode)", MPR121_I2C_ADDR);
 }
 
 void MultitouchEngine::UpdateConfigFromJson(const cJSON* json) {
@@ -182,12 +182,12 @@ void MultitouchEngine::InitializeI2C() {
         return;
     }
     
-    ESP_LOGI(TAG, "MPR121 I2C device configured at address 0x%02X", MPR121_I2C_ADDR);
+    // ESP_LOGI(TAG, "MPR121 I2C device configured at address 0x%02X", MPR121_I2C_ADDR);
 }
 
 
 bool MultitouchEngine::InitializeMPR121() {
-    ESP_LOGI(TAG, "Initializing MPR121 chip...");
+    // ESP_LOGI(TAG, "Initializing MPR121 chip...");
     
     // 软复位 - 停止运行
     if (!WriteRegister(MPR121_ECR, 0x00)) {
@@ -207,7 +207,7 @@ bool MultitouchEngine::InitializeMPR121() {
         ESP_LOGE(TAG, "Failed to set release threshold for left electrode");
         return false;
     }
-    ESP_LOGI(TAG, "Left electrode thresholds: Touch=%d, Release=%d", left_touch_threshold_, left_release_threshold_);
+    // ESP_LOGI(TAG, "Left electrode thresholds: Touch=%d, Release=%d", left_touch_threshold_, left_release_threshold_);
 
     // 右侧电极（ELECTRODE_RIGHT = 1）
     if (!WriteRegister(MPR121_TOUCHTH_0 + 2 * ELECTRODE_RIGHT, touch_threshold_)) {
@@ -218,7 +218,7 @@ bool MultitouchEngine::InitializeMPR121() {
         ESP_LOGE(TAG, "Failed to set release threshold for right electrode");
         return false;
     }
-    ESP_LOGI(TAG, "Right electrode thresholds: Touch=%d, Release=%d", touch_threshold_, release_threshold_);
+    // ESP_LOGI(TAG, "Right electrode thresholds: Touch=%d, Release=%d", touch_threshold_, release_threshold_);
     
     // 配置滤波器设置
     WriteRegister(MPR121_MHDR, 0x01);
@@ -272,7 +272,7 @@ bool MultitouchEngine::InitializeMPR121() {
         return false;
     }
     
-    ESP_LOGI(TAG, "MPR121 initialized successfully (CONFIG1=0x%02X)", config1_val);
+    // ESP_LOGI(TAG, "MPR121 initialized successfully (CONFIG1=0x%02X)", config1_val);
     return true;
 }
 
@@ -364,7 +364,7 @@ void MultitouchEngine::ReadBaseline() {
         right_baseline_ = right_data;
     }
     
-    ESP_LOGI(TAG, "MPR121 baselines - Left: %d, Right: %d", left_baseline_, right_baseline_);
+    // ESP_LOGI(TAG, "MPR121 baselines - Left: %d, Right: %d", left_baseline_, right_baseline_);
 }
 
 void MultitouchEngine::ResetTouchSensor() {
@@ -439,7 +439,7 @@ void MultitouchEngine::SetIMUStabilityCallback(IMUStabilityCallback callback) {
 
 void MultitouchEngine::TouchTask(void* param) {
     MultitouchEngine* engine = static_cast<MultitouchEngine*>(param);
-    ESP_LOGI(TAG, "Multitouch task started");
+    // ESP_LOGI(TAG, "Multitouch task started");
     
     int counter = 0;
     while (true) {
@@ -753,4 +753,3 @@ void MultitouchEngine::DispatchEvent(const TouchEvent& event) {
     }
     ESP_LOGD(TAG, "Event dispatch completed for type=%d", (int)event.type);
 }
-

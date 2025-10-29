@@ -14,6 +14,12 @@
 
 extern "C" void app_main(void)
 {
+    // Suppress noisy INFO logs from Wi-Fi/PHY only
+    esp_log_level_set("wifi", ESP_LOG_WARN);
+    esp_log_level_set("wifi_init", ESP_LOG_WARN);
+    esp_log_level_set("phy_init", ESP_LOG_WARN);
+    esp_log_level_set("WifiStation", ESP_LOG_WARN);
+
     // Initialize the default event loop
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
