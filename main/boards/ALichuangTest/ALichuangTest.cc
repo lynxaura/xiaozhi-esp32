@@ -187,6 +187,15 @@ private:
         // 获取AudioProcessor实例的事件组 - 从application.h中直接获取
         auto& app = Application::GetInstance();
 
+        // ====== 等待开机动画播放完成 ======
+        // 等待开机动画播放完成，避免与idle动画冲突
+        ESP_LOGI(TAG, "动画任务启动，等待开机动画完成...");
+        while (!app.IsBootAnimationCompleted()) {
+            vTaskDelay(pdMS_TO_TICKS(500));  // 每500ms检查一次
+        }
+        ESP_LOGI(TAG, "开机动画完成，开始加载idle动画");
+        // =====================================
+
         // 根据当前情感象限选择初始idle动画
         auto& emotion_engine = EmotionEngine::GetInstance();
         EmotionQuadrant quadrant = emotion_engine.GetQuadrant();

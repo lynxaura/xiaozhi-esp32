@@ -37,9 +37,13 @@ public:
     // 静态工具函数：根据情感象限获取对应的idle动画名称
     static std::string GetIdleAnimationByQuadrant(EmotionQuadrant quadrant);
 
+    // 获取开机动画开始时间（微秒）
+    static int64_t GetBootAnimationStartTime() { return boot_animation_start_time_; }
+
 private:
     // 动画名称到文件路径的哈希映射表
     static const std::unordered_map<std::string, const char*> animation_maps_;
+    static int64_t boot_animation_start_time_;  // 开机动画开始时间（微秒）
     lv_obj_t* animation_gif_;  // GIF动画组件
 
 protected:

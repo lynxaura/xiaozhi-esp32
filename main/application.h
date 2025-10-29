@@ -47,6 +47,7 @@ public:
     void MainEventLoop();
     DeviceState GetDeviceState() const { return device_state_; }
     bool IsVoiceDetected() const { return audio_service_.IsVoiceDetected(); }
+    bool IsBootAnimationCompleted() const { return boot_animation_completed_; }
     void Schedule(std::function<void()> callback);
     void SetDeviceState(DeviceState state);
     void Alert(const char* status, const char* message, const char* emotion = "", const std::string_view& sound = "");
@@ -88,6 +89,7 @@ private:
 
     bool has_server_time_ = false;
     bool aborted_ = false;
+    bool boot_animation_completed_ = false;  // 开机动画完成标志
     int clock_ticks_ = 0;
     int64_t tts_start_timestamp_ = 0;
     TaskHandle_t check_new_version_task_handle_ = nullptr;

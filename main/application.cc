@@ -9,6 +9,7 @@
 #include "mcp_server.h"
 #include "assets.h"
 #include "settings.h"
+#include "boards/ALichuangTest/skills/animation.h"
 
 #include <cstring>
 #include <esp_log.h>
@@ -21,6 +22,7 @@
 
 // 音频名称到SD卡文件路径的哈希映射表，O(1) 查找时间复杂度
 const std::unordered_map<std::string, const char*> Application::audio_file_maps_ = {
+    {"system_boot_up", "/sdcard/system/boot_up/system_boot_up.ogg"},
     {"motion_shake_violently",    "/sdcard/emergency/motion_shake_violently/motion_shake_violently.ogg"},
     {"motion_pickup_q1",    "/sdcard/interaction/motion_pickup_q1/motion_pickup_q1.ogg"},
     {"motion_pickup_q2",    "/sdcard/interaction/motion_pickup_q2/motion_pickup_q2.ogg"},
@@ -410,10 +412,17 @@ void Application::Start() {
     };
     audio_service_.SetCallbacks(callbacks);
 
+    // 音频服务已启动，立即播放开机音频（动画已在构造函数中开始播放）
+    // 不需要等待网络初始化，尽早播放以接近动画开始时间
+    ESP_LOGI(TAG, "Playing boot sound immediately after audio service started (animation started at %.3f ms)...",
+             AnimaDisplay::GetBootAnimationStartTime() / 1000.0);
+    PlaySoundOGGFile("system_boot_up", 80);
+
+    // 获取动画实际开始的时间（来自 AnimaDisplay 构造函数）
+    int64_t boot_animation_start_time = AnimaDisplay::GetBootAnimationStartTime();
+
     /* Start the clock timer to update the status bar */
     esp_timer_start_periodic(clock_timer_handle_, 1000000);
-
-    // 开机不再播放欢迎音频
 
     /* Wait for the network to be ready */
     board.StartNetwork();
@@ -421,20 +430,50 @@ void Application::Start() {
     // Update the status bar immediately to show the network state
     display->UpdateStatusBar(true);
 
-    // Check for new assets version
+    // ====== 在动画播放期间，可以进行不影响显示的后台初始化 ======
+    const int64_t BOOT_ANIMATION_DURATION_US = 11000000; // 11秒转为微秒
+
+    // 1. 初始化 MCP 工具（不影响显示）
+    ESP_LOGI(TAG, "Initializing MCP server during boot animation...");
+    auto& mcp_server = McpServer::GetInstance();
+    mcp_server.AddCommonTools();
+    mcp_server.AddUserOnlyTools();
+
+    // 2. 预创建 OTA 对象，开始网络请求（不影响显示）
+    ESP_LOGI(TAG, "Preparing OTA configuration during boot animation...");
+    Ota ota;
+    // OTA 对象创建会读取配置，为后续检查做准备
+
+    // 3. 可以在这里添加其他后台任务：
+    //    - 预加载配置文件
+    //    - 初始化传感器
+    //    - 预热算法模块
+    //    等等...
+
+    // ====== 确保开机动画播放完整的 11 秒 ======
+    int64_t elapsed_time = esp_timer_get_time() - boot_animation_start_time;
+    int64_t remaining_time = BOOT_ANIMATION_DURATION_US - elapsed_time;
+    if (remaining_time > 0) {
+        ESP_LOGI(TAG, "Waiting %.1fs for boot animation to complete (already played %.1fs)...",
+                 remaining_time / 1000000.0, elapsed_time / 1000000.0);
+        vTaskDelay(pdMS_TO_TICKS(remaining_time / 1000));
+    } else {
+        ESP_LOGI(TAG, "Boot animation already completed (played %.1fs)", elapsed_time / 1000000.0);
+    }
+
+    // 标记开机动画播放完成
+    boot_animation_completed_ = true;
+    ESP_LOGI(TAG, "Boot animation completed");
+
+    // Check for new assets version (会改变显示内容)
     CheckAssetsVersion();
 
     // Check for new firmware version or get the MQTT broker address
-    Ota ota;
+    // (OTA 对象已在动画播放期间预创建)
     CheckNewVersion(ota);
 
     // Initialize the protocol
     display->SetStatus(Lang::Strings::LOADING_PROTOCOL);
-
-    // Add MCP common tools before initializing the protocol
-    auto& mcp_server = McpServer::GetInstance();
-    mcp_server.AddCommonTools();
-    mcp_server.AddUserOnlyTools();
 
     if (ota.HasMqttConfig()) {
         protocol_ = std::make_unique<MqttProtocol>();
@@ -986,6 +1025,7 @@ void Application::PlaySoundOGGFile(const std::string& audio_name, int volume) {
     ESP_LOGI(TAG, "播放音频: %s (大小: %ld bytes, 音量: %d)", audio_name.c_str(), file_size, volume);
     fseek(f, 0, SEEK_SET);
 
+    // 分配内存缓冲区
     char* databuf = (char*)malloc(file_size * sizeof(char));
     if (databuf == NULL) {
         ESP_LOGE(TAG, "音频缓冲区分配失败");
@@ -994,6 +1034,7 @@ void Application::PlaySoundOGGFile(const std::string& audio_name, int volume) {
     }
 
     fread(databuf, 1, file_size, f);
+    fclose(f);
 
     // 获取音频编解码器并保存原音量
     auto& board = Board::GetInstance();
@@ -1012,8 +1053,15 @@ void Application::PlaySoundOGGFile(const std::string& audio_name, int volume) {
     // 恢复原音量
     codec->SetOutputVolume(original_volume);
 
-    fclose(f);
-    free(databuf);
+    // 创建延迟释放任务，避免音频播放时内存被释放
+    // 音频最长可能11秒，延迟15秒后释放以确保播放完成
+    xTaskCreate([](void* arg) {
+        char* buffer = static_cast<char*>(arg);
+        vTaskDelay(pdMS_TO_TICKS(15000));
+        free(buffer);
+        ESP_LOGD(TAG, "音频缓冲区已延迟释放");
+        vTaskDelete(NULL);
+    }, "ogg_free", 1024, databuf, 1, nullptr);
 }
 
 void Application::SetBacKlight(uint8_t brightness) {

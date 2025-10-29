@@ -4,6 +4,7 @@
 #include <esp_err.h>
 #include <esp_lvgl_port.h>
 #include <esp_heap_caps.h>
+#include <esp_timer.h>
 #include <cstring>
 
 #include "board.h"
@@ -12,8 +13,11 @@
 
 #define TAG "AnimaDisplay"
 
-#define BOOT_GIF_PATH  "/sdcard/system/system_boot_up.gif"
+#define BOOT_GIF_PATH  "/sdcard/system/boot_up/system_boot_up.gif"
 #define DEFAULT_GIF_PATH "/sdcard/state_expression/idle/idle_q1/idle_q1.gif"
+
+// 静态变量初始化
+int64_t AnimaDisplay::boot_animation_start_time_ = 0;
 
 // 动画名称到文件路径的哈希映射表，O(1) 查找时间复杂度
 const std::unordered_map<std::string, const char*> AnimaDisplay::animation_maps_ = {
@@ -54,15 +58,36 @@ const std::unordered_map<std::string, const char*> AnimaDisplay::animation_maps_
     {"listening_q2", "/sdcard/state_expression/listening/listening_q2/listening_q2.gif"},
     {"listening_q3", "/sdcard/state_expression/listening/listening_q3/listening_q3.gif"},
     {"listening_q4", "/sdcard/state_expression/listening/listening_q4/listening_q4.gif"},
+    // 思考状态动画
+    {"thinking", "/sdcard/state_expression/thinking/thinking_q1/thinking_q1.gif"},
     // 8种说话表情动画（与TTS配合使用）
     {"calm",    "/sdcard/state_expression/speaking/talk_calm/talk_calm.gif"},
     {"happy",   "/sdcard/state_expression/speaking/talk_happy/talk_happy.gif"},
+    {"laughing","/sdcard/state_expression/speaking/talk_happy/talk_happy.gif"},
     {"sad",     "/sdcard/state_expression/speaking/talk_sad/talk_sad.gif"},
     {"angry",   "/sdcard/state_expression/speaking/talk_angry/talk_angry.gif"},
     {"scared",  "/sdcard/state_expression/speaking/talk_scared/talk_scared.gif"},
     {"curious", "/sdcard/state_expression/speaking/talk_curious/talk_curious.gif"},
     {"shy",     "/sdcard/state_expression/speaking/talk_shy/talk_shy.gif"},
     {"content", "/sdcard/state_expression/speaking/talk_content/talk_content.gif"},
+    // 常见同义词映射到现有说话表情
+    {"funny",   "/sdcard/state_expression/speaking/talk_happy/talk_happy.gif"},
+    {"loving",  "/sdcard/state_expression/speaking/talk_happy/talk_happy.gif"},
+    {"confident","/sdcard/state_expression/speaking/talk_happy/talk_happy.gif"},
+    {"delicious","/sdcard/state_expression/speaking/talk_happy/talk_happy.gif"},
+    {"crying",  "/sdcard/state_expression/speaking/talk_sad/talk_sad.gif"},
+    {"silly",   "/sdcard/state_expression/speaking/talk_sad/talk_sad.gif"},
+    {"confused","/sdcard/state_expression/speaking/talk_curious/talk_curious.gif"},
+    {"surprised","/sdcard/state_expression/speaking/talk_curious/talk_curious.gif"},
+    {"shocked", "/sdcard/state_expression/speaking/talk_scared/talk_scared.gif"},
+    {"embarrassed","/sdcard/state_expression/speaking/talk_shy/talk_shy.gif"},
+    {"relaxed", "/sdcard/state_expression/speaking/talk_content/talk_content.gif"},
+    {"winking", "/sdcard/state_expression/speaking/talk_content/talk_content.gif"},
+    // 系统提示/图标别名
+    {"system_boot_up", "/sdcard/system/boot_up/system_boot_up.gif"},
+    {"link",     "/sdcard/state_expression/thinking/thinking_q1/thinking_q1.gif"},
+    {"circle_xmark", "/sdcard/state_expression/thinking/thinking_q1/thinking_q1.gif"},
+    {"microchip_ai", BOOT_GIF_PATH},
 };
 
 // 根据情感象限获取对应的idle动画名称
@@ -85,11 +110,12 @@ AnimaDisplay::AnimaDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_han
                            int width, int height, int offset_x, int offset_y, bool mirror_x, bool mirror_y, bool swap_xy)
     : LcdDisplay(panel_io, panel, width, height), animation_gif_(nullptr) {
 
-    // draw white
-    std::vector<uint16_t> buffer(width_, 0xFFFF);
-    for (int y = 0; y < height_; y++) {
-        esp_lcd_panel_draw_bitmap(panel_, 0, y, width_, y + 1, buffer.data());
-    }
+    // 不绘制白屏，让开机动画作为第一个显示内容
+    // 注释掉白屏绘制，避免闪烁
+    // std::vector<uint16_t> buffer(width_, 0xFFFF);
+    // for (int y = 0; y < height_; y++) {
+    //     esp_lcd_panel_draw_bitmap(panel_, 0, y, width_, y + 1, buffer.data());
+    // }
 
     // Set the display to on
     ESP_LOGD(TAG, "Turning display on");
@@ -101,7 +127,10 @@ AnimaDisplay::AnimaDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_han
     ESP_LOGD(TAG, "Initialize LVGL port");
     lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
     port_cfg.task_priority = 1;
-    port_cfg.timer_period_ms = 50;
+    // 设置为 5ms 以支持高精度 GIF 播放
+    // 这样 LVGL 定时器可以更频繁地检查帧切换，避免播放变慢
+    // 25 FPS = 40ms per frame，5ms 定时器可以精确匹配（40ms = 8 ticks）
+    port_cfg.timer_period_ms = 5;
     lvgl_port_init(&port_cfg);
 
     ESP_LOGD(TAG, "Adding LCD display");
@@ -178,7 +207,30 @@ void AnimaDisplay::SetupUI() {
     lv_obj_set_style_border_width(animation_gif_, 0, 0);
     lv_obj_set_style_bg_opa(animation_gif_, LV_OPA_TRANSP, 0);
     lv_obj_center(animation_gif_);
+
+    // 立即加载开机动画，尽早显示内容，避免空白屏
+    // 音频会稍后在 Application::Start() 中播放（允许不完全同步）
     lv_gif_set_src(animation_gif_, BOOT_GIF_PATH);
+
+    // 检查 GIF 是否加载成功
+    if (!lv_gif_is_loaded(animation_gif_)) {
+        ESP_LOGE(TAG, "Failed to load boot animation GIF");
+    } else {
+        // 设置只播放一次：根据 SetAnima() 的逻辑，1 表示播放1次
+        lv_gif_set_loop_count(animation_gif_, 1);
+        ESP_LOGI(TAG, "Boot animation loop count set to 1");
+        ESP_LOGI(TAG, "Boot animation configured for 25 FPS:");
+        ESP_LOGI(TAG, "  - Frame delay: 40ms");
+        ESP_LOGI(TAG, "  - LVGL port timer: 5ms");
+        ESP_LOGI(TAG, "  - GIF internal timer: 5ms");
+        ESP_LOGI(TAG, "  - Expected precise playback at 25 FPS");
+    }
+
+    // 记录动画开始时间
+    boot_animation_start_time_ = esp_timer_get_time();
+
+    ESP_LOGI(TAG, "Boot animation loaded and started at constructor (%.3f ms)",
+             boot_animation_start_time_ / 1000.0);
 
     // 其他UI组件设为nullptr，避免系统调用时出错
     status_label_ = nullptr;
@@ -217,24 +269,29 @@ void AnimaDisplay::SetAnima(const std::string& animation) {
 void AnimaDisplay::SetAnima(const std::string& animation, int loop_count) {
     DisplayLockGuard lock(this);
 
-    // 计算实际循环次数：LVGL中0通常表示无限循环
-    // 兼容调用方传入的-1 或 0 代表无限循环
-    int effective_loops = (loop_count <= 0) ? 0 : loop_count;
-
     // 使用哈希表快速查找，时间复杂度 O(1)
     auto it = animation_maps_.find(animation);
     const char* gif_path = nullptr;
 
     if (it != animation_maps_.end()) {
         gif_path = it->second;
-        ESP_LOGI(TAG, "设置动画: %s (循环次数: %s)",
-                 animation.c_str(),
-                 loop_count <= 0 ? "无限" : std::to_string(loop_count).c_str());
     } else {
         gif_path = DEFAULT_GIF_PATH;
-        ESP_LOGW(TAG, "未知动画'%s'，使用默认动画 (循环次数: %s)",
+        ESP_LOGW(TAG, "未知动画'%s'，使用默认动画", animation.c_str());
+    }
+
+    // 计算实际循环次数：LVGL中0通常表示无限循环
+    // 兼容调用方传入的-1 或 0 代表无限循环
+    int effective_loops = (loop_count <= 0) ? 0 : loop_count;
+
+    // 若为说话类动画，强制改为无限循环
+    if (gif_path && strstr(gif_path, "/state_expression/speaking/") != nullptr) {
+        effective_loops = 0; // 无限循环
+        ESP_LOGI(TAG, "设置动画: %s (循环次数: 无限, 说话模式)", animation.c_str());
+    } else {
+        ESP_LOGI(TAG, "设置动画: %s (循环次数: %s)",
                  animation.c_str(),
-                 loop_count <= 0 ? "无限" : std::to_string(loop_count).c_str());
+                 effective_loops == 0 ? "无限" : std::to_string(effective_loops).c_str());
     }
 
     // 完全重建GIF对象以避免timer竞态条件
