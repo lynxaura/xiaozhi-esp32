@@ -127,10 +127,10 @@ AnimaDisplay::AnimaDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_han
     ESP_LOGD(TAG, "Initialize LVGL port");
     lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
     port_cfg.task_priority = 1;
-    // 设置为 5ms 以支持高精度 GIF 播放
-    // 这样 LVGL 定时器可以更频繁地检查帧切换，避免播放变慢
-    // 25 FPS = 40ms per frame，5ms 定时器可以精确匹配（40ms = 8 ticks）
-    port_cfg.timer_period_ms = 5;
+    // 降低LVGL timer频率以减少CPU开销,避免与音频处理竞争
+    // 20ms (50Hz) 足以支持流畅的25 FPS GIF播放 (40ms per frame)
+    // 相比5ms减少80%的timer开销,显著降低对音频编解码的影响
+    port_cfg.timer_period_ms = 20;
     lvgl_port_init(&port_cfg);
 
     ESP_LOGD(TAG, "Adding LCD display");
@@ -221,9 +221,9 @@ void AnimaDisplay::SetupUI() {
         ESP_LOGI(TAG, "Boot animation loop count set to 1");
         ESP_LOGI(TAG, "Boot animation configured for 25 FPS:");
         ESP_LOGI(TAG, "  - Frame delay: 40ms");
-        ESP_LOGI(TAG, "  - LVGL port timer: 5ms");
+        ESP_LOGI(TAG, "  - LVGL port timer: 20ms (optimized for low CPU overhead)");
         ESP_LOGI(TAG, "  - GIF internal timer: 5ms");
-        ESP_LOGI(TAG, "  - Expected precise playback at 25 FPS");
+        ESP_LOGI(TAG, "  - Expected smooth playback at 25 FPS");
     }
 
     // 记录动画开始时间
@@ -293,6 +293,25 @@ void AnimaDisplay::SetAnima(const std::string& animation, int loop_count) {
                  animation.c_str(),
                  effective_loops == 0 ? "无限" : std::to_string(effective_loops).c_str());
     }
+
+    // ===== 优化: 避免重复加载相同的GIF文件 =====
+    // 记录上次加载的GIF路径和循环次数
+    static const char* last_gif_path = nullptr;
+    static int last_loop_count = -999;
+
+    if (animation_gif_ != nullptr &&
+        last_gif_path != nullptr &&
+        strcmp(last_gif_path, gif_path) == 0 &&
+        last_loop_count == effective_loops) {
+        ESP_LOGD(TAG, "GIF路径和循环次数未变化,跳过重载: %s (loops=%d)",
+                 animation.c_str(), effective_loops);
+        return;  // 相同路径和配置,无需重载
+    }
+
+    // 记录本次加载的路径和循环次数
+    last_gif_path = gif_path;
+    last_loop_count = effective_loops;
+    // ============================================
 
     // 完全重建GIF对象以避免timer竞态条件
     // 删除旧GIF对象(包括其内部timer)
