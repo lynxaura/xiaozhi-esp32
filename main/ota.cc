@@ -86,17 +86,36 @@ bool Ota::CheckVersion() {
         ESP_LOGE(TAG, "Check version URL is not properly set");
         return false;
     }
+    ESP_LOGI(TAG, "OTA server URL: %s", url.c_str());
+
+    // Check network status before attempting connection
+    auto network = board.GetNetwork();
+    if (!network) {
+        ESP_LOGE(TAG, "Network interface not available");
+        return false;
+    }
+    ESP_LOGI(TAG, "Network interface available, preparing HTTP client...");
 
     auto http = SetupHttp();
 
     std::string data = board.GetSystemInfoJson();
     std::string method = data.length() > 0 ? "POST" : "GET";
+    if (data.length() > 0) {
+        ESP_LOGI(TAG, "Sending system info (%u bytes) to OTA server", data.length());
+    }
     http->SetContent(std::move(data));
 
+    ESP_LOGI(TAG, "Initiating %s request to OTA server...", method.c_str());
     if (!http->Open(method, url)) {
-        ESP_LOGE(TAG, "Failed to open HTTP connection");
+        ESP_LOGE(TAG, "Failed to open HTTP connection to OTA server");
+        ESP_LOGE(TAG, "Possible causes:");
+        ESP_LOGE(TAG, "  1. Network connectivity issue (WiFi disconnected)");
+        ESP_LOGE(TAG, "  2. DNS resolution failed");
+        ESP_LOGE(TAG, "  3. TCP connection timeout (server unreachable)");
+        ESP_LOGE(TAG, "  4. Firewall blocking the connection");
         return false;
     }
+    ESP_LOGI(TAG, "HTTP connection established successfully");
 
     auto status_code = http->GetStatusCode();
     if (status_code != 200) {
