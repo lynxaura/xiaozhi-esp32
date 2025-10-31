@@ -105,13 +105,13 @@ bool DeviceActivation::ActivateOnce(const std::string& serial_number) {
 
     ESP_LOGD(TAG, "Activation request payload: %s", payload.c_str());
 
-    // 配置 HTTP 客户端（使用缓冲区来自动接收响应）
-    char response_buffer[512];
+    // 配置 HTTP 客户端（使用与心跳相同的方式）
     esp_http_client_config_t config = {};
     config.url = ACTIVATE_URL;
     config.method = HTTP_METHOD_POST;
     config.timeout_ms = 5000;
-    config.buffer_size = sizeof(response_buffer);
+    config.disable_auto_redirect = false;
+    config.max_redirection_count = 10;
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == nullptr) {
@@ -125,40 +125,27 @@ bool DeviceActivation::ActivateOnce(const std::string& serial_number) {
     // 设置 POST 数据
     esp_http_client_set_post_field(client, payload.c_str(), payload.length());
 
-    // 打开连接
-    esp_err_t err = esp_http_client_open(client, payload.length());
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
-        esp_http_client_cleanup(client);
-        return false;
-    }
-
-    // 写入 POST 数据
-    int write_len = esp_http_client_write(client, payload.c_str(), payload.length());
-    if (write_len < 0) {
-        ESP_LOGE(TAG, "Failed to write POST data");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        return false;
-    }
-
-    // 获取响应头
-    int content_length = esp_http_client_fetch_headers(client);
-    int status_code = esp_http_client_get_status_code(client);
-
-    ESP_LOGI(TAG, "HTTP activation response: status=%d, content_length=%d", status_code, content_length);
+    // 执行 HTTP 请求（和心跳一样使用 perform）
+    esp_err_t err = esp_http_client_perform(client);
 
     bool success = false;
 
-    if (status_code == 200 && content_length > 0) {
-        // 读取响应体
-        int read_len = esp_http_client_read(client, response_buffer, sizeof(response_buffer) - 1);
+    if (err == ESP_OK) {
+        int status_code = esp_http_client_get_status_code(client);
+        int content_length = esp_http_client_get_content_length(client);
 
-        ESP_LOGI(TAG, "Read %d bytes from response (expected %d)", read_len, content_length);
+        ESP_LOGI(TAG, "HTTP activation response: status=%d, content_length=%d", status_code, content_length);
 
-        if (read_len > 0) {
-            response_buffer[read_len] = '\0';
-            ESP_LOGI(TAG, "Activation response: %s", response_buffer);
+        if (status_code == 200) {
+            // 读取响应内容（和心跳一样的方式）
+            char response_buffer[512];
+            int read_len = esp_http_client_read_response(client, response_buffer, sizeof(response_buffer) - 1);
+
+            ESP_LOGI(TAG, "Read %d bytes from response (content_length=%d)", read_len, content_length);
+
+            if (read_len > 0) {
+                response_buffer[read_len] = '\0';
+                ESP_LOGI(TAG, "Activation response: %s", response_buffer);
 
             // 解析 JSON 响应
             cJSON* response_json = cJSON_Parse(response_buffer);
@@ -201,18 +188,16 @@ bool DeviceActivation::ActivateOnce(const std::string& serial_number) {
             } else {
                 ESP_LOGE(TAG, "Failed to parse activation response JSON: %s", response_buffer);
             }
-        } else if (read_len == 0) {
-            ESP_LOGE(TAG, "Read 0 bytes from response (empty response body)");
         } else {
-            ESP_LOGE(TAG, "Failed to read activation response, error code: %d", read_len);
+            ESP_LOGE(TAG, "Read 0 bytes from response (empty response body)");
         }
-    } else if (status_code != 200) {
-        ESP_LOGW(TAG, "Activation HTTP request failed with status: %d", status_code);
     } else {
-        ESP_LOGE(TAG, "Content length is 0 or negative: %d", content_length);
+        ESP_LOGW(TAG, "Activation HTTP request failed with status: %d", status_code);
+    }
+} else {
+        ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(err));
     }
 
-    esp_http_client_close(client);
     esp_http_client_cleanup(client);
     return success;
 }
