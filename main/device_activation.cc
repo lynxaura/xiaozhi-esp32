@@ -129,55 +129,65 @@ bool DeviceActivation::ActivateOnce(const std::string& serial_number) {
 
     if (err == ESP_OK) {
         int status_code = esp_http_client_get_status_code(client);
-        ESP_LOGI(TAG, "HTTP activation response status: %d", status_code);
+        int content_length = esp_http_client_get_content_length(client);
+        ESP_LOGI(TAG, "HTTP activation response: status=%d, content_length=%d", status_code, content_length);
 
         if (status_code == 200) {
             // 读取响应内容
             char response_buffer[512];
             int read_len = esp_http_client_read(client, response_buffer, sizeof(response_buffer) - 1);
 
+            ESP_LOGI(TAG, "Read %d bytes from response (expected %d)", read_len, content_length);
+
             if (read_len > 0) {
                 response_buffer[read_len] = '\0';
-                ESP_LOGD(TAG, "Activation response: %s", response_buffer);
+                ESP_LOGI(TAG, "Activation response: %s", response_buffer);
 
                 // 解析 JSON 响应
                 cJSON* response_json = cJSON_Parse(response_buffer);
                 if (response_json != nullptr) {
                     cJSON* code = cJSON_GetObjectItem(response_json, "code");
 
-                    if (cJSON_IsNumber(code) && code->valueint == 0) {
-                        // 激活成功
-                        ESP_LOGI(TAG, "Activation request successful");
-                        success = true;
+                    if (cJSON_IsNumber(code)) {
+                        ESP_LOGI(TAG, "Server response code: %d", code->valueint);
 
-                        // 记录 device_id（如果需要用于日志）
-                        cJSON* data = cJSON_GetObjectItem(response_json, "data");
-                        if (cJSON_IsObject(data)) {
-                            cJSON* device = cJSON_GetObjectItem(data, "device");
-                            if (cJSON_IsObject(device)) {
-                                cJSON* device_id = cJSON_GetObjectItem(device, "id");
-                                if (cJSON_IsString(device_id)) {
-                                    ESP_LOGI(TAG, "Server assigned device_id: %s", device_id->valuestring);
+                        if (code->valueint == 0) {
+                            // 激活成功
+                            ESP_LOGI(TAG, "Activation request successful");
+                            success = true;
+
+                            // 记录 device_id（如果需要用于日志）
+                            cJSON* data = cJSON_GetObjectItem(response_json, "data");
+                            if (cJSON_IsObject(data)) {
+                                cJSON* device = cJSON_GetObjectItem(data, "device");
+                                if (cJSON_IsObject(device)) {
+                                    cJSON* device_id = cJSON_GetObjectItem(device, "id");
+                                    if (cJSON_IsString(device_id)) {
+                                        ESP_LOGI(TAG, "Server assigned device_id: %s", device_id->valuestring);
+                                    }
                                 }
+                            }
+                        } else {
+                            // 服务器返回错误
+                            cJSON* message = cJSON_GetObjectItem(response_json, "message");
+                            if (cJSON_IsString(message)) {
+                                ESP_LOGW(TAG, "Activation failed: %s", message->valuestring);
+                            } else {
+                                ESP_LOGW(TAG, "Activation failed with code: %d", code->valueint);
                             }
                         }
                     } else {
-                        // 服务器返回错误
-                        cJSON* message = cJSON_GetObjectItem(response_json, "message");
-                        if (cJSON_IsString(message)) {
-                            ESP_LOGW(TAG, "Activation failed: %s", message->valuestring);
-                        } else {
-                            ESP_LOGW(TAG, "Activation failed with code: %d",
-                                     cJSON_IsNumber(code) ? code->valueint : -1);
-                        }
+                        ESP_LOGE(TAG, "Response JSON does not contain valid 'code' field");
                     }
 
                     cJSON_Delete(response_json);
                 } else {
-                    ESP_LOGE(TAG, "Failed to parse activation response JSON");
+                    ESP_LOGE(TAG, "Failed to parse activation response JSON: %s", response_buffer);
                 }
+            } else if (read_len == 0) {
+                ESP_LOGE(TAG, "Read 0 bytes from response (empty response body)");
             } else {
-                ESP_LOGE(TAG, "Failed to read activation response");
+                ESP_LOGE(TAG, "Failed to read activation response, error code: %d", read_len);
             }
         } else {
             ESP_LOGW(TAG, "Activation HTTP request failed with status: %d", status_code);
