@@ -9,6 +9,7 @@
 #include "mcp_server.h"
 #include "assets.h"
 #include "settings.h"
+#include "device_activation.h"
 #include "boards/ALichuangTest/skills/animation.h"
 
 #include <cstring>
@@ -429,6 +430,11 @@ void Application::Start() {
 
     // Update the status bar immediately to show the network state
     display->UpdateStatusBar(true);
+
+    // Check and perform device activation (if not already activated)
+    ESP_LOGI(TAG, "Checking device activation status...");
+    auto& device_activation = DeviceActivation::GetInstance();
+    device_activation.CheckAndActivate();
 
     // ====== 在动画播放期间，可以进行不影响显示的后台初始化 ======
     const int64_t BOOT_ANIMATION_DURATION_US = 11000000; // 11秒转为微秒
