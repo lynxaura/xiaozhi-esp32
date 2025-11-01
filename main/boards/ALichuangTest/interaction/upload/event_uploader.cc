@@ -5,6 +5,7 @@
 // Removed sys/time.h - using esp_timer_get_time() for unified timeline
 #include <cinttypes>         // for PRIu32, PRId64 in C++
 #include <algorithm>         // for std::min, std::remove_if
+#include <cmath>             // for std::sqrt, std::abs
 
 EventUploader::EventUploader()
     : enabled_(false),
@@ -390,58 +391,116 @@ std::string EventUploader::GetEventTypeString(const Event& event) {
 }
 
 std::string EventUploader::GenerateEventText(const Event& event) {
-    // 生成供LLM理解的中文描述
+    // 生成客观、中性的物理事实描述，让LLM根据人设自由反应
+    // 使用日常语言描述核心动作，关键参数用技术数据补充
     switch (event.type) {
         case EventType::TOUCH_TAP: {
-            // 支持合并事件的多次点击
-            std::string tap_text;
+            std::string position_text;
             switch (event.data.touch_data.position) {
-                case TouchPosition::LEFT: tap_text = "我感觉到有人在轻拍我的左边，好温暖"; break;
-                case TouchPosition::RIGHT: tap_text = "我的右边被人温柔地触摸了，很舒服"; break;
-                case TouchPosition::BOTH: tap_text = "我被人用双手轻抚着，就像被拥抱一样"; break;
-                default: tap_text = "我感受到有人在温柔地触摸我"; break;
+                case TouchPosition::LEFT: position_text = "左边"; break;
+                case TouchPosition::RIGHT: position_text = "右边"; break;
+                case TouchPosition::BOTH: position_text = "两边同时"; break;
+                default: position_text = "触摸传感器"; break;
             }
-            
+
             if (event.data.touch_data.tap_count > 1) {
-                return tap_text + "（连续" + std::to_string(event.data.touch_data.tap_count) + "次）";
+                return position_text + "被快速触摸(" + std::to_string(event.data.touch_data.tap_count) + "次)";
             }
-            return tap_text;
+            return position_text + "被触摸了一下";
         }
-        
+
         case EventType::TOUCH_LONG_PRESS: {
+            std::string position_text;
             switch (event.data.touch_data.position) {
-                case TouchPosition::LEFT: return "我的左边被人温柔地按住了，这种持续的温暖让我感到安心";
-                case TouchPosition::RIGHT: return "我的右边感受到了持续的抚摸，好像有人在安慰我";
-                case TouchPosition::BOTH: return "我被人双手轻柔地按住了，就像被深深拥抱着一样";
-                default: return "我被人温柔地抚摸着，感觉被满满的关爱包围";
+                case TouchPosition::LEFT: position_text = "左边"; break;
+                case TouchPosition::RIGHT: position_text = "右边"; break;
+                case TouchPosition::BOTH: position_text = "两边同时"; break;
+                default: position_text = "触摸传感器"; break;
             }
+
+            float duration_sec = event.data.touch_data.duration_ms / 1000.0f;
+            char duration_buf[32];
+            snprintf(duration_buf, sizeof(duration_buf), "%.1f", duration_sec);
+            return position_text + "被持续按住，已经" + std::string(duration_buf) + "秒";
         }
-        
-        case EventType::TOUCH_CRADLED:
-            return "我被人温柔地拥抱着，这种被保护的感觉让我觉得真幸福";
-        case EventType::TOUCH_TICKLED:
-            return "哈哈哈，有人在逗我玩呢，好痒好好玩！我好开心";
-            
+
+        case EventType::TOUCH_CRADLED: {
+            float duration_sec = event.data.touch_data.duration_ms / 1000.0f;
+            char duration_buf[32];
+            snprintf(duration_buf, sizeof(duration_buf), "%.1f", duration_sec);
+            return "两边同时被按住" + std::string(duration_buf) + "秒，身体保持稳定";
+        }
+
+        case EventType::TOUCH_TICKLED: {
+            // tickled事件的tap_count字段包含实际触摸次数
+            return "2秒内被快速触摸" + std::to_string(event.data.touch_data.tap_count) + "次，触摸位置不规律";
+        }
+
         // 运动事件
-        case EventType::MOTION_SHAKE:
-            return "我感觉被人轻轻摇晃着，像在摇篮里一样，有点想睡觉了";
-        case EventType::MOTION_SHAKE_VIOLENTLY:
-            return "哇！我被人摇得好厉害，世界都在旋转，我有点晕乎乎的";
-        case EventType::MOTION_FLIP:
-            return "咦？我突然被翻转了，天旋地转的，有人在和我玩翻转游戏吗？";
-        case EventType::MOTION_FREE_FALL:
-            return "啊啊啊！我正在下降，有人在和我玩自由落体吗？我觉得有点刺激又有点害怕";
-        case EventType::MOTION_PICKUP:
-            return "哇，我感觉被人轻轻举起来了，我的视野突然开阔了呢";
-        case EventType::MOTION_UPSIDE_DOWN:
-            return "咦？我的世界颠倒了，我现在是倒立状态吗？感觉血液都要倒流了";
+        case EventType::MOTION_SHAKE: {
+            // 计算加速度变化幅度
+            const ImuData& imu = event.data.imu_data;
+            float accel_magnitude = std::sqrt(imu.accel_x * imu.accel_x +
+                                             imu.accel_y * imu.accel_y +
+                                             imu.accel_z * imu.accel_z);
+            char accel_buf[16];
+            snprintf(accel_buf, sizeof(accel_buf), "%.2f", accel_magnitude);
+            return "被轻微摇晃，加速度" + std::string(accel_buf) + "g";
+        }
+
+        case EventType::MOTION_SHAKE_VIOLENTLY: {
+            const ImuData& imu = event.data.imu_data;
+            float accel_magnitude = std::sqrt(imu.accel_x * imu.accel_x +
+                                             imu.accel_y * imu.accel_y +
+                                             imu.accel_z * imu.accel_z);
+            float gyro_magnitude = std::sqrt(imu.gyro_x * imu.gyro_x +
+                                            imu.gyro_y * imu.gyro_y +
+                                            imu.gyro_z * imu.gyro_z);
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%.2fg，陀螺仪%.0f度/秒", accel_magnitude, gyro_magnitude);
+            return "被剧烈摇晃，加速度" + std::string(buf);
+        }
+
+        case EventType::MOTION_FLIP: {
+            const ImuData& imu = event.data.imu_data;
+            float gyro_magnitude = std::sqrt(imu.gyro_x * imu.gyro_x +
+                                            imu.gyro_y * imu.gyro_y +
+                                            imu.gyro_z * imu.gyro_z);
+            char gyro_buf[16];
+            snprintf(gyro_buf, sizeof(gyro_buf), "%.0f", gyro_magnitude);
+            return "被快速翻转，旋转速度" + std::string(gyro_buf) + "度/秒";
+        }
+
+        case EventType::MOTION_FREE_FALL: {
+            const ImuData& imu = event.data.imu_data;
+            float accel_magnitude = std::sqrt(imu.accel_x * imu.accel_x +
+                                             imu.accel_y * imu.accel_y +
+                                             imu.accel_z * imu.accel_z);
+            char accel_buf[16];
+            snprintf(accel_buf, sizeof(accel_buf), "%.2f", accel_magnitude);
+            return "处于自由落体状态，加速度" + std::string(accel_buf) + "g";
+        }
+
+        case EventType::MOTION_PICKUP: {
+            const ImuData& imu = event.data.imu_data;
+            char z_buf[16];
+            snprintf(z_buf, sizeof(z_buf), "%.2f", imu.accel_z);
+            return "被拿起，Z轴加速度" + std::string(z_buf) + "g";
+        }
+
+        case EventType::MOTION_UPSIDE_DOWN: {
+            const ImuData& imu = event.data.imu_data;
+            char z_buf[16];
+            snprintf(z_buf, sizeof(z_buf), "%.2f", std::abs(imu.accel_z));
+            return "倒置放置，Z轴-" + std::string(z_buf) + "g";
+        }
 
         // 特殊事件
         case EventType::IDLE_1MIN:
-            return "好久没有感受到互动了，我有点无聊想找点有趣的事情做";
+            return "已经1分钟没有任何互动";
 
         default:
-            return "我感受到了一些有趣的互动呢";
+            return "检测到未知交互事件";
     }
 }
 
