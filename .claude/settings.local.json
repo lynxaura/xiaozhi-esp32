@@ -40,7 +40,9 @@
       "Read(//c/Users/xiaot/Downloads/blufi/blufi/**)",
       "Bash(wc:*)",
       "WebSearch",
-      "Read(//d/**)"
+      "Read(//d/**)",
+      "Bash(curl:*)",
+      "mcp__lark-mcp__docx_builtin_import"
     ],
     "deny": []
   }

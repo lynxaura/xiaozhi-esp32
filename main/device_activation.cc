@@ -110,8 +110,6 @@ bool DeviceActivation::ActivateOnce(const std::string& serial_number) {
     config.url = ACTIVATE_URL;
     config.method = HTTP_METHOD_POST;
     config.timeout_ms = 5000;
-    config.disable_auto_redirect = false;
-    config.max_redirection_count = 10;
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == nullptr) {
@@ -122,45 +120,56 @@ bool DeviceActivation::ActivateOnce(const std::string& serial_number) {
     // 设置请求头
     esp_http_client_set_header(client, "Content-Type", "application/json");
 
-    // 设置 POST 数据
-    esp_http_client_set_post_field(client, payload.c_str(), payload.length());
-
-    // 执行 HTTP 请求（和心跳一样使用 perform）
-    esp_err_t err = esp_http_client_perform(client);
-
     bool success = false;
 
-    if (err == ESP_OK) {
-        int status_code = esp_http_client_get_status_code(client);
-        int content_length = esp_http_client_get_content_length(client);
+    // 使用 open/write/fetch/read 流程，避免 perform 之后无法读取响应体的问题
+    esp_err_t err = esp_http_client_open(client, payload.length());
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
+        esp_http_client_cleanup(client);
+        return false;
+    }
 
-        ESP_LOGI(TAG, "HTTP activation response: status=%d, content_length=%d", status_code, content_length);
+    int to_write = payload.length();
+    int written = esp_http_client_write(client, payload.c_str(), to_write);
+    if (written < 0 || written != to_write) {
+        ESP_LOGE(TAG, "Failed to write POST data: written=%d expected=%d", written, to_write);
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        return false;
+    }
 
-        if (status_code == 200) {
-            // 读取响应内容（和心跳一样的方式）
-            char response_buffer[512];
-            int read_len = esp_http_client_read_response(client, response_buffer, sizeof(response_buffer) - 1);
+    int64_t content_length = esp_http_client_fetch_headers(client);
+    int status_code = esp_http_client_get_status_code(client);
+    ESP_LOGI(TAG, "HTTP activation response: status=%d, content_length=%lld", status_code, (long long)content_length);
 
-            ESP_LOGI(TAG, "Read %d bytes from response (content_length=%d)", read_len, content_length);
+    if (status_code == 200) {
+        std::string response;
+        response.reserve(512);
+        char buffer[256];
+        int total_read = 0;
 
-            if (read_len > 0) {
-                response_buffer[read_len] = '\0';
-                ESP_LOGI(TAG, "Activation response: %s", response_buffer);
+        while (true) {
+            int r = esp_http_client_read(client, buffer, sizeof(buffer) - 1);
+            if (r <= 0) break;
+            buffer[r] = '\0';
+            response.append(buffer, r);
+            total_read += r;
+            if (content_length > 0 && total_read >= content_length) break;
+        }
 
-            // 解析 JSON 响应
-            cJSON* response_json = cJSON_Parse(response_buffer);
+        ESP_LOGI(TAG, "Read %d bytes from response (content_length=%lld)", total_read, (long long)content_length);
+
+        if (!response.empty()) {
+            ESP_LOGI(TAG, "Activation response: %s", response.c_str());
+            cJSON* response_json = cJSON_Parse(response.c_str());
             if (response_json != nullptr) {
                 cJSON* code = cJSON_GetObjectItem(response_json, "code");
-
                 if (cJSON_IsNumber(code)) {
                     ESP_LOGI(TAG, "Server response code: %d", code->valueint);
-
                     if (code->valueint == 0) {
-                        // 激活成功
                         ESP_LOGI(TAG, "Activation request successful");
                         success = true;
-
-                        // 记录 device_id（如果需要用于日志）
                         cJSON* data = cJSON_GetObjectItem(response_json, "data");
                         if (cJSON_IsObject(data)) {
                             cJSON* device = cJSON_GetObjectItem(data, "device");
@@ -172,7 +181,6 @@ bool DeviceActivation::ActivateOnce(const std::string& serial_number) {
                             }
                         }
                     } else {
-                        // 服务器返回错误
                         cJSON* message = cJSON_GetObjectItem(response_json, "message");
                         if (cJSON_IsString(message)) {
                             ESP_LOGW(TAG, "Activation failed: %s", message->valuestring);
@@ -183,10 +191,9 @@ bool DeviceActivation::ActivateOnce(const std::string& serial_number) {
                 } else {
                     ESP_LOGE(TAG, "Response JSON does not contain valid 'code' field");
                 }
-
                 cJSON_Delete(response_json);
             } else {
-                ESP_LOGE(TAG, "Failed to parse activation response JSON: %s", response_buffer);
+                ESP_LOGE(TAG, "Failed to parse activation response JSON: %s", response.c_str());
             }
         } else {
             ESP_LOGE(TAG, "Read 0 bytes from response (empty response body)");
@@ -194,10 +201,8 @@ bool DeviceActivation::ActivateOnce(const std::string& serial_number) {
     } else {
         ESP_LOGW(TAG, "Activation HTTP request failed with status: %d", status_code);
     }
-} else {
-        ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(err));
-    }
 
+    esp_http_client_close(client);
     esp_http_client_cleanup(client);
     return success;
 }
