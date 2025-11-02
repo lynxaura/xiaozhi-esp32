@@ -158,7 +158,10 @@ public:
     // 情感引擎集成
     void InitializeEmotionEngine();
     void SetEmotionReportCallback(EmotionEngine::EmotionReportCallback callback);
-    
+
+    // 获取MultitouchEngine指针（用于外部控制）
+    MultitouchEngine* GetMultitouchEngine() { return multitouch_engine_; }
+
 private:
     // 运动引擎（内部创建和管理）
     MotionEngine* motion_engine_;

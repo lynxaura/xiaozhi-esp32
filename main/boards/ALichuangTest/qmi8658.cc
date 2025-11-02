@@ -4,6 +4,7 @@
 #include <esp_err.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <algorithm>
 
 #define TAG "QMI8658"
 
@@ -12,13 +13,12 @@ Qmi8658::Qmi8658(i2c_master_bus_handle_t i2c_bus)
 }
 
 bool Qmi8658::IsPresent() {
-    try {
-        uint8_t who_am_i = ReadReg(QMI8658_WHO_AM_I);
-        // ESP_LOGI(TAG, "WHO_AM_I: 0x%02X", who_am_i);
-        return (who_am_i == 0x05);  // QMI8658的WHO_AM_I值
-    } catch (...) {
+    uint8_t who = 0;
+    esp_err_t err = ReadRegSafe(QMI8658_WHO_AM_I, who);
+    if (err != ESP_OK) {
         return false;
     }
+    return (who == 0x05);
 }
 
 esp_err_t Qmi8658::Initialize() {
@@ -50,15 +50,44 @@ esp_err_t Qmi8658::Initialize() {
 }
 
 esp_err_t Qmi8658::ReadRawData(ImuData& data) {
+    // 退避检查，避免总线异常时持续占用 CPU
+    int64_t now = esp_timer_get_time();
+    if (now < next_retry_time_us_) {
+        return ESP_ERR_TIMEOUT;
+    }
+
     // 检查数据是否准备好
-    uint8_t status = ReadReg(QMI8658_STATUS0);
+    uint8_t status = 0;
+    esp_err_t err = ReadRegSafe(QMI8658_STATUS0, status);
+    if (err != ESP_OK) {
+        consecutive_failures_++;
+        // 指数退避上限 500ms
+        int backoff_ms = std::min(500, 50 * consecutive_failures_);
+        next_retry_time_us_ = now + (int64_t)backoff_ms * 1000;
+        vTaskDelay(pdMS_TO_TICKS(1));
+        return err;
+    }
     if ((status & 0x03) != 0x03) {  // 检查加速度计和陀螺仪数据都准备好
+        consecutive_failures_ = std::min(consecutive_failures_ + 1, 1000);
+        int backoff_ms = std::min(200, 10 * consecutive_failures_);
+        next_retry_time_us_ = now + (int64_t)backoff_ms * 1000;
         return ESP_ERR_TIMEOUT;  // 使用ESP_ERR_TIMEOUT代替ESP_ERR_NOT_READY
     }
 
     // 读取原始数据 (12字节: 6个轴各2字节)
     uint8_t buffer[12];
-    ReadRegs(QMI8658_AX_L, buffer, 12);
+    err = ReadRegsSafe(QMI8658_AX_L, buffer, sizeof(buffer));
+    if (err != ESP_OK) {
+        consecutive_failures_++;
+        int backoff_ms = std::min(500, 50 * consecutive_failures_);
+        next_retry_time_us_ = now + (int64_t)backoff_ms * 1000;
+        vTaskDelay(pdMS_TO_TICKS(1));
+        return err;
+    }
+
+    // 成功，清理退避状态
+    consecutive_failures_ = 0;
+    next_retry_time_us_ = 0;
 
     // 转换为有符号16位整数 (原始值)
     data.acc_x_raw = (int16_t)(buffer[1] << 8 | buffer[0]);
@@ -75,7 +104,7 @@ esp_err_t Qmi8658::ReadRawData(ImuData& data) {
     data.gyro_x = data.gyro_x_raw * GYRO_SCALE;
     data.gyro_y = data.gyro_y_raw * GYRO_SCALE;
     data.gyro_z = data.gyro_z_raw * GYRO_SCALE;
-    
+
     data.timestamp_us = esp_timer_get_time();
 
     return ESP_OK;
@@ -104,4 +133,14 @@ esp_err_t Qmi8658::ReadDataWithAngles(ImuData& data) {
         CalculateAnglesFromAccel(data);
     }
     return ret;
+}
+
+esp_err_t Qmi8658::ReadRegSafe(uint8_t reg, uint8_t& value) {
+    esp_err_t err = i2c_master_transmit_receive(i2c_device_, &reg, 1, &value, 1, 100);
+    return err;
+}
+
+esp_err_t Qmi8658::ReadRegsSafe(uint8_t reg, uint8_t* buffer, size_t length) {
+    esp_err_t err = i2c_master_transmit_receive(i2c_device_, &reg, 1, buffer, length, 100);
+    return err;
 }

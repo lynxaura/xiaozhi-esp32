@@ -125,10 +125,12 @@ void ResponseTemplate::GetComponents(EmotionQuadrant quadrant,
 LocalResponseController::LocalResponseController(
     Motion* motion_skill,
     Vibration* vibration_skill,
-    Display* display)
+    Display* display,
+    EventEngine* event_engine)
     : motion_skill_(motion_skill)
     , vibration_skill_(vibration_skill)
     , display_(display)
+    , event_engine_(event_engine)
     , name_pool_index_(0)
     , initialized_(false) {
 }
@@ -227,9 +229,38 @@ void LocalResponseController::ProcessEvent(const Event& event) {
 }
 
 void LocalResponseController::ProcessStateChange(DeviceState new_state) {
+    ESP_LOGI(TAG, "ProcessStateChange called with state: %d", static_cast<int>(new_state));
+
     if (!initialized_) {
         ESP_LOGW(TAG, "Controller not initialized, ignoring state change");
         return;
+    }
+
+    // 控制 MultitouchEngine：在语音交互期间暂停，空闲时恢复
+    if (event_engine_) {
+        MultitouchEngine* multitouch = event_engine_->GetMultitouchEngine();
+        if (multitouch) {
+            // 触摸检测仅在 idle 和 listening 状态启用
+            bool should_enable = (new_state == kDeviceStateIdle ||
+                                 new_state == kDeviceStateListening);
+
+            // 添加状态检查日志
+            bool current_state = multitouch->IsEnabled();
+            if (current_state != should_enable) {
+                multitouch->Enable(should_enable);
+                ESP_LOGI(TAG, "MultitouchEngine state changed: %s -> %s for device state %d",
+                         current_state ? "enabled" : "disabled",
+                         should_enable ? "enabled" : "disabled",
+                         static_cast<int>(new_state));
+            } else {
+                ESP_LOGD(TAG, "MultitouchEngine already %s for state %d",
+                         should_enable ? "enabled" : "disabled", static_cast<int>(new_state));
+            }
+        } else {
+            ESP_LOGW(TAG, "MultitouchEngine is null, cannot control state");
+        }
+    } else {
+        ESP_LOGW(TAG, "EventEngine is null, cannot control MultitouchEngine");
     }
 
     // 只处理 idle 和 listening 状态

@@ -165,7 +165,8 @@ public:
     LocalResponseController(
         Motion* motion_skill,
         Vibration* vibration_skill,
-        Display* display
+        Display* display,
+        EventEngine* event_engine = nullptr
     );
     ~LocalResponseController();
     
@@ -195,6 +196,7 @@ private:
     Motion* motion_skill_;
     Vibration* vibration_skill_;
     Display* display_;
+    EventEngine* event_engine_;
 
     // 响应模板（固定大小数组，避免动态分配）
     static constexpr size_t MAX_TEMPLATES = 50;  // 增加到50以容纳所有配置的事件

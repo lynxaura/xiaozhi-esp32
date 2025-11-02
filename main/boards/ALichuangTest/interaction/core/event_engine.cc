@@ -213,7 +213,7 @@ void EventEngine::SetupMultitouchEngineCallbacks() {
         ESP_LOGI(TAG, "Registering multitouch engine callback");
         multitouch_engine_->RegisterCallback(
             [this](const TouchEvent& event) {
-                ESP_LOGI(TAG, "Lambda callback invoked for multitouch event");
+                ESP_LOGD(TAG, "Multitouch event callback invoked");
                 this->OnTouchEvent(event);
             }
         );
@@ -307,7 +307,7 @@ void EventEngine::OnMotionEvent(const MotionEvent& motion_event) {
 }
 
 void EventEngine::DispatchEvent(const Event& event) {
-    ESP_LOGI(TAG, "DispatchEvent called with event type=%d", (int)event.type);
+    ESP_LOGD(TAG, "DispatchEvent called with event type=%d", (int)event.type);
 
     if (!event_processor_) {
         ESP_LOGE(TAG, "Event processor is null! Cannot process event type=%d", (int)event.type);
@@ -324,8 +324,8 @@ void EventEngine::DispatchEvent(const Event& event) {
              should_process, (int)event.type);
 
     if (!should_process) {
-        // 事件被丢弃（防抖、节流、冷却等），但空闲状态已经重置
-        ESP_LOGI(TAG, "Event type=%d was filtered out by processing strategy", (int)event.type);
+        // 事件被丢弃（防抖、节流、冷却等）
+        ESP_LOGD(TAG, "Event type=%d filtered out by processing strategy", (int)event.type);
         return;
     }
 
@@ -461,7 +461,7 @@ void EventEngine::OnTouchEvent(const TouchEvent& touch_event) {
         case TouchPosition::ANY: position_str = "ANY"; break;
     }
     
-    ESP_LOGI(TAG, "Touch event received: touch_type=%d -> event_type=%d, position=%s, duration=%lums", 
+    ESP_LOGD(TAG, "Touch event received: touch_type=%d -> event_type=%d, position=%s, duration=%lums", 
             (int)touch_event.type,
             (int)event.type,
             position_str,

@@ -164,7 +164,7 @@ void EventUploader::ProcessCachedEvents() {
         return;
     }
     
-    ESP_LOGI(TAG_EVENT_UPLOADER, "Processing %lu cached events", (unsigned long)event_cache_.size());
+        ESP_LOGI(TAG_EVENT_UPLOADER, "Processing %lu cached events", (unsigned long)event_cache_.size());
     
     try {
         // 性能监控
@@ -187,7 +187,7 @@ void EventUploader::ProcessCachedEvents() {
             // 验证JSON
             cJSON* json = cJSON_Parse(payload.c_str());
             if (json) {
-                ESP_LOGI(TAG_EVENT_UPLOADER, "Sending batch of %lu events", (unsigned long)(batch_end - batch_start));
+                ESP_LOGD(TAG_EVENT_UPLOADER, "Sending batch of %lu events", (unsigned long)(batch_end - batch_start));
                 cJSON_Delete(json);
                 
                 Application::GetInstance().SendEventMessage(payload);
@@ -262,7 +262,7 @@ EventUploader::CachedEvent EventUploader::ConvertEvent(const Event& event) {
         cached.end_time = event.timestamp_us;
         cached.start_time = cached.end_time - (cached.duration_ms * 1000);
         unsigned long ts_ms = (unsigned long)(event.timestamp_us / 1000ULL);
-        ESP_LOGI(TAG_EVENT_UPLOADER, "Event %s: using event timestamp=%lums (%.1f sec ago)",
+        ESP_LOGD(TAG_EVENT_UPLOADER, "Event %s: using event timestamp=%lums (%.1f sec ago)",
                  cached.event_type.c_str(), ts_ms,
                  (current_time_us - event.timestamp_us) / 1000000.0);
     } else {
@@ -270,7 +270,7 @@ EventUploader::CachedEvent EventUploader::ConvertEvent(const Event& event) {
         cached.start_time = current_time_us - (cached.duration_ms * 1000);
         cached.end_time = current_time_us;
         unsigned long cur_ms = (unsigned long)(current_time_us / 1000ULL);
-        ESP_LOGI(TAG_EVENT_UPLOADER, "Event %s: no timestamp, using current time=%lums",
+        ESP_LOGD(TAG_EVENT_UPLOADER, "Event %s: no timestamp, using current time=%lums",
                  cached.event_type.c_str(), cur_ms);
     }
     ESP_LOGD(TAG_EVENT_UPLOADER, "Using esp_timer timeline: end=%lums, start=%lums",
@@ -591,7 +591,7 @@ void EventUploader::SendBatchEvents(std::vector<CachedEvent>&& events) {
             // 检查事件是否过期
             int64_t age_us = current_time_us - event.end_time;
             int64_t timeout_us = static_cast<int64_t>(EventNotificationConfig::CACHE_TIMEOUT_MS) * 1000LL;
-            ESP_LOGI(TAG_EVENT_UPLOADER, "Event age check: %s, current=%lums, event_end=%lums, age=%ldms, timeout=%ldms",
+            ESP_LOGD(TAG_EVENT_UPLOADER, "Event age check: %s, current=%lums, event_end=%lums, age=%ldms, timeout=%ldms",
                      event.event_type.c_str(),
                      (unsigned long)(current_time_us/1000ULL), (unsigned long)(event.end_time/1000ULL),
                      (long)(age_us/1000), (long)(timeout_us/1000));
@@ -615,14 +615,14 @@ void EventUploader::SendBatchEvents(std::vector<CachedEvent>&& events) {
         // 验证JSON有效性
         cJSON* json = cJSON_Parse(payload.c_str());
         if (json) {
-            ESP_LOGI(TAG_EVENT_UPLOADER, "Batch JSON valid, sending %lu events to server", 
+            ESP_LOGD(TAG_EVENT_UPLOADER, "Batch JSON valid, sending %lu events to server", 
                      (unsigned long)valid_events.size());
             cJSON_Delete(json);
             
             // 发送到服务器
             Application::GetInstance().SendEventMessage(payload);
             
-            ESP_LOGI(TAG_EVENT_UPLOADER, "✓ Batch events sent successfully");
+            ESP_LOGI(TAG_EVENT_UPLOADER, "✓ Sent %lu events", (unsigned long)valid_events.size());
         } else {
             ESP_LOGE(TAG_EVENT_UPLOADER, "✗ Batch JSON invalid, not sending");
         }

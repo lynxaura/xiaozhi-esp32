@@ -111,6 +111,14 @@ private:
     static constexpr float ACCEL_SCALE = 4.0f / 32768.0f;   // ±4g范围
     static constexpr float GYRO_SCALE = 512.0f / 32768.0f;  // ±512 deg/s范围
     static constexpr float RAD_TO_DEG = 57.29578f;          // 180/π
+
+    // I2C 失败退避控制，避免总线异常导致频繁占用 CPU
+    int consecutive_failures_ = 0;
+    int64_t next_retry_time_us_ = 0;
+
+    // 安全的寄存器读取（不使用 ESP_ERROR_CHECK，直接返回错误码）
+    esp_err_t ReadRegSafe(uint8_t reg, uint8_t& value);
+    esp_err_t ReadRegsSafe(uint8_t reg, uint8_t* buffer, size_t length);
 };
 
 #endif // ALICHUANGTEST_QMI8658_H

@@ -62,15 +62,15 @@ void TouchEngine::Initialize() {
     // 屏蔽可能有的GPIO操作或初始化 3. 配置触摸传感器
     // InitializeGPIO();
     
-    // 4. 创建触摸处理任务（增加栈大小以支持情感状态回调）
-    BaseType_t task_result = xTaskCreate(TouchTask, "touch_task", 6144, this, 10, &task_handle_);
+    // 4. 创建触摸处理任务（降低优先级避免抢占关键任务）
+    BaseType_t task_result = xTaskCreate(TouchTask, "touch_task", 6144, this, 5, &task_handle_);
     if (task_result != pdPASS) {
         ESP_LOGE(TAG, "Failed to create touch task");
         return;
     }
-    
+
     enabled_ = true;
-    ESP_LOGI(TAG, "Touch engine initialized - GPIO10 (LEFT), GPIO11 (RIGHT), task handle: %p", task_handle_);
+    ESP_LOGI(TAG, "Touch engine initialized - GPIO10 (LEFT), GPIO11 (RIGHT), priority: 5, task handle: %p", task_handle_);
 }
 
 void TouchEngine::LoadConfiguration(const char* config_path) {

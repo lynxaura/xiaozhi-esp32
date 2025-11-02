@@ -30,6 +30,7 @@
 #include <esp_lvgl_port.h>
 #include <lvgl.h>
 #include <esp_timer.h>
+#include <esp_task_wdt.h>
 #include <mutex>
 
 // 人脸模型
@@ -115,6 +116,7 @@ private:
     LocalResponseController* local_response_controller_ = nullptr; // 本地响应控制器
     TaskHandle_t delay_task_handle = nullptr;
     SDdata_Pro* sdhccard = nullptr;
+    TaskHandle_t event_worker_task_handle_ = nullptr; // 事件处理工作任务
 
 #if CONFIG_LINGXI_ANIMA_UI
     // 动画相关成员变量
@@ -158,8 +160,8 @@ private:
                 SetCurrentAnimation(animation);
             });
         }
-        xTaskCreate(AnimationPlayTask, "anim_play", 6144, this, 3, &animation_task_handle_);
-        ESP_LOGI(TAG, "动画播放任务已启动");
+        xTaskCreate(AnimationPlayTask, "anim_play", 6144, this, 5, &animation_task_handle_);
+        ESP_LOGI(TAG, "动画播放任务已启动 (优先级: 5)");
     }
     // 获取当前动画状态
     std::string GetCurrentAnimation() {
@@ -190,7 +192,17 @@ private:
         // ====== 等待开机动画播放完成 ======
         // 等待开机动画播放完成，避免与idle动画冲突
         ESP_LOGI(TAG, "动画任务启动，等待开机动画完成...");
+
+        // 订阅任务看门狗（如果启用）
+        #if CONFIG_ESP_TASK_WDT_EN
+        esp_task_wdt_add(NULL);  // 将当前任务添加到看门狗
+        ESP_LOGI(TAG, "Animation task subscribed to watchdog");
+        #endif
+
         while (!app.IsBootAnimationCompleted()) {
+            #if CONFIG_ESP_TASK_WDT_EN
+            esp_task_wdt_reset();  // 喂狗，防止看门狗超时
+            #endif
             vTaskDelay(pdMS_TO_TICKS(500));  // 每500ms检查一次
         }
         ESP_LOGI(TAG, "开机动画完成，开始加载idle动画");
@@ -289,8 +301,13 @@ private:
                 debugCount = 0;
             }
 
-            // 短暂延时，避免CPU占用过高
-            vTaskDelay(pdMS_TO_TICKS(150));
+            // 喂狗，防止看门狗超时（如果启用）
+            #if CONFIG_ESP_TASK_WDT_EN
+            esp_task_wdt_reset();
+            #endif
+
+            // 短暂延时，避免CPU占用过高（从150ms增加到200ms）
+            vTaskDelay(pdMS_TO_TICKS(200));
         }
 
         // 释放资源（实际上不会执行到这里，除非任务被外部终止）
@@ -515,7 +532,12 @@ private:
     }
 
     void InitializePca9685() {
-        IsDevicePresent(PCA9685_DEFAULT_ADDR);
+        bool present = IsDevicePresent(PCA9685_DEFAULT_ADDR);
+        if (!present) {
+            ESP_LOGW(TAG, "PCA9685 not detected at 0x%02X, skip PWM init (avoid I2C contention)", PCA9685_DEFAULT_ADDR);
+            pca9685_ = nullptr;
+            return;
+        }
         // ESP_LOGI(TAG, "Initializing PCA9685 at address 0x40...");
         pca9685_ = new Pca9685(i2c_bus_, PCA9685_DEFAULT_ADDR);
         
@@ -649,21 +671,43 @@ private:
             }
         });
 
-        // 创建定时器，每50ms处理一次事件
+        // 创建事件工作任务：将重活从 esp_timer 回调中移到普通任务，避免占用 esp_timer 任务导致 WDT
+        auto event_worker = [](void* parameter) {
+            EventEngine* engine = static_cast<EventEngine*>(parameter);
+            for (;;) {
+                // 等待周期性通知
+                ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+                if (engine) {
+                    engine->Process();
+                }
+            }
+        };
+        xTaskCreatePinnedToCore(
+            event_worker,
+            "event_worker",
+            8192,  // 增加栈大小从4096到8192，避免栈溢出
+            event_engine_,
+            4,
+            &event_worker_task_handle_,
+            1 /* APP CPU */);
+
+        // 创建定时器，每100ms仅做轻量通知，由工作任务处理事件（优化：从50ms增加到100ms）
         esp_timer_create_args_t event_timer_args = {};
         event_timer_args.callback = [](void* arg) {
-            auto* engine = static_cast<EventEngine*>(arg);
-            engine->Process();
+            TaskHandle_t task = static_cast<TaskHandle_t>(arg);
+            if (task) {
+                xTaskNotifyGive(task);
+            }
         };
-        event_timer_args.arg = event_engine_;
+        event_timer_args.arg = event_worker_task_handle_;
         event_timer_args.dispatch_method = ESP_TIMER_TASK;
         event_timer_args.name = "event_timer";
         event_timer_args.skip_unhandled_events = true;
 
         esp_timer_create(&event_timer_args, &event_timer_);
-        esp_timer_start_periodic(event_timer_, 50000);  // 50ms
+        esp_timer_start_periodic(event_timer_, 100000);  // 100ms（从50ms优化到100ms，降低CPU占用）
 
-        ESP_LOGI(TAG, "Interaction system initialized and started");
+        ESP_LOGI(TAG, "Interaction system initialized and started (event processing: 100ms interval)");
     }
     
     void InitialSDCard() {
@@ -716,11 +760,12 @@ private:
         // ESP_LOGI(TAG, "Initializing Local Response System...");
         
         try {
-            // 创建本地响应控制器
+            // 创建本地响应控制器（传入 event_engine_ 以便控制 MultitouchEngine）
             local_response_controller_ = new LocalResponseController(
                 motion_skill_,
-                vibration_skill_, 
-                GetDisplay()
+                vibration_skill_,
+                GetDisplay(),
+                event_engine_
             );
             
             // 初始化本地响应系统

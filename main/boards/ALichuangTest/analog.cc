@@ -58,6 +58,7 @@ int adcProData[ALL_SAMPLE_NUMS] = { 0 }; // 各模块实际处理好的数据
 #define SWR_TICK_TO_MS (1000)
 #define ADC_SAMPLE_PERIOD (200)
 esp_timer_handle_t adcSampleTimerHd = nullptr;
+static TaskHandle_t s_adc_sample_task_handle = nullptr; // ADC 采样工作任务
 unsigned int assitCnt = 0;
 
 AngleSensor* m_angleSensor_ = nullptr;
@@ -250,7 +251,7 @@ void ProcessTest(int sampleVol) {
     }
 }
 
-// 200ms
+// 200ms 执行的实际采样逻辑（由工作任务调用）
 void AdcSampleTimerHandle(void) {
     static unsigned int logPeriod = 0;
     static unsigned int backcenter = 0;
@@ -364,15 +365,29 @@ void DRV_AdcInit(void) {
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc2_handle, BATTERY_ADC2_CHAN, &config_0));
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc2_handle, BODY_TYPE_ADC2_CHAN, &config_0));
 
-    // 创建定时器，200ms处理一次数据
+    // 创建ADC采样工作任务，避免在 esp_timer 回调中做重活
+    auto adc_sample_task = [](void* arg){
+        (void)arg;
+        for(;;){
+            // 等待定时器通知
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            AdcSampleTimerHandle();
+        }
+    };
+    xTaskCreatePinnedToCore(adc_sample_task, "adc_sample_task", 3072, nullptr, 4, &s_adc_sample_task_handle, 1);
+
+    // 创建定时器，200ms触发一次，仅发送任务通知
     ESP_ERROR_CHECK(adc_oneshot_read(adc2_handle, BATTERY_ADC2_CHAN, &adcSampleData[0]));
     ESP_LOGI(TAG, "DRV_AdcInit OK!Test BATTERY_SAMPLE:%d", adcSampleData[0]);
 
     esp_timer_create_args_t adc_sample_timer_args = {
         .callback = [](void* arg) {
-            AdcSampleTimerHandle();
+            TaskHandle_t task = static_cast<TaskHandle_t>(arg);
+            if(task){
+                xTaskNotifyGive(task);
+            }
         },
-        .arg = NULL,
+        .arg = s_adc_sample_task_handle,
         .dispatch_method = ESP_TIMER_TASK,
         .name = "adc_sample_timer",
         .skip_unhandled_events = true,
