@@ -83,15 +83,15 @@ void MultitouchEngine::Initialize() {
     // 5. 读取基准值
     ReadBaseline();
 
-    // 6. 创建触摸处理任务（增大栈空间以支持复杂的回调处理）
-    BaseType_t task_result = xTaskCreate(TouchTask, "multitouch_task", 5120, this, 10, &task_handle_);
+    // 6. 创建触摸处理任务（降低优先级避免抢占关键任务）
+    BaseType_t task_result = xTaskCreate(TouchTask, "multitouch_task", 5120, this, 5, &task_handle_);
     if (task_result != pdPASS) {
         ESP_LOGE(TAG, "Failed to create multitouch task");
         return;
     }
-    
+
     enabled_ = true;
-    // ESP_LOGI(TAG, "Multitouch engine initialized - MPR121 @ 0x%02X (polling mode)", MPR121_I2C_ADDR);
+    ESP_LOGI(TAG, "Multitouch engine initialized - MPR121 @ 0x%02X (polling mode, priority: 5)", MPR121_I2C_ADDR);
 }
 
 void MultitouchEngine::UpdateConfigFromJson(const cJSON* json) {
@@ -282,8 +282,8 @@ bool MultitouchEngine::WriteRegister(uint8_t reg, uint8_t value) {
         return false;
     }
     
-    // 获取I2C总线锁
-    I2cBusManager::Lock lock(I2cBusManager::GetInstance(), 150);
+    // 获取I2C总线锁（增加超时时间以减少总线竞争）
+    I2cBusManager::Lock lock(I2cBusManager::GetInstance(), 500);
     if (!lock.IsLocked()) {
         ESP_LOGE(TAG, "Failed to acquire I2C bus lock for write operation");
         return false;
@@ -294,7 +294,7 @@ bool MultitouchEngine::WriteRegister(uint8_t reg, uint8_t value) {
     // 添加重试机制
     const int max_retries = 3;
     for (int retry = 0; retry < max_retries; retry++) {
-        esp_err_t ret = i2c_master_transmit(mpr121_device_, data, sizeof(data), pdMS_TO_TICKS(200));
+        esp_err_t ret = i2c_master_transmit(mpr121_device_, data, sizeof(data), pdMS_TO_TICKS(500));
         
         if (ret == ESP_OK) {
             return true;
@@ -323,32 +323,33 @@ bool MultitouchEngine::ReadRegisters(uint8_t reg, uint8_t* buffer, size_t length
         return false;
     }
     
-    // 获取I2C总线锁
-    I2cBusManager::Lock lock(I2cBusManager::GetInstance(), 150);
+    // 获取I2C总线锁（增加超时时间以减少总线竞争）
+    I2cBusManager::Lock lock(I2cBusManager::GetInstance(), 500);
     if (!lock.IsLocked()) {
         ESP_LOGE(TAG, "Failed to acquire I2C bus lock for read operation");
         return false;
     }
-    
+
     // 添加重试机制
     const int max_retries = 3;
     for (int retry = 0; retry < max_retries; retry++) {
-        esp_err_t ret = i2c_master_transmit_receive(mpr121_device_, &reg, 1, buffer, length, pdMS_TO_TICKS(200));
-        
+        esp_err_t ret = i2c_master_transmit_receive(mpr121_device_, &reg, 1, buffer, length, pdMS_TO_TICKS(500));
+
         if (ret == ESP_OK) {
             return true;
         }
-        
+
         if (retry < max_retries - 1) {
-            ESP_LOGW(TAG, "I2C read retry %d/%d: reg=0x%02X, error=%s", 
-                    retry + 1, max_retries, reg, esp_err_to_name(ret));
+            // 简化日志，避免在错误处理中崩溃
+            ESP_LOGW(TAG, "I2C read retry %d/%d: reg=0x%02X, error=0x%x",
+                    retry + 1, max_retries, reg, ret);
             vTaskDelay(pdMS_TO_TICKS(10));  // 短暂延时后重试
         } else {
-            ESP_LOGE(TAG, "I2C read failed after %d retries: reg=0x%02X, length=%zu, error=%s", 
-                    max_retries, reg, length, esp_err_to_name(ret));
+            ESP_LOGE(TAG, "I2C read failed after %d retries: reg=0x%02X, length=%zu, error=0x%x",
+                    max_retries, reg, length, ret);
         }
     }
-    
+
     return false;
 }
 
@@ -447,9 +448,9 @@ void MultitouchEngine::TouchTask(void* param) {
             if (engine->enabled_) {
                 engine->Process();
                 
-                // 每5秒输出一次任务运行状态
-                if (++counter >= 250) {  // 250 * 20ms = 5s
-                    ESP_LOGD(TAG, "Multitouch task running - baselines: L=%d, R=%d", 
+                // 每10秒输出一次任务运行状态
+                if (++counter >= 50) {  // 50 * 200ms = 10s
+                    ESP_LOGD(TAG, "Multitouch task running - baselines: L=%d, R=%d",
                             engine->left_baseline_, engine->right_baseline_);
                     counter = 0;
                 }
@@ -458,29 +459,44 @@ void MultitouchEngine::TouchTask(void* param) {
             ESP_LOGE(TAG, "Exception in multitouch task processing!");
             // 继续运行，不要让任务退出
         }
-        
-        // 50ms轮询间隔，降低I2C总线负载
-        vTaskDelay(pdMS_TO_TICKS(50));
+
+        // 200ms轮询间隔，降低I2C总线负载并减少总线竞争
+        vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
 
 void MultitouchEngine::Process() {
+    static int read_error_count = 0;
+    static int64_t last_error_log_time = 0;
+
+    // 如果引擎被禁用，跳过处理
+    if (!enabled_) {
+        return;
+    }
+
     // 读取MPR121触摸状态
     uint16_t touch_status = 0;
     if (!ReadMPR121TouchStatus(&touch_status)) {
-        static int read_error_count = 0;
-        if (++read_error_count <= 10) {
-            ESP_LOGE(TAG, "Failed to read MPR121 touch status (count: %d)", read_error_count);
+        int64_t current_time = esp_timer_get_time();
+        read_error_count++;
+
+        // 每5秒最多输出一次错误日志，避免日志风暴
+        if (current_time - last_error_log_time > 5000000) {
+            ESP_LOGW(TAG, "MPR121 read errors: %d (I2C bus may be busy)", read_error_count);
+            last_error_log_time = current_time;
         }
-        
-        // 如果连续失败超过10次，触发恢复机制
-        if (read_error_count > 10) {
-            ESP_LOGE(TAG, "MPR121 persistent failure, triggering recovery...");
+
+        // 如果连续失败超过50次（约2.5秒），触发恢复机制
+        if (read_error_count > 50) {
+            ESP_LOGE(TAG, "MPR121 persistent failure after %d attempts, triggering recovery...", read_error_count);
             ResetTouchSensor();
             read_error_count = 0;
         }
         return;
     }
+
+    // 成功读取，重置错误计数
+    read_error_count = 0;
     
     // 检测触摸状态
     bool left_touched = (touch_status & (1 << ELECTRODE_LEFT)) != 0;
@@ -491,8 +507,8 @@ void MultitouchEngine::Process() {
     static bool last_left_touched = false;
     static bool last_right_touched = false;
     
-    if (++debug_counter >= 100) {  // 100 * 20ms = 2s
-        ESP_LOGD(TAG, "Touch status: 0x%04X, Left: %s, Right: %s", 
+    if (++debug_counter >= 10) {  // 10 * 200ms = 2s
+        ESP_LOGD(TAG, "Touch status: 0x%04X, Left: %s, Right: %s",
                 touch_status,
                 left_touched ? "TOUCHED" : "free",
                 right_touched ? "TOUCHED" : "free");
