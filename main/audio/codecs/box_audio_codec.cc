@@ -3,6 +3,7 @@
 #include <esp_log.h>
 #include <driver/i2c_master.h>
 #include <driver/i2s_tdm.h>
+#include <string.h>
 
 #define TAG "BoxAudioCodec"
 
@@ -57,37 +58,67 @@ BoxAudioCodec::BoxAudioCodec(void* i2c_master_handle, int input_sample_rate, int
     output_dev_ = esp_codec_dev_new(&dev_cfg);
     assert(output_dev_ != NULL);
 
-    // Input
+    // Input - ES7210可能不存在,允许失败
     i2c_cfg.addr = es7210_addr;
     in_ctrl_if_ = audio_codec_new_i2c_ctrl(&i2c_cfg);
-    assert(in_ctrl_if_ != NULL);
 
-    es7210_codec_cfg_t es7210_cfg = {};
-    es7210_cfg.ctrl_if = in_ctrl_if_;
-    es7210_cfg.mic_selected = ES7210_SEL_MIC1 | ES7210_SEL_MIC2 | ES7210_SEL_MIC3 | ES7210_SEL_MIC4;
-    in_codec_if_ = es7210_codec_new(&es7210_cfg);
-    assert(in_codec_if_ != NULL);
+    if (in_ctrl_if_ != NULL) {
+        es7210_codec_cfg_t es7210_cfg = {};
+        es7210_cfg.ctrl_if = in_ctrl_if_;
+        es7210_cfg.mic_selected = ES7210_SEL_MIC1 | ES7210_SEL_MIC2 | ES7210_SEL_MIC3 | ES7210_SEL_MIC4;
+        in_codec_if_ = es7210_codec_new(&es7210_cfg);
 
-    dev_cfg.dev_type = ESP_CODEC_DEV_TYPE_IN;
-    dev_cfg.codec_if = in_codec_if_;
-    input_dev_ = esp_codec_dev_new(&dev_cfg);
-    assert(input_dev_ != NULL);
+        if (in_codec_if_ != NULL) {
+            dev_cfg.dev_type = ESP_CODEC_DEV_TYPE_IN;
+            dev_cfg.codec_if = in_codec_if_;
+            input_dev_ = esp_codec_dev_new(&dev_cfg);
+
+            if (input_dev_ != NULL) {
+                ESP_LOGI(TAG, "ES7210 input device initialized successfully");
+            } else {
+                ESP_LOGW(TAG, "Failed to create ES7210 input device, audio input will not work");
+                audio_codec_delete_codec_if(in_codec_if_);
+                in_codec_if_ = NULL;
+            }
+        } else {
+            ESP_LOGW(TAG, "ES7210 codec initialization failed, audio input will not work");
+        }
+    } else {
+        ESP_LOGW(TAG, "ES7210 I2C control interface creation failed, audio input will not work");
+    }
 
     ESP_LOGI(TAG, "BoxAudioDevice initialized");
 }
 
 BoxAudioCodec::~BoxAudioCodec() {
-    ESP_ERROR_CHECK(esp_codec_dev_close(output_dev_));
-    esp_codec_dev_delete(output_dev_);
-    ESP_ERROR_CHECK(esp_codec_dev_close(input_dev_));
-    esp_codec_dev_delete(input_dev_);
+    if (output_dev_) {
+        ESP_ERROR_CHECK(esp_codec_dev_close(output_dev_));
+        esp_codec_dev_delete(output_dev_);
+    }
 
-    audio_codec_delete_codec_if(in_codec_if_);
-    audio_codec_delete_ctrl_if(in_ctrl_if_);
-    audio_codec_delete_codec_if(out_codec_if_);
-    audio_codec_delete_ctrl_if(out_ctrl_if_);
-    audio_codec_delete_gpio_if(gpio_if_);
-    audio_codec_delete_data_if(data_if_);
+    if (input_dev_) {
+        ESP_ERROR_CHECK(esp_codec_dev_close(input_dev_));
+        esp_codec_dev_delete(input_dev_);
+    }
+
+    if (in_codec_if_) {
+        audio_codec_delete_codec_if(in_codec_if_);
+    }
+    if (in_ctrl_if_) {
+        audio_codec_delete_ctrl_if(in_ctrl_if_);
+    }
+    if (out_codec_if_) {
+        audio_codec_delete_codec_if(out_codec_if_);
+    }
+    if (out_ctrl_if_) {
+        audio_codec_delete_ctrl_if(out_ctrl_if_);
+    }
+    if (gpio_if_) {
+        audio_codec_delete_gpio_if(gpio_if_);
+    }
+    if (data_if_) {
+        audio_codec_delete_data_if(data_if_);
+    }
 }
 
 void BoxAudioCodec::CreateDuplexChannels(gpio_num_t mclk, gpio_num_t bclk, gpio_num_t ws, gpio_num_t dout, gpio_num_t din) {
@@ -185,6 +216,13 @@ void BoxAudioCodec::SetOutputVolume(int volume) {
 
 void BoxAudioCodec::EnableInput(bool enable) {
     std::lock_guard<std::mutex> lock(data_if_mutex_);
+
+    // ES7210可能不存在,跳过输入操作
+    if (!input_dev_) {
+        ESP_LOGW(TAG, "Input device not available, cannot %s input", enable ? "enable" : "disable");
+        return;
+    }
+
     if (enable == input_enabled_) {
         return;
     }
@@ -230,8 +268,11 @@ void BoxAudioCodec::EnableOutput(bool enable) {
 }
 
 int BoxAudioCodec::Read(int16_t* dest, int samples) {
-    if (input_enabled_) {
+    if (input_enabled_ && input_dev_) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(esp_codec_dev_read(input_dev_, (void*)dest, samples * sizeof(int16_t)));
+    } else if (input_enabled_ && !input_dev_) {
+        // ES7210不存在,填充静音
+        memset(dest, 0, samples * sizeof(int16_t));
     }
     return samples;
 }
