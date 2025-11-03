@@ -10,7 +10,10 @@
                 "CONFIG_PARTITION_TABLE_FILENAME=\"partitions/v1/16m_anima.csv\"",
                 "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
                 "CONFIG_ESPTOOLPY_FLASHSIZE=\"16MB\"",
-                "CONFIG_OTA_URL=\"http://101.126.79.22:8002/xiaozhi/ota/\""
+                "CONFIG_OTA_URL=\"http://101.126.79.22:8002/xiaozhi/ota/\"",
+                "CONFIG_ENABLE_BLUETOOTH_PROVISIONING=y",
+                "CONFIG_BLUETOOTH_PROVISIONING_TIMEOUT=300",
+                "CONFIG_BLUFI_FALLBACK_TO_WEB_CONFIG=n"
             ]
         },
         {

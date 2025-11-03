@@ -26,6 +26,8 @@
 #include <driver/i2c_master.h>
 #include <driver/spi_common.h>
 #include <wifi_station.h>
+#include <ssid_manager.h>
+#include "assets/lang_config.h"
 #include <esp_lcd_touch_ft5x06.h>
 #include <esp_lvgl_port.h>
 #include <lvgl.h>
@@ -1067,39 +1069,78 @@ public:
 #if CONFIG_ENABLE_BLUETOOTH_PROVISIONING
 public:
     virtual void StartNetwork() override {
-#ifdef CONFIG_BLUETOOTH_PROVISIONING_ALWAYS_ON_BOOT
-        // Testing mode: always start BluFi provisioning on boot
-        auto& app = Application::GetInstance();
-        // Free RAM before enabling BT: stop audio processing temporarily
-        app.GetAudioService().Stop();
-        app.SetDeviceState(kDeviceStateWifiConfiguring);
+        // Check if WiFi is configured
+        auto& ssid_manager = SsidManager::GetInstance();
+        auto ssid_list = ssid_manager.GetSsidList();
+        bool needs_provisioning = ssid_list.empty();
 
-        auto& blufi = BlufiProvisioning::GetInstance();
+        // If WiFi is configured, try to connect
+        if (!needs_provisioning) {
+            auto& wifi_station = WifiStation::GetInstance();
+            wifi_station.OnScanBegin([this]() {
+                auto display = Board::GetInstance().GetDisplay();
+                display->ShowNotification(Lang::Strings::SCANNING_WIFI, 30000);
+            });
+            wifi_station.OnConnect([this](const std::string& ssid) {
+                auto display = Board::GetInstance().GetDisplay();
+                std::string notification = Lang::Strings::CONNECT_TO;
+                notification += ssid;
+                notification += "...";
+                display->ShowNotification(notification.c_str(), 30000);
+            });
+            wifi_station.OnConnected([this](const std::string& ssid) {
+                auto display = Board::GetInstance().GetDisplay();
+                std::string notification = Lang::Strings::CONNECTED_TO;
+                notification += ssid;
+                display->ShowNotification(notification.c_str(), 30000);
+            });
+            wifi_station.Start();
 
-        blufi.OnConfigured([&](const std::string& ssid, const std::string& password){
-            ESP_LOGI(TAG, "BluFi configured: SSID=%s", ssid.c_str());
-            vTaskDelay(pdMS_TO_TICKS(1500));
-            esp_restart();
-        });
+            // Try to connect to WiFi for 60 seconds
+            if (wifi_station.WaitForConnected(60 * 1000)) {
+                // Successfully connected
+                ESP_LOGI(TAG, "WiFi connected successfully");
+                return;
+            }
 
-        blufi.Start();
-
-        int timeout_sec = CONFIG_BLUETOOTH_PROVISIONING_TIMEOUT;
-        if (!blufi.WaitForConfigured(timeout_sec * 1000)) {
-            ESP_LOGW(TAG, "BluFi provisioning timeout, stopping");
-            blufi.Stop();
-            // Resume audio on fallback
-            app.GetAudioService().Start();
-#if CONFIG_BLUFI_FALLBACK_TO_WEB_CONFIG
-            WifiBoard::StartNetwork();
-            return;
-#endif
+            // Connection failed, stop WiFi and start BluFi provisioning
+            ESP_LOGW(TAG, "WiFi connection failed, starting BluFi provisioning");
+            wifi_station.Stop();
+            needs_provisioning = true;
         }
-        return;
+
+        // Start BluFi provisioning when no WiFi config or connection failed
+        if (needs_provisioning) {
+            auto& app = Application::GetInstance();
+            // Free RAM before enabling BT: stop audio processing temporarily
+            app.GetAudioService().Stop();
+            app.SetDeviceState(kDeviceStateWifiConfiguring);
+
+            auto& blufi = BlufiProvisioning::GetInstance();
+
+            blufi.OnConfigured([&](const std::string& ssid, const std::string& password){
+                ESP_LOGI(TAG, "BluFi configured: SSID=%s", ssid.c_str());
+                vTaskDelay(pdMS_TO_TICKS(1500));
+                esp_restart();
+            });
+
+            blufi.Start();
+
+            int timeout_sec = CONFIG_BLUETOOTH_PROVISIONING_TIMEOUT;
+            if (!blufi.WaitForConfigured(timeout_sec * 1000)) {
+                ESP_LOGW(TAG, "BluFi provisioning timeout, stopping");
+                blufi.Stop();
+                // Resume audio on fallback
+                app.GetAudioService().Start();
+#if CONFIG_BLUFI_FALLBACK_TO_WEB_CONFIG
+                // Fallback to web config if enabled
+                WifiBoard::StartNetwork();
 #else
-        // Default behavior: use standard WiFi connection flow
-        WifiBoard::StartNetwork();
+                // No fallback, just wait and allow retry
+                ESP_LOGE(TAG, "BluFi provisioning failed and no fallback configured");
 #endif
+            }
+        }
     }
 #endif
     

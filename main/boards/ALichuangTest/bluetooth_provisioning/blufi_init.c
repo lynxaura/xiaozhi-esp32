@@ -7,6 +7,7 @@
 #include "esp_blufi_api.h"
 #include "esp_log.h"
 #include "esp_blufi.h"
+#include "esp_mac.h"
 
 #if CONFIG_BT_CONTROLLER_ENABLED || !CONFIG_BT_NIMBLE_ENABLED
 #include "esp_bt.h"
@@ -31,9 +32,18 @@
 extern void ble_store_config_init(void);
 #endif
 
-#ifndef BLUFI_DEVICE_NAME
-#define BLUFI_DEVICE_NAME "Xiaozhi-BluFi"
-#endif
+// Generate BluFi device name with MAC address suffix
+static void get_blufi_device_name(char *name, size_t max_len) {
+    uint8_t mac[6];
+    esp_err_t ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    if (ret == ESP_OK) {
+        // Use last 2 bytes (4 hex digits) of MAC address
+        snprintf(name, max_len, "magic-%02X%02X", mac[4], mac[5]);
+    } else {
+        // Fallback if MAC read fails
+        snprintf(name, max_len, "magic-0000");
+    }
+}
 
 // Use prototypes from esp_blufi.h; no manual declarations needed
 
@@ -50,7 +60,12 @@ esp_err_t esp_blufi_host_init(void)
     if (ret) {
         return ESP_FAIL;
     }
-    ret = esp_ble_gap_set_device_name(BLUFI_DEVICE_NAME);
+
+    // Generate device name dynamically with MAC address
+    char device_name[32];
+    get_blufi_device_name(device_name, sizeof(device_name));
+    ESP_LOGI("BLUFI_INIT", "Setting BluFi device name: %s", device_name);
+    ret = esp_ble_gap_set_device_name(device_name);
     if (ret) {
         return ESP_FAIL;
     }
@@ -154,7 +169,11 @@ esp_err_t esp_blufi_host_init(void)
     assert(rc == 0);
 
 #if CONFIG_BT_NIMBLE_GAP_SERVICE
-    rc = ble_svc_gap_device_name_set(BLUFI_DEVICE_NAME);
+    // Generate device name dynamically with MAC address
+    char device_name[32];
+    get_blufi_device_name(device_name, sizeof(device_name));
+    ESP_LOGI("BLUFI_INIT", "Setting BluFi device name: %s", device_name);
+    rc = ble_svc_gap_device_name_set(device_name);
     assert(rc == 0);
 #endif
 
