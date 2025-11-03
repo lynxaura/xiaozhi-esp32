@@ -5,6 +5,7 @@
 #include "system_info.h"
 #include "settings.h"
 #include "assets/lang_config.h"
+#include "device_activation.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -101,6 +102,19 @@ void WifiBoard::StartNetwork() {
         std::string notification = Lang::Strings::CONNECTED_TO;
         notification += ssid;
         display->ShowNotification(notification.c_str(), 30000);
+
+        // Retry device activation after WiFi connection is established
+        // This handles the case where activation was skipped during boot due to no network
+        auto& device_activation = DeviceActivation::GetInstance();
+        if (!device_activation.IsActivated()) {
+            ESP_LOGI(TAG, "WiFi connected, retrying device activation...");
+            // Run activation in a separate task to avoid blocking WiFi callback
+            xTaskCreate([](void* param) {
+                auto& activation = *static_cast<DeviceActivation*>(param);
+                activation.CheckAndActivate();
+                vTaskDelete(NULL);
+            }, "device_activate", 4096, &device_activation, 5, NULL);
+        }
     });
     wifi_station.Start();
 
@@ -142,7 +156,9 @@ std::string WifiBoard::GetBoardJson() {
     std::string board_json = R"({)";
     board_json += R"("type":")" + std::string(BOARD_TYPE) + R"(",)";
     board_json += R"("name":")" + std::string(BOARD_NAME) + R"(",)";
-    if (!wifi_config_mode_) {
+    // Only include WiFi info if connected (not just checking config mode)
+    // This prevents crashes when WiFi is not initialized
+    if (!wifi_config_mode_ && wifi_station.IsConnected()) {
         board_json += R"("ssid":")" + wifi_station.GetSsid() + R"(",)";
         board_json += R"("rssi":)" + std::to_string(wifi_station.GetRssi()) + R"(,)";
         board_json += R"("channel":)" + std::to_string(wifi_station.GetChannel()) + R"(,)";
@@ -155,7 +171,10 @@ std::string WifiBoard::GetBoardJson() {
 
 void WifiBoard::SetPowerSaveMode(bool enabled) {
     auto& wifi_station = WifiStation::GetInstance();
-    wifi_station.SetPowerSaveMode(enabled);
+    // Only set power save mode if WiFi is connected to avoid crashes
+    if (wifi_station.IsConnected()) {
+        wifi_station.SetPowerSaveMode(enabled);
+    }
 }
 
 void WifiBoard::ResetWifiConfiguration() {
@@ -234,18 +253,22 @@ std::string WifiBoard::GetDeviceStatusJson() {
         cJSON_AddItemToObject(root, "battery", battery);
     }
 
-    // Network
+    // Network - only include details if WiFi is connected
     auto network = cJSON_CreateObject();
     auto& wifi_station = WifiStation::GetInstance();
     cJSON_AddStringToObject(network, "type", "wifi");
-    cJSON_AddStringToObject(network, "ssid", wifi_station.GetSsid().c_str());
-    int rssi = wifi_station.GetRssi();
-    if (rssi >= -60) {
-        cJSON_AddStringToObject(network, "signal", "strong");
-    } else if (rssi >= -70) {
-        cJSON_AddStringToObject(network, "signal", "medium");
+    if (wifi_station.IsConnected()) {
+        cJSON_AddStringToObject(network, "ssid", wifi_station.GetSsid().c_str());
+        int rssi = wifi_station.GetRssi();
+        if (rssi >= -60) {
+            cJSON_AddStringToObject(network, "signal", "strong");
+        } else if (rssi >= -70) {
+            cJSON_AddStringToObject(network, "signal", "medium");
+        } else {
+            cJSON_AddStringToObject(network, "signal", "weak");
+        }
     } else {
-        cJSON_AddStringToObject(network, "signal", "weak");
+        cJSON_AddStringToObject(network, "status", "disconnected");
     }
     cJSON_AddItemToObject(root, "network", network);
 

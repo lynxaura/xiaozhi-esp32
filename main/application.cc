@@ -18,6 +18,7 @@
 #include <driver/gpio.h>
 #include <arpa/inet.h>
 #include <font_awesome.h>
+#include <wifi_station.h>
 
 #define TAG "Application"
 
@@ -130,10 +131,16 @@ void Application::CheckAssetsVersion() {
     }
 
     if (!download_url.empty()) {
+        // Check if network is connected before attempting assets download
+        if (!WifiStation::GetInstance().IsConnected()) {
+            ESP_LOGW(TAG, "Network not connected, skipping assets download");
+            return;
+        }
+
         char message[256];
         snprintf(message, sizeof(message), Lang::Strings::FOUND_NEW_ASSETS, download_url.c_str());
         Alert(Lang::Strings::LOADING_ASSETS, message, "cloud_arrow_down", Lang::Sounds::OGG_UPGRADE);
-        
+
         // Wait for the audio service to be idle for 3 seconds
         vTaskDelay(pdMS_TO_TICKS(3000));
         SetDeviceState(kDeviceStateUpgrading);
@@ -171,6 +178,19 @@ void Application::CheckNewVersion(Ota& ota) {
 
     auto& board = Board::GetInstance();
     while (true) {
+        // Check if network is connected before attempting OTA check
+        // This prevents TCP/IP stack crash when network is not available
+        if (!WifiStation::GetInstance().IsConnected()) {
+            ESP_LOGW(TAG, "Network not connected, waiting before OTA check...");
+            vTaskDelay(pdMS_TO_TICKS(5000)); // Wait 5 seconds before retry
+            retry_count++;
+            if (retry_count >= MAX_RETRY) {
+                ESP_LOGE(TAG, "Network connection timeout, skipping OTA check");
+                return;
+            }
+            continue;
+        }
+
         SetDeviceState(kDeviceStateActivating);
         auto display = board.GetDisplay();
         display->SetStatus(Lang::Strings::CHECKING_NEW_VERSION);
@@ -432,9 +452,14 @@ void Application::Start() {
     display->UpdateStatusBar(true);
 
     // Check and perform device activation (if not already activated)
-    ESP_LOGI(TAG, "Checking device activation status...");
-    auto& device_activation = DeviceActivation::GetInstance();
-    device_activation.CheckAndActivate();
+    // Only attempt activation if network is connected to avoid TCP/IP stack crash
+    if (WifiStation::GetInstance().IsConnected()) {
+        ESP_LOGI(TAG, "Network connected, checking device activation status...");
+        auto& device_activation = DeviceActivation::GetInstance();
+        device_activation.CheckAndActivate();
+    } else {
+        ESP_LOGW(TAG, "Network not connected, skipping device activation (will retry after network is up)");
+    }
 
     // ====== 在动画播放期间，可以进行不影响显示的后台初始化 ======
     const int64_t BOOT_ANIMATION_DURATION_US = 11000000; // 11秒转为微秒

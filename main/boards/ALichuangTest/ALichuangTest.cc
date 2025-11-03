@@ -16,6 +16,7 @@
 #include "i2c_bus_manager.h"
 #include "analog.h"
 #include "device_state_event.h"
+#include "device_activation.h"
 
 #if CONFIG_ENABLE_BLUETOOTH_PROVISIONING
 #include "boards/ALichuangTest/bluetooth_provisioning/blufi_provisioning.h"
@@ -1093,6 +1094,19 @@ public:
                 std::string notification = Lang::Strings::CONNECTED_TO;
                 notification += ssid;
                 display->ShowNotification(notification.c_str(), 30000);
+
+                // Retry device activation after WiFi connection is established
+                // This handles the case where activation was skipped during boot due to no network
+                auto& device_activation = DeviceActivation::GetInstance();
+                if (!device_activation.IsActivated()) {
+                    ESP_LOGI(TAG, "WiFi connected, retrying device activation...");
+                    // Run activation in a separate task to avoid blocking WiFi callback
+                    xTaskCreate([](void* param) {
+                        auto& activation = *static_cast<DeviceActivation*>(param);
+                        activation.CheckAndActivate();
+                        vTaskDelete(NULL);
+                    }, "device_activate", 4096, &device_activation, 5, NULL);
+                }
             });
             wifi_station.Start();
 
@@ -1106,6 +1120,10 @@ public:
             // Connection failed, stop WiFi and start BluFi provisioning
             ESP_LOGW(TAG, "WiFi connection failed, starting BluFi provisioning");
             wifi_station.Stop();
+            // Wait for WiFi resources to be fully released before starting BluFi
+            // This prevents ESP_ERR_NO_MEM when BluFi tries to reinitialize WiFi
+            ESP_LOGI(TAG, "Waiting for WiFi resources to be released...");
+            vTaskDelay(pdMS_TO_TICKS(2000)); // 2 seconds delay
             needs_provisioning = true;
         }
 

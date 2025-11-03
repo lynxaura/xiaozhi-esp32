@@ -9,6 +9,7 @@
 #include <esp_wifi.h>
 #include <nvs_flash.h>
 #include <esp_netif_types.h>
+#include <esp_mac.h>
 
 extern "C" {
 #include "esp_blufi.h" // for esp_blufi_adv_start()
@@ -116,8 +117,18 @@ void BlufiProvisioning::InitWifiIfNeeded() {
     if (!s_sta) {
         s_sta = esp_netif_create_default_wifi_sta();
     }
+
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    esp_err_t ret = esp_wifi_init(&cfg);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to init WiFi: %s (0x%x)", esp_err_to_name(ret), ret);
+        if (ret == ESP_ERR_NO_MEM) {
+            ESP_LOGE(TAG, "Not enough memory to init WiFi. Try waiting longer after WifiStation::Stop()");
+        }
+        // Don't use ESP_ERROR_CHECK to avoid crash, let the caller handle the error
+        return;
+    }
+
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_start());
@@ -148,8 +159,20 @@ void BlufiProvisioning::ConnectSta() {
     strncpy((char*)cfg.sta.ssid, recv_ssid_.c_str(), sizeof(cfg.sta.ssid)-1);
     strncpy((char*)cfg.sta.password, recv_passwd_.c_str(), sizeof(cfg.sta.password)-1);
     cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK; // safe default
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &cfg));
-    ESP_ERROR_CHECK(esp_wifi_connect());
+
+    esp_err_t ret = esp_wifi_set_config(WIFI_IF_STA, &cfg);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_set_config failed: %s", esp_err_to_name(ret));
+        esp_blufi_send_error_info(ESP_BLUFI_WIFI_CONNECT_FAIL);
+        return;
+    }
+
+    ret = esp_wifi_connect();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_connect failed: %s", esp_err_to_name(ret));
+        esp_blufi_send_error_info(ESP_BLUFI_WIFI_CONNECT_FAIL);
+        return;
+    }
 }
 
 void BlufiProvisioning::EventCallback(esp_blufi_cb_event_t event, esp_blufi_cb_param_t *param) {
@@ -169,6 +192,25 @@ void BlufiProvisioning::EventCallback(esp_blufi_cb_event_t event, esp_blufi_cb_p
         ESP_LOGI(TAG, "BLE connected");
         self->ble_connected_ = true;
         self->SetState(BlufiState::CONNECTED);
+
+        // Send MAC address to miniprogram for device binding check
+        {
+            uint8_t mac[6];
+            if (esp_read_mac(mac, ESP_MAC_WIFI_STA) == ESP_OK) {
+                // Format: XX:XX:XX:XX:XX:XX (17 bytes with colons)
+                char mac_str[18];
+                snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+                         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                esp_err_t ret = esp_blufi_send_custom_data((uint8_t*)mac_str, strlen(mac_str));
+                if (ret == ESP_OK) {
+                    ESP_LOGI(TAG, "Sent MAC address via custom data (0x13): %s", mac_str);
+                } else {
+                    ESP_LOGE(TAG, "Failed to send MAC address: %s", esp_err_to_name(ret));
+                }
+            } else {
+                ESP_LOGE(TAG, "Failed to read MAC address");
+            }
+        }
         break;
     case ESP_BLUFI_EVENT_BLE_DISCONNECT:
         ESP_LOGI(TAG, "BLE disconnected");
