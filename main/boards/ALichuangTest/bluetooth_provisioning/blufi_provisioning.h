@@ -5,6 +5,7 @@
 #include <functional>
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
+#include <esp_timer.h>
 
 extern "C" {
 #include <esp_blufi_api.h>
@@ -45,10 +46,12 @@ private:
 
     // Internal helpers
     static void WifiEventHandler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
+    static void ScanTimeoutCallback(void* arg);
 
     void SetState(BlufiState s);
     void InitWifiIfNeeded();
     void StartScan();
+    void StopScanTimer();
     void ConnectSta();
 
 private:
@@ -56,6 +59,7 @@ private:
     bool started_ = false;
     bool ble_connected_ = false;
     EventGroupHandle_t event_group_ = nullptr;
+    esp_timer_handle_t scan_timeout_timer_ = nullptr;
     std::function<void(const std::string&, const std::string&)> on_configured_;
     std::function<void(BlufiState)> on_state_changed_;
 

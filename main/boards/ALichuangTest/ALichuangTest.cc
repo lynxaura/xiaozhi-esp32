@@ -120,6 +120,7 @@ private:
     TaskHandle_t delay_task_handle = nullptr;
     SDdata_Pro* sdhccard = nullptr;
     TaskHandle_t event_worker_task_handle_ = nullptr; // 事件处理工作任务
+    bool interaction_initialized_ = false; // 标记交互系统是否已初始化
 
 #if CONFIG_LINGXI_ANIMA_UI
     // 动画相关成员变量
@@ -912,6 +913,39 @@ private:
                 data.angle_x, data.angle_y, data.angle_z);
     }
 
+    // 延迟初始化交互系统（在WiFi连接成功后调用，节省BluFi配网期间的内存）
+    void InitializeInteractionModules() {
+        if (interaction_initialized_) {
+            ESP_LOGW(TAG, "Interaction modules already initialized, skipping");
+            return;
+        }
+
+        ESP_LOGI(TAG, "Initializing interaction modules (post-WiFi)...");
+
+        // 1. 初始化交互系统（EventEngine + tasks）
+        InitializeInteractionSystem();
+
+#if CONFIG_LINGXI_ANIMA_UI
+        // 2. 启动GIF动画播放任务
+        StartAnimationPlay();
+#endif
+
+        // 3. 启动振动任务
+        StartVibrationTask();
+
+        // 4. 启动直流马达动作控制任务
+        StartMotionTask();
+
+        // 5. 初始化本地响应系统（在交互系统和技能初始化后）
+        InitializeLocalResponseSystem();
+
+        // 6. 所有skills初始化完成后，初始化MCP工具
+        InitializeMcpTools();
+
+        interaction_initialized_ = true;
+        ESP_LOGI(TAG, "✅ Interaction modules initialized successfully");
+    }
+
     void TestHumanFaceModel() {
         const char* filepath = "/sdcard/face_dectect_models/test_face.jpg";
         FILE *f = fopen(filepath, "r");
@@ -979,23 +1013,13 @@ public:
         InitializeVibration();  // 初始化振动技能（使用PCA9685）
         InitializeMotion();  // 初始化直流马达动作控制技能
         InitialAngleSensor();
-        InitializeInteractionSystem();  // 初始化交互系统
+
+        // 注意：交互系统初始化已延迟到WiFi连接成功后（节省BluFi配网期间的~16KB内存）
+        // InitializeInteractionSystem(), StartAnimationPlay(), StartVibrationTask(),
+        // StartMotionTask(), InitializeLocalResponseSystem(), InitializeMcpTools()
+        // 这些调用现在由 InitializeInteractionModules() 在网络连接后处理
 
         GetBacklight()->RestoreBrightness();
-#if CONFIG_LINGXI_ANIMA_UI
-        // 启动GIF动画播放任务
-        StartAnimationPlay();
-#endif
-        // 启动振动任务
-        StartVibrationTask();
-        // 启动直流马达动作控制任务
-        StartMotionTask();
-                
-        // 初始化本地响应系统（在交互系统和技能初始化后）
-        InitializeLocalResponseSystem();
-
-        // 所有skills初始化完成后，初始化MCP工具
-        InitializeMcpTools();
 
 #if !CONFIG_DISABLE_BOOT_FACE_DETECTION_TEST
         // 测试人脸检测模型是否工作
@@ -1095,6 +1119,9 @@ public:
                 notification += ssid;
                 display->ShowNotification(notification.c_str(), 30000);
 
+                // 初始化交互模块（延迟到WiFi连接后以节省BluFi配网期间的内存）
+                InitializeInteractionModules();
+
                 // Retry device activation after WiFi connection is established
                 // This handles the case where activation was skipped during boot due to no network
                 auto& device_activation = DeviceActivation::GetInstance();
@@ -1110,8 +1137,8 @@ public:
             });
             wifi_station.Start();
 
-            // Try to connect to WiFi for 60 seconds
-            if (wifi_station.WaitForConnected(60 * 1000)) {
+            // Try to connect to WiFi for 20 seconds
+            if (wifi_station.WaitForConnected(20 * 1000)) {
                 // Successfully connected
                 ESP_LOGI(TAG, "WiFi connected successfully");
                 return;
