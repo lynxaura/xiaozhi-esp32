@@ -7,6 +7,8 @@
 #include <esp_event.h>
 #include <esp_netif.h>
 #include <esp_wifi.h>
+#include <esp_mac.h>
+#include <esp_heap_caps.h>
 #include <nvs_flash.h>
 #include <esp_netif_types.h>
 
@@ -117,10 +119,45 @@ void BlufiProvisioning::InitWifiIfNeeded() {
         s_sta = esp_netif_create_default_wifi_sta();
     }
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    // Tighten WiFi memory usage during BluFi to avoid OOM with NimBLE
+    if (cfg.static_rx_buf_num > 2) cfg.static_rx_buf_num = 2;          // default 6 → 2
+    if (cfg.dynamic_rx_buf_num > 8) cfg.dynamic_rx_buf_num = 8;        // cut down dyn RX
+    if (cfg.rx_mgmt_buf_num > 8) cfg.rx_mgmt_buf_num = 8;              // management RX bufs
+    if (cfg.mgmt_sbuf_num > 6) cfg.mgmt_sbuf_num = 6;                  // minimum allowed
+    cfg.ampdu_rx_enable = 0;
+    cfg.ampdu_tx_enable = 0;
+    cfg.amsdu_tx_enable = 0;
+    cfg.rx_ba_win = 0;
+    cfg.nvs_enable = 0; // we use WIFI_STORAGE_RAM below
+
+    size_t free_int = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    ESP_LOGI(TAG, "Free internal heap before WiFi init: %u", (unsigned)free_int);
+
+    esp_err_t err;
+    err = esp_wifi_init(&cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_init failed: %s", esp_err_to_name(err));
+        esp_blufi_send_error_info(ESP_BLUFI_WIFI_SCAN_FAIL);
+        return; // do not abort
+    }
+    err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_set_storage failed: %s", esp_err_to_name(err));
+        esp_blufi_send_error_info(ESP_BLUFI_WIFI_SCAN_FAIL);
+        return;
+    }
+    err = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_set_mode failed: %s", esp_err_to_name(err));
+        esp_blufi_send_error_info(ESP_BLUFI_WIFI_SCAN_FAIL);
+        return;
+    }
+    err = esp_wifi_start();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_start failed: %s", esp_err_to_name(err));
+        esp_blufi_send_error_info(ESP_BLUFI_WIFI_SCAN_FAIL);
+        return;
+    }
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &BlufiProvisioning::WifiEventHandler, this, NULL));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &BlufiProvisioning::WifiEventHandler, this, NULL));
@@ -193,6 +230,42 @@ void BlufiProvisioning::EventCallback(esp_blufi_cb_event_t event, esp_blufi_cb_p
         if (param && param->sta_passwd.passwd && param->sta_passwd.passwd_len >= 0) {
             self->recv_passwd_.assign((const char*)param->sta_passwd.passwd, param->sta_passwd.passwd_len);
             ESP_LOGI(TAG, "Received password length: %d", param->sta_passwd.passwd_len);
+        }
+        break;
+    case ESP_BLUFI_EVENT_RECV_CUSTOM_DATA:
+        if (param && param->custom_data.data && param->custom_data.data_len > 0) {
+            // Log the incoming custom data (hex print limited to info)
+            const uint8_t* d = param->custom_data.data;
+            int n = param->custom_data.data_len;
+            char hexbuf[128];
+            int pos = 0;
+            for (int i = 0; i < n && pos < (int)sizeof(hexbuf) - 3; ++i) {
+                pos += snprintf(&hexbuf[pos], sizeof(hexbuf) - pos, "%02X ", d[i]);
+            }
+            ESP_LOGI(TAG, "Recv custom data (%dB): %s", n, hexbuf);
+
+            // Reply with STA MAC address as ASCII 'XX:XX:XX:XX:XX:XX'
+            uint8_t mac[6];
+#if CONFIG_IDF_TARGET_ESP32P4
+            esp_err_t mac_ret = esp_wifi_get_mac(WIFI_IF_STA, mac);
+#else
+            esp_err_t mac_ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
+#endif
+            if (mac_ret == ESP_OK) {
+                char mac_str[18];
+                snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+                         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                esp_err_t ret = esp_blufi_send_custom_data((uint8_t*)mac_str, strlen(mac_str));
+                if (ret == ESP_OK) {
+                    ESP_LOGI(TAG, "Sent MAC via BLUFI custom data: %s", mac_str);
+                } else {
+                    ESP_LOGE(TAG, "Failed to send MAC via BLUFI: %s", esp_err_to_name(ret));
+                }
+            } else {
+                ESP_LOGE(TAG, "Failed to read MAC: %s", esp_err_to_name(mac_ret));
+            }
+        } else {
+            ESP_LOGW(TAG, "Recv custom data with empty payload");
         }
         break;
     case ESP_BLUFI_EVENT_REQ_CONNECT_TO_AP:
