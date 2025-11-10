@@ -707,27 +707,9 @@ CONFIG_USE_DEVICE_AEC=y
 # CONFIG_USE_SERVER_AEC is not set
 # CONFIG_USE_AUDIO_DEBUGGER is not set
 # CONFIG_USE_ACOUSTIC_WIFI_PROVISIONING is not set
-
-#
-# Bluetooth Provisioning (BluFi)
-#
-CONFIG_ENABLE_BLUETOOTH_PROVISIONING=y
-# CONFIG_BLUETOOTH_PROVISIONING_ALWAYS_ON_BOOT is not set
-CONFIG_BLUETOOTH_PROVISIONING_TIMEOUT=300
-# CONFIG_BLUFI_FALLBACK_TO_WEB_CONFIG is not set
-# end of Bluetooth Provisioning (BluFi)
-
 # CONFIG_RECEIVE_CUSTOM_MESSAGE is not set
 # CONFIG_DOA_CHANNEL_TEST is not set
 # end of Xiaozhi Assistant
-
-#
-# Memory Optimization Options
-#
-CONFIG_DISABLE_BOOT_FACE_DETECTION_TEST=y
-# CONFIG_OPTIMIZE_CAMERA_LAZY_INIT is not set
-# CONFIG_OPTIMIZE_SPI_BUFFER_SIZE is not set
-# end of Memory Optimization Options
 
 #
 # models: human_face_detect
@@ -2778,12 +2760,6 @@ CONFIG_WIFI_PROV_BLE_SEC_CONN=y
 CONFIG_WIFI_PROV_STA_ALL_CHANNEL_SCAN=y
 # CONFIG_WIFI_PROV_STA_FAST_SCAN is not set
 # end of Wi-Fi Provisioning Manager
-
-#
-# Animation Player Configuration
-#
-CONFIG_ANIM_PLAYER_DEFAULT_FPS=30
-# end of Animation Player Configuration
 
 #
 # ADC Battery Estimation
