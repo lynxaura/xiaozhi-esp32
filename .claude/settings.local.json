@@ -32,7 +32,19 @@
       "Bash(where:*)",
       "Bash(dir \"C:\\Users\\Administrator\\Downloads\\sound_effect_ogg\")",
       "Bash(dir:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(for dir in */)",
+      "Bash(do basename \"$dir\")",
+      "Bash(done)",
+      "Read(//c/Users/Administrator/Downloads/blufi/**)",
+      "Read(//c/Users/xiaot/Downloads/blufi/blufi/**)",
+      "Bash(wc:*)",
+      "WebSearch",
+      "Read(//d/**)",
+      "Bash(curl:*)",
+      "mcp__lark-mcp__docx_builtin_import",
+      "Bash(git log:*)",
+      "Bash(git stash:*)"
     ],
     "deny": []
   }
